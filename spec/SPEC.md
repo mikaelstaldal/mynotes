@@ -194,8 +194,30 @@ Error body remains `{"error": "message"}`. Timestamps are RFC 3339 UTC.
 | `GET /notes/{slug}`          | Fetch one note (Markdown `content`).                 |
 | `PATCH /notes/{slug}`        | Partial update (`title`, `content`, `slug`).         |
 | `DELETE /notes/{slug}`       | Delete a note.                                       |
+| `GET /notes/{slug}/download` | Download the raw Markdown source (no JSON wrapping).  |
 
 There is no render endpoint — Markdown is rendered in the browser (§4).
+
+### Markdown download
+
+`GET /notes/{slug}/download` returns the note's `content` as the **raw response
+body**, not wrapped in the `Note` JSON object. It exists so the web UI (and any
+HTTP client) can save a note as a `.md` file directly.
+
+- **Response media type:** `text/markdown; charset=utf-8`. In `openapi.yaml` the
+  `200` response declares a single `text/markdown` content with a `string`
+  schema, so ogen emits a raw-bytes/`string` body rather than a struct. (Errors
+  still use the standard `{"error": "message"}` JSON body — `404` for an unknown
+  slug.)
+- **Filename:** the handler sets
+  `Content-Disposition: attachment; filename="<slug>.md"` so browsers save the
+  file with the slug as its name. The slug pattern
+  (`^[a-z0-9]+(?:-[a-z0-9]+)*$`) is already filesystem- and header-safe, so no
+  escaping is required.
+- **Body is the verbatim stored Markdown** — the same source returned in
+  `Note.content`, byte-for-byte, with no HTML conversion and no sanitization
+  (consistent with §4: the server never produces HTML).
+- **GET is side-effect free** (§7) — download only reads.
 
 ### Schemas (informal)
 
@@ -258,7 +280,7 @@ field for both cases:
 
 ### Status codes
 
-- `201` create, `200` get/update/list, `204` delete.
+- `201` create, `200` get/update/list/download, `204` delete.
 - `400` validation (`service.ErrValidation`), `404` not found
   (`service.ErrNotFound`), `409` slug conflict on explicit user-supplied slug
   (new sentinel `service.ErrConflict` → `409`). Auto-generated slugs never
@@ -296,8 +318,15 @@ works without server changes. Replace the hash router with a path router.
   "New note" button. Empty and loading states.
 - **Read (`/notes/{slug}`):** fetches `content`, renders it with the
   markdown-it → DOMPurify pipeline (§4), and injects the sanitized HTML into a
-  constrained, styled container. "Edit" and "Delete" actions. 404 view for
-  missing slugs.
+  constrained, styled container. "Edit", "Delete", and "Download Markdown"
+  actions. 404 view for missing slugs.
+  - **Download Markdown** saves the note's raw source as `<slug>.md`. Preferred
+    implementation: navigate/link to `GET /notes/{slug}/download` (the endpoint's
+    `Content-Disposition: attachment` triggers the browser save), keeping the
+    raw-source path off the JSON `api` client. If routed through `api` instead,
+    fetch the `text/markdown` body and save it via a `Blob` + object URL — but
+    note `api` (§4, "Frontend networking") is built around JSON parsing, so the
+    direct-link form is simpler and avoids buffering large notes in memory.
 - **Editor (`/new`, `/notes/{slug}/edit`):**
   - Title input. While untouched, it auto-fills from the first heading in the
     content as the user types (truncated to 200 chars with a trailing `…` if the
@@ -530,7 +559,9 @@ Mirrors the template; rename/replace `item*` with `note*`.
   only as an optional raw-HTML strip of the stored source.
 - `internal/handler`: implement the generated `api.Handler` for notes; map
   sentinel errors (`ErrNotFound`→404, `ErrValidation`→400, `ErrConflict`→409) in
-  `NewError`. No `render` operation.
+  `NewError`. No `render` operation. The download operation returns the raw
+  Markdown body (`text/markdown`) and sets `Content-Disposition` (§5); it reuses
+  the service's get-by-slug, adding no new business logic.
 - `internal/api`: **generated** from `openapi.yaml` by `ogen` — never hand-edited.
 - `web/ts`: new `notes` API client (no `render` call), path router,
   list/read/editor views, a shared `util/markdown.ts` render+sanitize helper, and
