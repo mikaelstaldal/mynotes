@@ -18,6 +18,10 @@ design decisions. No code is implemented yet.
 - Single-user / personal tool. Optional HTTP Basic Auth gates the whole app
   (already supported by the template via `-basic-auth-file`). No per-note
   ownership, sharing, or multi-tenant concerns in v1.
+- "Stable URL" here means **durable and bookmarkable** (the address survives,
+  unlike an opaque integer id or a hash route), not publicly accessible. When
+  Basic Auth is enabled, every URL — including `/notes/{slug}` — is reachable
+  only by the authenticated user; there is no anonymous public-read path in v1.
 
 ### Non-goals (v1)
 
@@ -92,14 +96,24 @@ Notes:
 - Allowed characters: lowercase ASCII letters, digits, and hyphens
   (`^[a-z0-9]+(?:-[a-z0-9]+)*$`). Length 1–100.
 - **Generation:** if the client does not supply a slug on create, derive one
-  from the title: lowercase, transliterate/strip accents, replace runs of
-  non-alphanumerics with `-`, trim leading/trailing `-`, truncate to the max
-  length. If the title yields an empty slug, fall back to `note`.
-- **Uniqueness:** slugs are unique. On collision, append `-2`, `-3`, … until
-  free. (The DB enforces uniqueness; the service resolves collisions.)
-- **Editing:** a slug *may* be changed via update. Changing it changes the
-  note's URL — old links break. This is acceptable for a personal tool; the UI
-  should warn before changing an existing slug. (No automatic redirects in v1.)
+  from the title: lowercase, **fold accents via `golang.org/x/text/unicode/norm`
+  NFKD then drop combining marks** (`é→e`, `ñ→n`), drop any remaining non-ASCII
+  (non-Latin scripts are not transliterated — they simply fall away), replace
+  runs of non-alphanumerics with `-`, trim leading/trailing `-`, then truncate to
+  the max length (leaving room for any uniqueness suffix per §3.1). If the title
+  yields an empty slug, fall back to `note`.
+- **Uniqueness:** slugs are unique. (The DB enforces uniqueness; the service
+  resolves collisions.) Collision handling depends on origin:
+  - **Auto-generated** slug (client sent none): on collision the service appends
+    `-2`, `-3`, … until free. The base is first truncated so that base + suffix
+    still fits within `maxLength: 100` (the suffix is never sacrificed).
+  - **Explicit** slug (client supplied one): a collision is an error, never
+    silently suffixed — the service returns `ErrConflict` → `409`.
+- **Editing:** a slug *may* be changed via `PATCH`. Setting `slug` to a value
+  already used by **another** note returns `409`; setting it to the note's own
+  current slug is a no-op (not a conflict). Changing it changes the note's URL —
+  old links break. This is acceptable for a personal tool; the UI should warn
+  before changing an existing slug. (No automatic redirects in v1.)
 - Reserved slugs: none required, because note URLs live under a `/notes/`
   prefix that cannot collide with app routes (see §6).
 
@@ -112,8 +126,11 @@ treats `content` as opaque Markdown text: it stores it, searches it, and returns
 it — it never converts it to HTML. All Markdown→HTML conversion happens in the
 browser.
 
-- **Standard (O-5):** CommonMark plus the common GFM extensions — tables,
-  strikethrough, autolinks, task lists. **Images are enabled**: Markdown image
+- **Standard (O-5):** CommonMark plus the common GFM extensions that stock
+  markdown-it supports — tables, strikethrough, autolinks. **Task lists are *not*
+  in v1** (they need a markdown-it plugin and would require allowing `<input>`
+  through the sanitizer; `- [ ]` simply renders as a literal list item). **Images
+  are enabled**: Markdown image
   syntax renders `<img>`, with `src` restricted to `https` and `data:` schemes
   (no `http`, to avoid mixed content; no uploads — only referencing remote/inline
   images, consistent with the v1 non-goal on attachments). This requires a small
@@ -175,7 +192,7 @@ Note:
   updated_at  date-time
 
 NoteSummary (list item):
-  slug, title, updated_at, excerpt (plain-text), [highlight when q given]
+  slug, title, updated_at, excerpt (string; see below)
 
 NoteList:
   total int
@@ -184,7 +201,7 @@ NoteList:
 CreateNoteRequest:
   title    string (1..200, required; client may auto-fill it from the first
                    heading, but always sends a value — O-6)
-  content  string (0..N, optional, default "")
+  content  string (0..1000000, optional, default "")
   slug     string (optional; pattern + maxLength 100; auto-generated if absent)
 
 UpdateNoteRequest (all optional; nil = leave unchanged):
@@ -193,22 +210,29 @@ UpdateNoteRequest (all optional; nil = leave unchanged):
 Error: { error: string }
 ```
 
-The list `excerpt` is **plain text** (an FTS5 snippet or a truncated prefix of
-the source), not HTML — see §8. The client escapes/highlights it safely.
+The list `excerpt` is a **single string field**, never HTML — see §8. It is one
+field for both cases:
+- **Browsing (no `q`):** a plain truncated prefix of the source, no markers.
+- **Searching (`q` present):** an FTS5 `snippet()` whose matched terms are
+  wrapped in **non-HTML sentinel delimiters** (`U+0002` start, `U+0003` end) that
+  cannot occur in normal note text. The client HTML-escapes the entire string,
+  then replaces the sentinel pairs with `<mark>…</mark>`. Because escaping
+  happens first, the wrapped content is inert; the sentinels are the only thing
+  ever turned into markup.
 
 ### Constraints (declared in `openapi.yaml`, per template security guidance)
 
 - `title`: `minLength: 1`, `maxLength: 200`. Required. (The editor auto-fills it
   client-side; the server does not derive it.)
-- `content`: `maxLength` ~100,000 chars (matches the template's content cap;
-  tune if needed).
+- `content`: `maxLength: 1000000` (1,000,000 characters). Worst-case UTF-8 is
+  ~4 MiB, comfortably under the 10 MiB request-body cap.
 - `slug`: `maxLength: 100`, `pattern: '^[a-z0-9]+(?:-[a-z0-9]+)*$'`.
 - `q`: `maxLength: 200`.
 - `limit`: 1–200, default 50. `offset`: ≥ 0, default 0.
 
 ### Status codes
 
-- `201` create, `200` get/update/list/render, `204` delete.
+- `201` create, `200` get/update/list, `204` delete.
 - `400` validation (`service.ErrValidation`), `404` not found
   (`service.ErrNotFound`), `409` slug conflict on explicit user-supplied slug
   (new sentinel `service.ErrConflict` → `409`). Auto-generated slugs never
@@ -237,7 +261,7 @@ works without server changes. Replace the hash router with a path router.
 - Internal navigation uses `history.pushState`; the app intercepts link clicks.
 - All API calls go through `api` in `web/ts/api/client.ts` (no direct `fetch`
   from components — template convention). Add a `notes` client mirroring the
-  existing `items` client, plus a `render` call.
+  existing `items` client. (There is no `render` call — rendering is local; §4.)
 
 ### Views
 
@@ -257,7 +281,9 @@ works without server changes. Replace the hash router with a path router.
   - **CodeMirror 6** Markdown source editor plus a **live preview** pane rendered
     locally (markdown-it → DOMPurify) on a debounced change of the editor
     contents. Split or toggle layout. No network round-trip for preview.
-  - Save (create/update) and Cancel. Unsaved-changes guard on navigate-away.
+  - Save (create/update) and Cancel. Unsaved-changes guard covering **both**
+    intercepted in-app (pushState) navigations and real browser unload/reload
+    (`beforeunload`).
   - Errors surfaced via the existing `Toast` component.
 
 ### Editor & rendering libraries (resolves O-2)
@@ -313,14 +339,27 @@ the design still treats stored content as hostile and gates it on render.
    before sanitization even runs.
 2. **markdown-it link validation** — restrict accepted link URL schemes to
    `http`, `https`, `mailto`, and image `src` schemes to `https`, `data:`
-   (O-5). Blocks `javascript:`/`vbscript:` URLs. DOMPurify is configured with the
-   same allow-lists.
+   (O-5). Blocks `javascript:`/`vbscript:` URLs. Note that markdown-it's single
+   `validateLink` hook fires for both links and images and cannot by itself apply
+   a different scheme list to each; the per-element distinction (links forbid
+   `data:`, images allow it) is enforced authoritatively by **DOMPurify's URI
+   policy** (configured with the same allow-lists, keyed per tag). `validateLink`
+   is treated as the coarse first pass, DOMPurify as the precise gate.
 3. **DOMPurify (authoritative gate)** — every HTML string is sanitized with
    DOMPurify immediately before any `innerHTML` assignment, in both the read view
    and the editor preview. A single shared helper (e.g.
    `web/ts/util/markdown.ts`) owns the render+sanitize pipeline so no component
-   ever injects unsanitized HTML. There is exactly one place that touches
-   `innerHTML`.
+   ever injects unsanitized HTML. In application code there is exactly one place
+   that assigns note-derived HTML to `innerHTML` (CodeMirror's own internal DOM
+   construction is out of scope — it never receives note HTML).
+   - **Allow-list:** restrict DOMPurify to the tags markdown-it actually emits
+     for the enabled features — block/inline text (`p`, `h1`–`h6`, `ul`/`ol`/`li`,
+     `blockquote`, `pre`, `code`, `hr`, `br`, `em`/`strong`/`del`), tables
+     (`table`/`thead`/`tbody`/`tr`/`th`/`td`), `a`, and `img`. Allowed attributes:
+     `href` (on `a`), `src`/`alt`/`title` (on `img`), `title` (on `a`), and table
+     cell `align`. No `<input>` (task lists are out), no `style`, no event-handler
+     attributes. URI policy mirrors defense 2 above (links: `http`/`https`/
+     `mailto`; images: `https`/`data:`).
 4. **Strict CSP** — `script-src 'self'` (no inline/eval scripts); all vendor
    bundles served from origin; the import-map hash stays covered by
    `commonweb.ImportMapCSPHash`. Even if a sanitization bug slipped through, the
@@ -342,7 +381,7 @@ the design still treats stored content as hostile and gates it on render.
   caching exists to tempt a write; O-3 resolved as "no caching").
 - **Body limits / timeouts:** keep the global `http.MaxBytesHandler` cap and the
   server `ReadTimeout` / `ReadHeaderTimeout`. The 10 MiB body cap comfortably
-  covers the ~100 KB content limit.
+  covers the 1,000,000-char content limit (≤ ~4 MiB UTF-8).
 - **CSRF / auth:** unchanged from the template (CSRF middleware on; optional
   Basic Auth via htpasswd).
 
@@ -358,7 +397,12 @@ the design still treats stored content as hostile and gates it on render.
 
 A fresh schema (`schemaV1`) replaces the template's `items` schema. New
 databases start at MyNotes v1; this is a template repurpose, not a migration
-from `items`. Future changes append to `migrations` per the template rule.
+from `items`. Concretely: `migrations[0]` becomes the MyNotes `schemaV1` (the
+`items` migration history is discarded, not preserved), and `PRAGMA
+user_version` is driven by this new list from 1. MyNotes targets a **fresh data
+directory**; pointing it at a pre-existing template DB that already created
+`items` (with `user_version > 0`) is unsupported and out of scope for v1. Future
+changes append to `migrations` per the template rule.
 
 ```sql
 CREATE TABLE notes (
@@ -386,17 +430,46 @@ CREATE VIRTUAL TABLE notes_fts USING fts5(
   title, content,
   content='notes', content_rowid='id'
 );
--- AFTER INSERT / DELETE / UPDATE OF (title, content) triggers keep notes_fts in
--- sync, exactly as the template does for items_fts.
+
+-- External-content tables require the special 'delete' bookkeeping command on
+-- DELETE/UPDATE (a plain DELETE/INSERT mirror corrupts the index). Triggers:
+CREATE TRIGGER notes_ai AFTER INSERT ON notes BEGIN
+  INSERT INTO notes_fts(rowid, title, content)
+    VALUES (new.id, new.title, new.content);
+END;
+CREATE TRIGGER notes_ad AFTER DELETE ON notes BEGIN
+  INSERT INTO notes_fts(notes_fts, rowid, title, content)
+    VALUES ('delete', old.id, old.title, old.content);
+END;
+CREATE TRIGGER notes_au AFTER UPDATE ON notes BEGIN
+  INSERT INTO notes_fts(notes_fts, rowid, title, content)
+    VALUES ('delete', old.id, old.title, old.content);
+  INSERT INTO notes_fts(rowid, title, content)
+    VALUES (new.id, new.title, new.content);
+END;
 ```
 
+The UPDATE trigger fires on any row change (slug/timestamp-only updates re-sync
+harmlessly); this is simpler and safer than `UPDATE OF (title, content)`.
+
 - **Querying:** keep the template's `sanitizeFTSQuery` (quote each token to make
-  FTS5 treat user input as literal terms, not operators).
+  FTS5 treat user input as literal terms, not operators). An absent `q` **and** a
+  present-but-empty/whitespace-only `q` are both treated as "browse" (no search
+  filter), not as a query matching nothing.
 - **Ranking:** order by FTS5 relevance (`ORDER BY rank`) when `q` is present;
-  order by `updated_at DESC` when browsing without a query.
-- **Snippets/highlights:** use FTS5 `snippet()` to produce the list `excerpt`
-  and highlight markers for matched terms. Highlight markup must be rendered
-  safely (escape text, then wrap matches) — it is not free-form HTML.
+  order by `updated_at DESC` when browsing without a query. In both cases add
+  `id DESC` as a secondary key so equal-rank / equal-timestamp rows paginate
+  deterministically across `limit`/`offset`.
+- **`total`:** `NoteList.total` is the count of rows matching the current request
+  (all notes when browsing; matched notes when `q` is present), so the client can
+  paginate; it is **not** affected by `limit`/`offset`.
+- **Snippets/highlights:** when `q` is present, build the `excerpt` with FTS5
+  `snippet(notes_fts, …)` passing the **sentinel** start/end strings `U+0002` /
+  `U+0003` (not HTML tags) so matched terms are marked without injecting markup.
+  When `q` is absent, the `excerpt` is just a truncated plain-text prefix of the
+  source (no `snippet()`, no sentinels). The client escapes the whole string and
+  only then converts sentinel pairs to `<mark>` (§5) — markers are never
+  free-form HTML.
 
 ---
 
@@ -453,19 +526,19 @@ Follow template conventions (`testify`, in-memory SQLite
 
 ## 11. Milestones (suggested build order)
 
-2. **API contract** — write `openapi.yaml` for `notes`; regenerate
+1. **API contract** — write `openapi.yaml` for `notes`; regenerate
    Go stubs and TS types.
-3. **Persistence** — new schema + FTS triggers in `db.go`; `NoteRepository` with
+2. **Persistence** — new schema + FTS triggers in `db.go`; `NoteRepository` with
    tests.
-4. **Service** — validation, slug generation/collision; sentinel errors
+3. **Service** — validation, slug generation/collision; sentinel errors
    (`ErrConflict`); tests. (No rendering.)
-5. **Handler** — implement generated interface + error mapping; handler tests.
-6. **Vendor bundling** — add the `esbuild` step to `build.sh`; produce
+4. **Handler** — implement generated interface + error mapping; handler tests.
+5. **Vendor bundling** — add the `esbuild` step to `build.sh`; produce
    `vendor/codemirror.js`, `vendor/markdown-it.js`, `vendor/dompurify.js`; wire
    the import map; update `CLAUDE.md` Build & Run (esbuild on `$PATH`).
-7. **Frontend** — path router; list/search, read, and editor views; `notes`
+6. **Frontend** — path router; list/search, read, and editor views; `notes`
    client; CodeMirror editor; shared `util/markdown.ts` render+sanitize helper +
    local live preview.
-8. **Hardening pass** — DOMPurify/markdown-it config review, CSP review,
+7. **Hardening pass** — DOMPurify/markdown-it config review, CSP review,
    client-side XSS regression tests, `./build.sh` green (bundle + build + test +
    lint).
