@@ -337,6 +337,15 @@ works without server changes. Replace the hash router with a path router.
   - **CodeMirror 6** Markdown source editor plus a **live preview** pane rendered
     locally (markdown-it → DOMPurify) on a debounced change of the editor
     contents. Split or toggle layout. No network round-trip for preview.
+  - **Link to another note.** The editor offers an easy way to insert a link to
+    an existing note at the cursor without hand-typing its slug. A "Link to
+    note" action opens a picker that searches notes (reusing `GET /notes?q=`)
+    and, on selection, inserts a Markdown link to that note's stable URL —
+    `[<title>](/notes/<slug>)` — using the chosen note's title as the link text
+    (editable afterward like any other text). The inserted path is an in-app
+    route (§6), so following it navigates within the SPA; it needs no new API or
+    server support and passes through the same `validateLink`/DOMPurify gates as
+    any other link (§7).
   - Save (create/update) and Cancel. Unsaved-changes guard covering **both**
     intercepted in-app (pushState) navigations and real browser unload/reload
     (`beforeunload`).
