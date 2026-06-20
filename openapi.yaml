@@ -1,0 +1,192 @@
+openapi: 3.0.3
+info:
+  title: Go Web Template API
+  description: >
+    Example REST API for the go-web-template project. A single `items`
+    resource demonstrates the full stack: OpenAPI → ogen server stubs →
+    handler → service → repository → SQLite. Endpoints are served under the
+    `/api/v1` base path (applied via the server URL and ogen's path prefix).
+    Timestamps use RFC 3339 (UTC). Errors return `{"error": "message"}`.
+  version: 1.0.0
+servers:
+  - url: http://localhost:8080/api/v1
+    description: Local development server
+
+paths:
+  /items:
+    get:
+      operationId: listItems
+      summary: List items
+      description: >
+        Returns items ordered by creation time (newest first). When `q` is
+        supplied, results are restricted to items matching the full-text query.
+      parameters:
+        - name: q
+          in: query
+          description: Optional full-text search query.
+          required: false
+          schema:
+            type: string
+            maxLength: 200
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        "200":
+          description: A page of items.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ItemList"
+        default:
+          $ref: "#/components/responses/Error"
+    post:
+      operationId: createItem
+      summary: Create an item
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ItemRequest"
+      responses:
+        "201":
+          description: The created item.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Item"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /items/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+          minimum: 1
+    get:
+      operationId: getItem
+      summary: Get an item by id
+      responses:
+        "200":
+          description: The requested item.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Item"
+        default:
+          $ref: "#/components/responses/Error"
+    patch:
+      operationId: updateItem
+      summary: Update an item (partial)
+      description: Only the fields present in the request body are changed.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ItemUpdate"
+      responses:
+        "200":
+          description: The updated item.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Item"
+        default:
+          $ref: "#/components/responses/Error"
+    delete:
+      operationId: deleteItem
+      summary: Delete an item
+      responses:
+        "204":
+          description: Item deleted.
+        default:
+          $ref: "#/components/responses/Error"
+
+components:
+  responses:
+    Error:
+      description: Error response.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+
+  schemas:
+    Item:
+      type: object
+      required: [id, title, content, created_at, updated_at]
+      properties:
+        id:
+          type: integer
+          format: int64
+        title:
+          type: string
+        content:
+          type: string
+          description: Sanitized HTML content.
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    ItemList:
+      type: object
+      required: [total, items]
+      properties:
+        total:
+          type: integer
+          description: Number of items returned in this page.
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Item"
+
+    ItemRequest:
+      type: object
+      required: [title]
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+        content:
+          type: string
+          maxLength: 100000
+
+    ItemUpdate:
+      type: object
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+        content:
+          type: string
+          maxLength: 100000
+
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
