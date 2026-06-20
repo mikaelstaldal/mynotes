@@ -114,8 +114,13 @@ Notes:
     service-level existence check is advisory and racy (two concurrent creates
     can both pass it); the DB `UNIQUE` constraint is the source of truth. On a
     `UNIQUE` violation for an auto-generated slug, the service re-resolves the
-    suffix and retries the insert (bounded retries), so concurrent
-    double-submits/autosaves never surface a spurious error.
+    suffix and retries the insert (**bounded at 5 attempts**), so concurrent
+    double-submits/autosaves never surface a spurious error. The `-2`/`-3`/…
+    suffix search itself is data-bounded (it scans existing slugs) and is separate
+    from this retry, which guards only the rare write race. If all 5 attempts
+    still hit a `UNIQUE` violation, the service returns an **internal error
+    (`500`)** rather than looping — exhaustion is practically impossible for a
+    single-user tool.
   - **Explicit** slug (client supplied one): a collision is an error, never
     silently suffixed — the service returns `ErrConflict` → `409`.
 - **Editing:** a slug *may* be changed via `PATCH`. Setting `slug` to a value
@@ -214,9 +219,19 @@ HTTP client) can save a note as a `.md` file directly.
   file with the slug as its name. The slug pattern
   (`^[a-z0-9]+(?:-[a-z0-9]+)*$`) is already filesystem- and header-safe, so no
   escaping is required.
+- **ogen wiring (decided):** `Content-Disposition` is declared as a **response
+  header on the `200` response in `openapi.yaml`**, so ogen generates a setter on
+  the download response type and the header is set through the generated
+  `api.Handler` interface (the download stays inside the generated handler — no
+  side route). The `text/markdown; charset=utf-8` media type is declared as the
+  response content (`string` schema → raw body, see above). If a future ogen
+  version cannot express a raw body together with a response header, fall back to
+  a thin non-ogen route — but the contract above is the intended implementation.
 - **Body is the verbatim stored Markdown** — the same source returned in
   `Note.content`, byte-for-byte, with no HTML conversion and no sanitization
-  (consistent with §4: the server never produces HTML).
+  (consistent with §4: the server never produces HTML). A note with empty
+  `content` downloads as a **`200` with an empty body** (empty Markdown is valid,
+  per the create constraints) — not `204` and not an error.
 - **GET is side-effect free** (§7) — download only reads.
 
 ### Schemas (informal)
@@ -249,7 +264,8 @@ UpdateNoteRequest (all optional; nil = leave unchanged):
     create constraints); only an absent field leaves it unchanged.
   - Any successful PATCH sets `updated_at = now` (UTC), including a slug-only
     change — so renaming a note reorders it in the browse list (`updated_at
-    DESC`).
+    DESC`). `created_at` is **immutable** after create — no request field touches
+    it and PATCH never rewrites it.
   - A PATCH with no recognized fields (all absent) is rejected as `400`
     (`service.ErrValidation`), not treated as a no-op.
 
@@ -374,11 +390,19 @@ from origin to keep the CSP at `script-src 'self'`.
   committed like the existing vendored Preact files so the binary stays
   self-contained via `//go:embed`. (Update `CLAUDE.md` Build & Run accordingly
   during implementation.)
+- **Import-map edit (required step).** The three bundles must be added as
+  entries in the import map in `web/static/index.html` (alongside the existing
+  `preact` entries), e.g. `"codemirror": "./vendor/codemirror.js"`,
+  `"markdown-it": "./vendor/markdown-it.js"`, `"dompurify": "./vendor/dompurify.js"`.
+  This is the one hand-edit the vendoring requires.
 - **CSP note.** CodeMirror injects its styles as runtime `<style>` elements,
   which the template's existing `style-src 'self' 'unsafe-inline'` already
   permits. No new `script-src` allowances are needed because the bundles load
   from origin and the import-map hash continues to be covered by
-  `commonweb.ImportMapCSPHash`. See §7.
+  `commonweb.ImportMapCSPHash` — that hash is computed at runtime over the import
+  map contents (`main.go`: `commonweb.ImportMapCSPHash(web.Static)`), so adding
+  the three entries changes the import map text but the `script-src` hash adapts
+  automatically; **no manual hash value needs updating**. See §7.
 
 ---
 
@@ -532,8 +556,12 @@ harmlessly); this is simpler and safer than `UPDATE OF (title, content)`.
   FTS5 treat user input as literal terms, not operators). An absent `q` **and** a
   present-but-empty/whitespace-only `q` are both treated as "browse" (no search
   filter), not as a query matching nothing.
-- **Ranking:** order by FTS5 relevance (`ORDER BY rank`) when `q` is present;
-  order by `updated_at DESC` when browsing without a query. In both cases add
+- **Ranking:** order by FTS5 relevance (`ORDER BY rank`) when an **effective FTS
+  query** is present (a non-empty result from `sanitizeFTSQuery`); order by
+  `updated_at DESC` otherwise. The switch keys on the *effective* query, not on
+  the mere presence of the `q` parameter — a present-but-empty/whitespace `q` is
+  "browse" and uses `updated_at DESC`, consistent with the browse rule above and
+  with how `total`, snippets, and the excerpt mode are all selected. In both cases add
   `id DESC` as a secondary key so equal-rank / equal-timestamp rows paginate
   deterministically across `limit`/`offset`.
 - **`total`:** `NoteList.total` is the count of rows matching the current request
@@ -547,7 +575,11 @@ harmlessly); this is simpler and safer than `UPDATE OF (title, content)`.
   `title` column, the content snippet is empty; in that case fall back to the
   plain truncated content prefix (the same value used when browsing, no
   sentinels). The title itself is already shown separately as the row heading, so
-  no title snippet is produced. When `q` is absent, the `excerpt` is just a
+  no title snippet is produced. The fallback is triggered by an **empty snippet
+  string**, whatever the cause — title-only matches are the common case, but a
+  content match that lands outside the snippet window can also yield an empty
+  snippet; both degrade to the plain prefix, which is acceptable (the row still
+  shows title + a readable excerpt, just without inline highlight markers). When `q` is absent, the `excerpt` is just a
   ~200-character plain-text prefix of the source (no `snippet()`, no sentinels).
   The client escapes the whole string and only then converts sentinel pairs to
   `<mark>` (§5) — markers are never free-form HTML.
@@ -561,8 +593,24 @@ Mirrors the template; rename/replace `item*` with `note*`.
 - `internal/model`: `Note` struct (adds `Slug`).
 - `internal/repository`: `NoteRepository` (`List`, `GetBySlug`, `Create`,
   `Update`, `Delete`, slug-existence check). `db.go` gets the new schema + FTS.
+  - **Slug is the external key; `id` stays internal.** `Update` and `Delete`
+    resolve the URL `{slug}` to the row `id` first (via `GetBySlug`), then mutate
+    by `id` (signatures take a slug, or take the resolved `id` from a handler-side
+    lookup — either is acceptable, but the public surface is always keyed by
+    slug). A missing slug surfaces as `ErrNotFound`.
+  - **Slug rename within PATCH:** resolve the *old* (URL) slug to `id` first, then
+    write the new slug onto that `id` in the same update. Setting `slug` to the
+    note's own current value is a no-op (not a conflict, §3.1); setting it to a
+    value held by another note returns `ErrConflict`.
+  - **`List` returns both the page and the match count.** Signature returns
+    `(notes []NoteSummary, total int, err error)` (or an equivalent struct).
+    `total` is computed by a second `COUNT(*)` over the same predicate as the
+    page query — all rows when browsing, `… WHERE notes_fts MATCH ?` when an
+    effective query is present — and is independent of `limit`/`offset` (§5, §8).
 - `internal/service`: `NoteService` — validation (title, slug pattern, content
   length, UTF-8), slug generation + collision resolution. Adds `ErrConflict`.
+  On create, a nil/absent `content` is coalesced to `""` before storage (matches
+  the column `DEFAULT ''` and the API default).
   **No Markdown rendering** — the server never converts Markdown to HTML.
 - `internal/sanitize`: no longer on the note path (§7). Default: remove; or keep
   only as an optional raw-HTML strip of the stored source.
@@ -602,8 +650,11 @@ Follow template conventions (`testify`, in-memory SQLite
   inputs — `<script>`, `<img onerror=…>`, `[x](javascript:…)`, raw HTML blocks,
   `data:` URLs — asserting the sanitized output contains no script, event
   handler, or disallowed URL scheme. This requires a JS/TS test runner in
-  `web/ts` (e.g. `node:test` or Vitest) — a new addition to the frontend
-  toolchain; confirm choice during implementation.
+  `web/ts` — **decided: Node's built-in `node:test`**, with **`jsdom`** as a dev
+  dependency to provide the DOM that DOMPurify requires (DOMPurify cannot run in
+  bare Node; it is initialized against a jsdom `window`). This keeps the runner
+  itself dependency-free, in line with the project's minimal-toolchain/vendoring
+  approach; `jsdom` is a dev-only dependency and is not shipped or embedded.
 
 ---
 
