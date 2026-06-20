@@ -84,6 +84,10 @@ Notes:
   - In the editor, while the title has not been manually edited, it tracks the
     first heading found in the content as the user types. Once the user edits the
     title by hand, auto-sync stops (the manual value is never clobbered).
+  - A heading line can exceed the `maxLength: 200` title limit. When deriving the
+    title from a heading, the client truncates it to 200 characters (with a
+    trailing `…`, counted within the 200) so a save never fails with a confusing
+    `400` for a title the user never typed.
   - The API contract is unchanged by this: `title` is **mandatory** on create
     (the client always sends a value, derived or typed). The server does **not**
     derive titles — it validates and stores whatever the client submits.
@@ -106,7 +110,12 @@ Notes:
   resolves collisions.) Collision handling depends on origin:
   - **Auto-generated** slug (client sent none): on collision the service appends
     `-2`, `-3`, … until free. The base is first truncated so that base + suffix
-    still fits within `maxLength: 100` (the suffix is never sacrificed).
+    still fits within `maxLength: 100` (the suffix is never sacrificed). The
+    service-level existence check is advisory and racy (two concurrent creates
+    can both pass it); the DB `UNIQUE` constraint is the source of truth. On a
+    `UNIQUE` violation for an auto-generated slug, the service re-resolves the
+    suffix and retries the insert (bounded retries), so concurrent
+    double-submits/autosaves never surface a spurious error.
   - **Explicit** slug (client supplied one): a collision is an error, never
     silently suffixed — the service returns `ErrConflict` → `409`.
 - **Editing:** a slug *may* be changed via `PATCH`. Setting `slug` to a value
@@ -127,7 +136,10 @@ it — it never converts it to HTML. All Markdown→HTML conversion happens in t
 browser.
 
 - **Standard (O-5):** CommonMark plus the common GFM extensions that stock
-  markdown-it supports — tables, strikethrough, autolinks. **Task lists are *not*
+  markdown-it supports — tables, strikethrough, and autolinks. markdown-it
+  `linkify` is **enabled**, so bare URLs/emails in plain text become links too
+  (not just explicit `<url>` autolink syntax); these still pass through
+  `validateLink` and DOMPurify, so the scheme allow-lists apply unchanged. **Task lists are *not*
   in v1** (they need a markdown-it plugin and would require allowing `<input>`
   through the sanitizer; `- [ ]` simply renders as a literal list item). **Images
   are enabled**: Markdown image
@@ -155,8 +167,12 @@ browser.
 
 1. markdown-it is configured with `html: false`, so raw inline/block HTML in the
    source is escaped to literal text rather than passed through.
-2. markdown-it's link validator is restricted to `http`, `https`, `mailto`
-   (blocking `javascript:`, `vbscript:`, `data:` URLs in links).
+2. markdown-it's link validator (`validateLink`) is a single coarse hook that
+   fires for both links and images, so it accepts the **union** of the allowed
+   schemes (`http`, `https`, `mailto` for links plus `data:` for images) and
+   blocks `javascript:`/`vbscript:`. It cannot by itself forbid `data:` in links
+   while allowing it in images; that per-tag distinction is enforced
+   authoritatively by DOMPurify's URI policy (see §7).
 3. DOMPurify sanitizes the rendered HTML string before any `innerHTML`
    assignment — the final, authoritative gate.
 4. The CSP stays strict (`script-src 'self'`); all libraries are vendored and
@@ -207,12 +223,22 @@ CreateNoteRequest:
 UpdateNoteRequest (all optional; nil = leave unchanged):
   title, content, slug
 
+  - A present `content: ""` clears the body (empty content is valid, per the
+    create constraints); only an absent field leaves it unchanged.
+  - Any successful PATCH sets `updated_at = now` (UTC), including a slug-only
+    change — so renaming a note reorders it in the browse list (`updated_at
+    DESC`).
+  - A PATCH with no recognized fields (all absent) is rejected as `400`
+    (`service.ErrValidation`), not treated as a no-op.
+
 Error: { error: string }
 ```
 
 The list `excerpt` is a **single string field**, never HTML — see §8. It is one
 field for both cases:
-- **Browsing (no `q`):** a plain truncated prefix of the source, no markers.
+- **Browsing (no `q`):** a plain prefix of the source truncated to ~200
+  characters at a word boundary, with a trailing `…` when truncated; no markers.
+  A note with empty `content` yields an empty `excerpt`.
 - **Searching (`q` present):** an FTS5 `snippet()` whose matched terms are
   wrapped in **non-HTML sentinel delimiters** (`U+0002` start, `U+0003` end) that
   cannot occur in normal note text. The client HTML-escapes the entire string,
@@ -274,7 +300,8 @@ works without server changes. Replace the hash router with a path router.
   missing slugs.
 - **Editor (`/new`, `/notes/{slug}/edit`):**
   - Title input. While untouched, it auto-fills from the first heading in the
-    content as the user types; manual edits stop the auto-sync (O-6).
+    content as the user types (truncated to 200 chars with a trailing `…` if the
+    heading is longer); manual edits stop the auto-sync (O-6).
   - Slug field: auto-suggested from title for new notes; shown (and editable
     with a warning) when editing an existing note (O-4 — slugs are mutable; no
     redirects, so the UI warns that the URL will change).
@@ -358,7 +385,11 @@ the design still treats stored content as hostile and gates it on render.
      (`table`/`thead`/`tbody`/`tr`/`th`/`td`), `a`, and `img`. Allowed attributes:
      `href` (on `a`), `src`/`alt`/`title` (on `img`), `title` (on `a`), and table
      cell `align`. No `<input>` (task lists are out), no `style`, no event-handler
-     attributes. URI policy mirrors defense 2 above (links: `http`/`https`/
+     attributes. The `language-*` `class` that markdown-it emits on fenced
+     `<code>` is **not** allowed (stripped): there is **no read-view syntax
+     highlighting in v1**. (If highlighting is added later, allow `class` on
+     `code`/`pre` at that point — do not add a highlighter expecting the class to
+     survive.) URI policy mirrors defense 2 above (links: `http`/`https`/
      `mailto`; images: `https`/`data:`).
 4. **Strict CSP** — `script-src 'self'` (no inline/eval scripts); all vendor
    bundles served from origin; the import-map hash stays covered by
@@ -390,6 +421,13 @@ the design still treats stored content as hostile and gates it on render.
 > server-side raw-HTML strip of the stored source (defense in depth); the primary
 > design stores Markdown verbatim and sanitizes client-side. Decide during
 > implementation — default: remove, since DOMPurify is the gate.
+>
+> **Governing-instructions note:** `CLAUDE.md` currently mandates "Sanitize on
+> every write path … using `sanitize.HTML`." That rule must be **amended during
+> implementation** to carve out the notes-`content` path (which is stored verbatim
+> Markdown, gated client-side by DOMPurify), alongside the already-planned
+> `CLAUDE.md` Build & Run update for `esbuild` (§6). Otherwise the governing
+> instructions directly contradict this spec's central security design.
 
 ---
 
@@ -464,12 +502,17 @@ harmlessly); this is simpler and safer than `UPDATE OF (title, content)`.
   (all notes when browsing; matched notes when `q` is present), so the client can
   paginate; it is **not** affected by `limit`/`offset`.
 - **Snippets/highlights:** when `q` is present, build the `excerpt` with FTS5
-  `snippet(notes_fts, …)` passing the **sentinel** start/end strings `U+0002` /
-  `U+0003` (not HTML tags) so matched terms are marked without injecting markup.
-  When `q` is absent, the `excerpt` is just a truncated plain-text prefix of the
-  source (no `snippet()`, no sentinels). The client escapes the whole string and
-  only then converts sentinel pairs to `<mark>` (§5) — markers are never
-  free-form HTML.
+  `snippet()` over the **`content`** column with a budget of ~30 tokens and `…`
+  as the leading/trailing ellipsis text, passing the **sentinel** start/end
+  strings `U+0002` / `U+0003` (not HTML tags) so matched terms are marked without
+  injecting markup. **Title-only matches:** when the query matches only in the
+  `title` column, the content snippet is empty; in that case fall back to the
+  plain truncated content prefix (the same value used when browsing, no
+  sentinels). The title itself is already shown separately as the row heading, so
+  no title snippet is produced. When `q` is absent, the `excerpt` is just a
+  ~200-character plain-text prefix of the source (no `snippet()`, no sentinels).
+  The client escapes the whole string and only then converts sentinel pairs to
+  `<mark>` (§5) — markers are never free-form HTML.
 
 ---
 
