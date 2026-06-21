@@ -162,9 +162,9 @@ Notes:
 ## 4. Markdown handling
 
 Rendering and editing are **client-side** (resolves O-1, O-2, O-3). The server
-treats `content` as opaque Markdown text: it stores it, searches it, and returns
-it — it never converts it to HTML. All Markdown→HTML conversion happens in the
-browser.
+treats `content` as Markdown text: it stores it, searches it, **validates its
+structure and embedded HTML on write (§4.1)**, and returns it — it never converts
+it to HTML. All Markdown→HTML conversion happens in the browser.
 
 - **Standard (O-5):** CommonMark plus the common GFM extensions that stock
   markdown-it supports — tables, strikethrough, and autolinks. markdown-it
@@ -181,8 +181,9 @@ browser.
   images, consistent with the v1 non-goal on attachments). This requires a small
   CSP `img-src` change (§7).
 - **Storage:** the raw Markdown source is stored verbatim in `content`. It is
-  **not** HTML-sanitized on the way in (that would corrupt the source). Only
-  length and UTF-8 validity are checked on write.
+  **not** HTML-sanitized on the way in (that would corrupt the source). Length,
+  UTF-8 validity, **and a structural Markdown check (§4.1)** are enforced on
+  write; all three only accept or reject — none alters the stored bytes.
 - **Editing — CodeMirror 6.** The editor uses CodeMirror 6 with its Markdown
   language mode (`@codemirror/lang-markdown`) for syntax-aware highlighting of
   the source. It is a source editor (not WYSIWYG); the rendered result is shown
@@ -190,16 +191,121 @@ browser.
 - **Rendering — markdown-it + DOMPurify.** A client-side Markdown library
   (recommended: `markdown-it`) converts the source to an HTML string, which is
   then **sanitized with DOMPurify** before being inserted into the DOM. DOMPurify
-  is the authoritative XSS gate (see §7). This same pipeline drives both the live
-  preview in the editor and the read view.
+  is the authoritative XSS gate (see §7). markdown-it runs with **`html: true`**,
+  so embedded HTML in the source is passed through into the rendered output
+  (rather than escaped to literal text) and then gated by DOMPurify. This same
+  pipeline drives both the live preview in the editor and the read view.
 - **No server render endpoint and no `content_html`.** There is no `POST
   /render`; the previous server-rendered `content_html` field is removed. Live
   preview is instantaneous and local — no round-trips.
 
-### Why this is safe despite no server-side sanitization (summary; full detail §7)
+### 4.1 Server-side Markdown validation (write-time gate)
 
-1. markdown-it is configured with `html: false`, so raw inline/block HTML in the
-   source is escaped to literal text rather than passed through.
+CommonMark/GFM have **no notion of "invalid" Markdown** — every byte string is a
+well-formed document, and a parser never errors on content. "Validation" here is
+therefore **not** a parse-success check (which would never reject anything); it
+is a **structural allow-list** over the parsed document. On **create and update**
+(`POST /notes`, `PATCH /notes/{slug}` when `content` is present) the service
+parses `content` with **Goldmark** (`github.com/yuin/goldmark`, configured to
+match the client's enabled feature set — GFM tables, strikethrough, and
+linkify/autolinks) and walks the resulting AST, rejecting the write with
+`service.ErrValidation` → `400` if any of the following appears:
+
+- **Embedded HTML with disallowed elements, attributes, or schemes.** Embedded
+  HTML is **allowed** in notes, but every raw-HTML fragment is validated with
+  **bluemonday** (`github.com/microcosm-cc/bluemonday` — the template's existing
+  `internal/sanitize` package, retained rather than removed). The service pulls
+  each inline `ast.KindRawHTML` and block `ast.KindHTMLBlock` fragment out of the
+  Goldmark AST and runs bluemonday over **just those fragments**; bluemonday is
+  **never** run over the whole `content`, because it is an HTML sanitizer and
+  would corrupt Markdown (escaping `&`→`&amp;`, mangling `<` in ordinary text,
+  rewriting Markdown that merely looks HTML-ish). If bluemonday would strip or
+  alter a fragment, that fragment carries disallowed HTML (a `<script>`, an
+  `onerror=` handler, a `javascript:` href, …) and the **whole write is rejected**
+  (`service.ErrValidation` → `400`). bluemonday's cleaned output is used **only
+  for the accept/reject decision** and is never stored — accepted content is
+  stored byte-for-byte verbatim (§4 Storage).
+  - **Reject only on real changes, not reformatting.** bluemonday canonicalizes
+    HTML (quotes attribute values, closes void tags: `<br>`→`<br/>`), so a byte
+    compare of `bluemonday(fragment)` against the raw fragment would falsely
+    reject benign HTML it merely reformatted. Compare instead against a
+    **canonical re-serialization of the original fragment through the same HTML
+    tokenizer** (`golang.org/x/net/html`, which bluemonday itself uses): pure
+    formatting differences cancel on both sides, so only genuinely stripped or
+    rewritten (i.e. unsafe) content trips the rejection. For this to hold the
+    validation policy must be configured **removal-only** — it must **not inject
+    or rewrite** attributes (no `rel="nofollow"`, no `target="_blank"`, none of
+    UGCPolicy's default additions), because any addition would make even safe HTML
+    differ from its re-serialization and be falsely rejected. The policy strips
+    disallowed content; it never augments allowed content.
+  - **Policy = a broad "safe HTML" allow-list.** The goal is to accept **any tag
+    that is safe and reasonable to embed in Markdown**, not just the few tags
+    markdown-it itself emits. The server's bluemonday policy uses
+    **`bluemonday.UGCPolicy()`** as its base — the library's purpose-built
+    safe-user-content profile (prose, headings, lists, tables, blockquotes, code,
+    inline semantics like `sub`/`sup`/`kbd`/`abbr`/`mark`/`del`/`ins`,
+    `details`/`summary`, `figure`, `div`/`span`, `a`, `img`), which **excludes**
+    the dangerous/interactive set (`script`, `style`, `iframe`/`object`/`embed`,
+    `form`/`input`/`button`, raw media) and all `on*` event handlers. To it we add
+    the project's URL rules (and disable the additions noted above): keep
+    `http`/`https`/`mailto` and relative URLs, and additionally permit
+    **`data:image/*` on `img@src`** (UGCPolicy omits `data:`). The client DOMPurify
+    config (§7) is set to the **same** element/attribute/scheme profile so the two
+    gates agree on "safe HTML."
+  - **Parity is a goal, not a security dependency.** Because DOMPurify is the
+    authoritative render-time gate (§7 defense 3), a divergence is at worst a UX
+    wrinkle, never a hole: if the server accepts something DOMPurify later strips,
+    the note just renders without that fragment; if the server rejects something
+    DOMPurify would keep, the user sees a `400`. Neither is unsafe. Milestone 7
+    pins the two against a **shared test vector** (§10) so they stay aligned, but
+    they need not be byte-identical.
+- **Disallowed URL schemes in Markdown-native links/images** — bluemonday (above)
+  governs schemes *inside embedded HTML*; Markdown link/image **syntax** parses as
+  `ast.KindLink` / `ast.KindAutoLink` / `ast.KindImage` nodes (not HTML), so the
+  service checks **those** destinations separately against the same scheme
+  allow-list. The allow-list **mirrors §7**: `http`, `https`, `mailto` for links
+  and images, plus `data:image/*` for **image** destinations only (never on
+  links). Destinations
+  that carry **no scheme** — root-relative (`/notes/x`, the in-app note links of
+  §6 depend on this), scheme-relative (`//host/...`), and bare-relative — are
+  allowed; only an explicit non-allow-listed scheme (`javascript:`, `vbscript:`,
+  `file:`, `data:text/html`, …) is rejected.
+- **Excessive nesting** — block/inline nesting deeper than **100** levels,
+  matching markdown-it's `maxNesting: 100` default on the client (so anything the
+  server accepts the client can also render) and bounding parser/render cost.
+
+This check is enforced in the **service layer**, not by ogen: it is structural,
+not a string `pattern`/`maxLength`, so `openapi.yaml` cannot express it (length
+and UTF-8 remain ogen/service checks as before).
+
+It is **defense-in-depth, not a replacement for the client XSS pipeline.** The
+server runs bluemonday only to *decide* accept/reject and never stores its
+output, so it never mutates content; and the client markdown-it→DOMPurify
+pipeline (§7) stays the **authoritative** XSS gate, because (a) the server never
+produces, sanitizes-into-storage, or serves HTML — it serves verbatim Markdown,
+and (b) the design still treats any content reaching the browser as hostile
+(older notes, or rows written outside the API, are not covered by this check).
+The server stores the source **verbatim**; validation only accepts or rejects.
+
+**Consequence (be explicit):** embedded HTML is **accepted** whenever every tag,
+attribute, and URL scheme is in the safe allow-list — a broad set covering most
+HTML people reasonably embed in Markdown (`<details>`/`<summary>`, `<sub>`/`<sup>`,
+`<kbd>`, `<abbr>`, `<mark>`, `<figure>`, `<div>`/`<span>`, an aligned `<table>`, a
+plain `<a>`/`<img>`, …). HTML carrying anything outside it — a `<script>`,
+`<style>`, `<iframe>`, a form control, an `onerror=`/other event handler, or a
+`javascript:`/`data:text/html` href — causes the **whole write** to be rejected
+with `400`, surfaced via the existing `Toast` (§6). (To widen or narrow the set
+later, change the bluemonday policy **and** the DOMPurify config together — §7.)
+Text that contains `<`/`>` **without** forming a valid HTML tag (e.g. `a < b`) is
+not HTML per CommonMark and always passes; empty `content` has no nodes and always
+passes.
+
+### Why this is safe (summary; full detail §7)
+
+1. markdown-it runs with `html: true`, so embedded HTML in the source is rendered
+   (not escaped) and then sanitized by DOMPurify (3); independently, the server
+   pre-validates embedded HTML on write with bluemonday and rejects anything
+   outside the safe allow-list (§4.1).
 2. markdown-it's link validator (`validateLink`) is the coarse first pass. It
    accepts `http`/`https`/`mailto` for both links and images, plus `data:` **only
    for image MIME types** (`data:image/*`), and blocks `javascript:`/`vbscript:`/
@@ -402,7 +508,11 @@ is one field for both cases:
 - `title`: `minLength: 1`, `maxLength: 200`. Required. (The editor auto-fills it
   client-side; the server does not derive it.)
 - `content`: `maxLength: 1000000` (1,000,000 characters). Worst-case UTF-8 is
-  ~4 MiB, comfortably under the 10 MiB request-body cap.
+  ~4 MiB, comfortably under the 10 MiB request-body cap. Beyond length/UTF-8,
+  `content` is **structurally validated** in the service layer on every write
+  (Goldmark parse + AST allow-list, §4.1); a structural violation is a `400`
+  (`service.ErrValidation`). This check cannot be expressed in `openapi.yaml`, so
+  it is not part of ogen request validation.
 - `slug`: `maxLength: 100`, `pattern: '^[a-z0-9]+(?:-[a-z0-9]+)*$'`.
 - `q`: `maxLength: 200`.
 - `limit`: 1–200, default 50. `offset`: ≥ 0, default 0.
@@ -614,18 +724,27 @@ explicit about the consequence and the layered mitigations that keep it safe.
 
 ### Trust-boundary consequence (be explicit)
 
-Because the server stores raw Markdown and never produces HTML, server-side
-bluemonday sanitization no longer protects rendered notes. The data the browser
-renders is **untrusted** (it could contain `<script>`, `javascript:` links, or
-raw HTML — whether typed by the user or written by any future import/API
-client). For a single-user personal tool the practical exposure is self-XSS, but
-the design still treats stored content as hostile and gates it on render.
+Because the server stores raw Markdown verbatim and never produces or serves
+HTML, it cannot HTML-sanitize what the browser ultimately renders. The data the
+browser renders is **untrusted** (it could contain `<script>`, `javascript:`
+links, or raw HTML — whether typed by the user or written by any future
+import/API client). For a single-user personal tool the practical exposure is
+self-XSS, but the design still treats stored content as hostile and gates it on
+render. Write-time validation (§4.1) **shrinks** this surface — bluemonday
+rejects embedded HTML outside the safe allow-list, and the scheme check rejects
+bad Markdown link/image schemes, so neither reaches storage through the API — but
+does not eliminate it: rows written outside the API, or any content predating the
+check, remain untrusted, so render-time gating stands regardless.
 
 ### Layered defenses (defense in depth)
 
-1. **markdown-it `html: false`** — raw inline/block HTML in the source is
-   escaped to text, not passed through. Removes the most common injection path
-   before sanitization even runs.
+1. **Embedded HTML is allowed but gated (server + client).** markdown-it runs
+   with `html: true`, so raw HTML in the source is rendered rather than escaped;
+   DOMPurify (defense 3) then strips anything unsafe. As a server-side complement,
+   write-time validation runs **bluemonday** over the embedded-HTML fragments and
+   **rejects** any note whose HTML falls outside the safe allow-list before it is
+   ever stored (§4.1). The two together mean unsafe HTML neither persists (server)
+   nor renders (client).
 2. **markdown-it link validation** — the coarse first pass. markdown-it's single
    `validateLink` hook fires for both links and images and cannot apply a
    different scheme list to each, so it accepts the **union** of what either may
@@ -646,17 +765,28 @@ the design still treats stored content as hostile and gates it on render.
    ever injects unsanitized HTML. In application code there is exactly one place
    that assigns note-derived HTML to `innerHTML` (CodeMirror's own internal DOM
    construction is out of scope — it never receives note HTML).
-   - **Allow-list:** restrict DOMPurify to the tags markdown-it actually emits
-     for the enabled features — block/inline text (`p`, `h1`–`h6`, `ul`/`ol`/`li`,
-     `blockquote`, `pre`, `code`, `hr`, `br`, `em`/`strong`/`del`), tables
-     (`table`/`thead`/`tbody`/`tr`/`th`/`td`), `a`, and `img`. Allowed attributes:
-     `href` (on `a`), `src`/`alt`/`title` (on `img`), `title` (on `a`), and table
-     cell `align`. No `<input>` (task lists are out), no `style`, no event-handler
-     attributes. The `language-*` `class` that markdown-it emits on fenced
-     `<code>` is **not** allowed (stripped): there is **no read-view syntax
-     highlighting in v1**. (If highlighting is added later, allow `class` on
-     `code`/`pre` at that point — do not add a highlighter expecting the class to
-     survive.) **URI policy — `data:` scoped to images, blocked on anchors.** Set
+   - **Allow-list (broad "safe HTML"; source of truth for §4.1).** DOMPurify is
+     configured to keep **any tag/attribute safe and reasonable in a note**,
+     matching the server's bluemonday `UGCPolicy()` profile (§4.1) so the two
+     gates agree — not just the handful of tags markdown-it emits. Allowed:
+     block/sectioning and prose (`p`, `div`, `span`, `h1`–`h6`, `blockquote`,
+     `pre`, `code`, `hr`, `br`), lists (`ul`/`ol`/`li`, `dl`/`dt`/`dd`), tables
+     (`table`/`caption`/`colgroup`/`col`/`thead`/`tbody`/`tfoot`/`tr`/`th`/`td`),
+     inline formatting/semantics (`em`/`strong`/`b`/`i`/`u`/`s`/`del`/`ins`/`mark`/
+     `small`/`sub`/`sup`/`abbr`/`cite`/`q`/`kbd`/`samp`/`var`/`dfn`/`time`),
+     disclosure (`details`/`summary`), figures (`figure`/`figcaption`), `a`, and
+     `img`. **Excluded (stripped):** `script`, `style` (the element *and* the
+     attribute — CSS is an injection/exfiltration surface), `iframe`/`object`/
+     `embed`, form controls (`form`/`input`/`button`/`select`/`textarea`), and raw
+     media (`audio`/`video`/`source`) — not "reasonable in Markdown," and several
+     would force new CSP directives — plus all `on*` event-handler attributes.
+     Allowed attributes: `href` (on `a`), `src`/`alt` (on `img`), `title`, `class`,
+     table `align`/`colspan`/`rowspan`/`scope`, `datetime` (on `time`/`ins`/`del`),
+     and `cite` (on `q`/`blockquote`/`ins`/`del`). The `language-*` `class`
+     markdown-it emits on fenced `<code>` now **survives** (class is allowed) but
+     is inert — there is still **no read-view syntax highlighting in v1**; adding
+     one later needs no allow-list change. **URI policy — `data:` scoped to images,
+     blocked on anchors.** Set
      `ALLOWED_URI_REGEXP` to the scheme-only regexp `/^(?:https?|mailto):/i`
      (`http`/`https`/`mailto`, **no `data:`**). DOMPurify's own built-in `data:`
      handling is already restricted to image-bearing tags (it admits `data:` on
@@ -691,8 +821,14 @@ the design still treats stored content as hostile and gates it on render.
 ### Server-side responsibilities (unchanged or new)
 
 - **Validate on write:** title/slug/content length, UTF-8 validity, slug pattern
-  (`^[a-z0-9]+(?:-[a-z0-9]+)*$`). The server does *not* HTML-sanitize the source
-  (that would corrupt Markdown), so these are the server's gate.
+  (`^[a-z0-9]+(?:-[a-z0-9]+)*$`), **and a structural Markdown check on `content`**
+  (Goldmark parse + AST walk: embedded-HTML fragments validated with bluemonday
+  against the safe allow-list, allow-listed schemes on Markdown-native link/image
+  destinations, bounded nesting — §4.1). The server does *not* render the source,
+  and it never stores bluemonday's cleaned output — the check only **accepts or
+  rejects** verbatim source (storage stays byte-for-byte). These are the server's
+  gate; the client markdown-it→DOMPurify pipeline remains the authoritative XSS
+  gate.
 - **GET is side-effect free** — listing/fetching never writes (no rendered-HTML
   caching exists to tempt a write; O-3 resolved as "no caching").
 - **Body limits / timeouts:** keep the global `http.MaxBytesHandler` cap and the
@@ -701,18 +837,24 @@ the design still treats stored content as hostile and gates it on render.
 - **CSRF / auth:** unchanged from the template (CSRF middleware on; optional
   Basic Auth via htpasswd).
 
-> The existing `internal/sanitize` (bluemonday) package is **not** on the note
-> write/read path anymore. Either remove it or retain it only as an optional
-> server-side raw-HTML strip of the stored source (defense in depth); the primary
-> design stores Markdown verbatim and sanitizes client-side. Decide during
-> implementation — default: remove, since DOMPurify is the gate.
+> The existing `internal/sanitize` (bluemonday) package is **retained and
+> reused** — it is the server's embedded-HTML validator on the note write path
+> (§4.1). It is used to **validate (accept/reject), not to mutate**: the service
+> runs it over the raw-HTML fragments Goldmark extracts and rejects the write if
+> it would strip/alter them; its cleaned output is never stored. (It is **not**
+> run over the whole `content`, which would corrupt Markdown, and it is **not** on
+> the read path — reads serve verbatim Markdown.) The package may need a small
+> policy/API addition to expose the allow-list used for this fragment check and to
+> return the cleaned fragment for comparison.
 >
-> **Governing-instructions note:** `CLAUDE.md` currently mandates "Sanitize on
-> every write path … using `sanitize.HTML`." That rule must be **amended during
-> implementation** to carve out the notes-`content` path (which is stored verbatim
-> Markdown, gated client-side by DOMPurify), alongside the already-planned
-> `CLAUDE.md` Build & Run update for `esbuild` (§6). Otherwise the governing
-> instructions directly contradict this spec's central security design.
+> **Governing-instructions note:** `CLAUDE.md` mandates "Sanitize on every write
+> path … using `sanitize.HTML`." The notes-`content` path honors the *spirit* of
+> this (bluemonday gates every write) but **deviates in mechanism**: it
+> validates-and-rejects rather than sanitizes-and-stores (content is stored
+> verbatim Markdown; DOMPurify is the authoritative render-time gate). Amend
+> `CLAUDE.md` during implementation to describe this validate-not-mutate behavior
+> for notes-`content`, alongside the already-planned Build & Run update for
+> `esbuild` (§6), so the governing instructions match the design.
 
 ---
 
@@ -896,7 +1038,9 @@ Mirrors the template; rename/replace `item*` with `note*`.
     - `total` is a second statement: `SELECT COUNT(*) FROM notes` when browsing,
       `SELECT COUNT(*) FROM notes_fts WHERE notes_fts MATCH ?` when searching.
 - `internal/service`: `NoteService` — validation (title, slug pattern, content
-  length, UTF-8), slug generation + collision resolution. Adds `ErrConflict`.
+  length, UTF-8, **and structural Markdown validation of `content` — Goldmark AST
+  walk + bluemonday HTML-fragment check, §4.1**), slug generation + collision
+  resolution. Adds `ErrConflict`.
   On create, a nil/absent `content` is coalesced to `""` before storage (matches
   the column `DEFAULT ''` and the API default).
   - **Trimming (template convention).** The service `strings.TrimSpace`-es the
@@ -907,9 +1051,13 @@ Mirrors the template; rename/replace `item*` with `note*`.
     Markdown and are stored verbatim. (The auto-derived-title path in §3 already
     produces trimmed heading text client-side, but the server trim is the
     authoritative gate.)
-  **No Markdown rendering** — the server never converts Markdown to HTML.
-- `internal/sanitize`: no longer on the note path (§7). Default: remove; or keep
-  only as an optional raw-HTML strip of the stored source.
+  **No Markdown rendering** — the server parses Markdown with Goldmark to
+  validate structure (§4.1) but never converts it to HTML.
+- `internal/sanitize`: **retained** — bluemonday now backs the embedded-HTML
+  validation on the write path (§4.1, §7). Used to validate (accept/reject) the
+  raw-HTML fragments Goldmark extracts, never to mutate stored content; not on the
+  read path. May need a small addition to expose its allow-list policy and return
+  the cleaned fragment for the comparison.
 - `internal/handler`: implement the generated `api.Handler` for notes; map
   sentinel errors (`ErrNotFound`→404, `ErrValidation`→400, `ErrConflict`→409) in
   `NewError`. No `render` operation. The download operation returns the raw
@@ -938,14 +1086,36 @@ Follow template conventions (`testify`, in-memory SQLite
   FTS search returns expected matches and ranking; trigger sync after update.
 - **Service:** slug generation (accents, punctuation, empty-title fallback,
   truncation); collision resolution (`-2`, `-3`); slug-pattern validation;
-  content-length and UTF-8 limits. (No rendering to test server-side.)
+  content-length and UTF-8 limits; **structural Markdown validation (§4.1)** —
+  safe embedded HTML across the broad allow-list (`<details>`, `<sub>`, `<kbd>`,
+  `<div>`, an aligned `<table>`, a plain `<a>`/`<img>`) **accepted**; unsafe
+  embedded HTML (`<script>`, `<img onerror=…>`, a `javascript:`/`data:text/html`
+  href, `<style>`, `<iframe>`, an `<input>`) **rejected**; benign HTML that
+  bluemonday merely reformats (`<br>`, unquoted attributes) and a plain
+  `<a href="https://…">` accepted (no false-positive rejection — the
+  canonical-reserialization compare + removal-only policy, §4.1); disallowed
+  schemes on **Markdown-native** links/images (`javascript:`/`data:text/html`/…)
+  rejected;
+  `http`/`https`/`mailto` and root-/scheme-/bare-relative destinations accepted;
+  `data:image/*` accepted on images but rejected on links; over-deep nesting
+  rejected; valid GFM and empty content accepted; both create and update paths
+  covered. (No rendering to test server-side.)
 - **Handler:** full request/response cycle for each endpoint; error→status
   mapping (400/404/409).
-- **Frontend (where the XSS gate now lives):** unit-test the shared
+- **Frontend (the authoritative XSS gate):** unit-test the shared
   `util/markdown.ts` render+sanitize helper against a table of malicious Markdown
   inputs — `<script>`, `<img onerror=…>`, `[x](javascript:…)`, raw HTML blocks,
   `data:` URLs — asserting the sanitized output contains no script, event
-  handler, or disallowed URL scheme. Include a **`linkify` case** (a bare URL
+  handler, or disallowed URL scheme. **With `html: true` (§4) the raw-HTML inputs
+  now flow through markdown-it into DOMPurify rather than being escaped, so these
+  cases exercise DOMPurify directly** — assert that unsafe embedded HTML is
+  stripped while allow-listed embedded HTML across the broad set (e.g.
+  `<details>`, `<sub>`, `<div>`, a safe `<a>`/`<img>`) survives, matching the
+  server bluemonday allow-list (§4.1) so the two gates agree. A **shared fixture**
+  of `input → expected survivors/strips` checks that the server bluemonday policy
+  and the client DOMPurify config reach the **same verdict** (the parity vector
+  referenced in §4.1); it is acceptable for them to diverge only where DOMPurify
+  (authoritative) is the stricter of the two. Include a **`linkify` case** (a bare URL
   and a bare email in plain text, e.g. `http://x.test` / `a@b.test`) asserting
   markdown-it auto-links them to `http(s):`/`mailto:` anchors that **survive**
   sanitization unchanged — confirming `linkify` output passes the same
@@ -989,25 +1159,33 @@ Follow template conventions (`testify`, in-memory SQLite
 ## 11. Milestones (suggested build order)
 
 0. **Governing-instructions amendment (do first).** Amend `CLAUDE.md` *before*
-   writing note code: carve the notes-`content` path out of the "Sanitize on every
-   write path … using `sanitize.HTML`" rule (content is stored verbatim Markdown,
-   gated client-side by DOMPurify — §7), and add `esbuild`, `node`, and `npm` to
-   the Build & Run tool list (§6, §10 — `node`/`npm` drive the `jsdom`-based
-   client-side XSS-gate tests run from `build.sh`). `CLAUDE.md`'s instructions override default behavior, so leaving
-   the old rule in place would directly contradict the central security design and
-   block milestones 1–4. `internal/sanitize` is removed from the note path
-   (default: delete the package; §7, §9).
+   writing note code: restate the "Sanitize on every write path … using
+   `sanitize.HTML`" rule for the notes-`content` path as **validate-and-reject,
+   not sanitize-and-store** — content is stored verbatim Markdown, its embedded
+   HTML is validated (not mutated) by bluemonday on write, and DOMPurify is the
+   authoritative render-time gate (§4.1, §7) — and add `esbuild`, `node`, and
+   `npm` to the Build & Run tool list (§6, §10 — `node`/`npm` drive the
+   `jsdom`-based client-side XSS-gate tests run from `build.sh`). `CLAUDE.md`'s
+   instructions override default behavior, so leaving the old mutate-on-write
+   wording in place would contradict the verbatim-storage design and block
+   milestones 1–4. `internal/sanitize` is **retained** and reused as the
+   embedded-HTML validator (§7, §9), not removed.
 1. **API contract** — write `openapi.yaml` for `notes`; regenerate
    Go stubs and TS types. **Verify the download wiring spike** (raw `text/markdown`
    body + `Content-Disposition` header on the same `200`; §5) here — don't assume
    it generates.
 2. **Persistence** — new schema + FTS triggers in `db.go`; `NoteRepository` with
    tests.
-3. **Service** — validation, slug generation/collision; sentinel errors
-   (`ErrConflict`); tests. (No rendering.) Slug accent-folding uses
-   `golang.org/x/text/unicode/norm` (§3.1); this is currently an **indirect**
-   dependency in `go.mod`, so importing it directly promotes it to a direct
-   dependency — run `go mod tidy` (per `CLAUDE.md`).
+3. **Service** — validation (including structural Markdown validation, §4.1),
+   slug generation/collision; sentinel errors (`ErrConflict`); tests. (No
+   rendering.) Slug accent-folding uses `golang.org/x/text/unicode/norm` (§3.1);
+   this is currently an **indirect** dependency in `go.mod`, so importing it
+   directly promotes it to a direct dependency. Structural Markdown validation
+   adds a **new direct dependency** on `github.com/yuin/goldmark` (parse + AST
+   walk only — not used to render) and **reuses `internal/sanitize`'s bluemonday**
+   (already a template dependency) for the embedded-HTML fragment check, comparing
+   against a `golang.org/x/net/html` re-serialization (§4.1). Run `go mod tidy`
+   after adding the new imports (per `CLAUDE.md`).
 4. **Handler** — implement generated interface + error mapping; handler tests.
 5. **Vendor bundling** — add the `esbuild` step to `build.sh`; produce
    `vendor/codemirror.js`, `vendor/markdown-it.js`, `vendor/dompurify.js`; wire
