@@ -89,12 +89,15 @@ Notes:
     first heading found in the content as the user types. Once the user edits the
     title by hand, auto-sync stops (the manual value is never clobbered).
   - **What counts as "the first heading":** the first **ATX** heading only —
-    a line matching `^\s{0,3}#{1,6}\s+(.*?)\s*#*\s*$`, with the captured text as
-    the title. **Setext** headings (a text line underlined with `===`/`---`) are
+    a line matching `^\s{0,3}#{1,6}\s+(.*?)(?:\s+#+)?\s*$`, with the captured text
+    as the title. **Setext** headings (a text line underlined with `===`/`---`) are
     **not** recognized in v1. Lines inside a fenced code block (```` ``` ````/`~~~`)
     are **skipped**, so a `#` comment in a code sample is never mistaken for the
-    title. Any leading `#` markers and trailing `#` run are stripped from the
-    captured text.
+    title. A trailing `#` run is stripped from the captured text **only when it is
+    preceded by whitespace** — matching CommonMark's optional closing sequence, so a
+    heading like `# Done###` keeps the literal `###` (it derives `Done###`, the same
+    text markdown-it renders in the `<h1>`) while `# Done ###` derives `Done`. This
+    keeps the derivation consistent with how markdown-it parses the same heading.
   - **Empty-text headings are skipped.** The `\s+` after the markers means a bare
     `#`/`##` (markers with no following space/text) does not match at all. A line
     like `## ` (markers, space, nothing) *does* match but captures empty text;
@@ -304,6 +307,18 @@ linkify/autolinks) and walks the resulting AST, rejecting the write with
 - **Excessive nesting** — block/inline nesting deeper than **100** levels,
   matching markdown-it's `maxNesting: 100` default on the client (so anything the
   server accepts the client can also render) and bounding parser/render cost.
+- **C0 control characters** — `content` containing any C0 control character
+  **except** tab (`U+0009`), newline (`U+000A`), and carriage return (`U+000D`) is
+  rejected. This is a flat byte/rune scan (it does **not** require the Goldmark
+  parse), but it is part of the same write-time accept/reject gate. Its specific
+  purpose is to guarantee the search-highlight **sentinels `U+0002`/`U+0003` (§8)
+  truly never occur in stored note text** — so an FTS5 `snippet()` can use them as
+  unambiguous `<mark>` delimiters without a user-supplied control char ever
+  producing a stray/unpaired sentinel and a broken `<mark>` in a list row. Other
+  C0 controls (form feed, vertical tab, NUL, etc.) carry no Markdown meaning and
+  are rejected alongside them; the three whitespace controls above are the only
+  ones meaningful in Markdown source and stay allowed. Like every other check here
+  this only **accepts or rejects** — it never strips or rewrites the stored bytes.
 
 This check is enforced in the **service layer**, not by ogen: it is structural,
 not a string `pattern`/`maxLength`, so `openapi.yaml` cannot express it (length
@@ -337,11 +352,15 @@ passes.
    (not escaped) and then sanitized by DOMPurify (3); independently, the server
    pre-validates embedded HTML on write with bluemonday and rejects anything
    outside the safe allow-list (§4.1).
-2. markdown-it's link validator (`validateLink`) is the coarse first pass. It
-   accepts `http`/`https`/`mailto` for both links and images, plus `data:` **only
-   for the canonical four raster image subtypes** (`data:image/(gif|png|jpeg|webp)`,
-   excluding `svg+xml`), and blocks `javascript:`/`vbscript:`/
-   `file:`, `data:text/html`, and anything else. DOMPurify is the authoritative
+2. markdown-it's link validator (`validateLink`) is the coarse first pass. It is a
+   **denylist, not an allow-list**: it *blocks* `javascript:`/`vbscript:`/`file:`
+   and `data:` (except the canonical four raster image subtypes
+   `data:image/(gif|png|jpeg|webp)`, excluding `svg+xml`), and **passes every other
+   scheme it does not recognize as dangerous** — including `http`/`https`/`mailto`
+   but also schemes outside the project allow-list such as `tel:`. It is therefore
+   only a first cut at the *dangerous* schemes, not the authority on the
+   three-scheme allow-list; the precise allow-list is enforced server-side (§4.1)
+   and, on render, by DOMPurify. DOMPurify is the authoritative
    second gate: it allows `http`/`https`/`mailto` everywhere but admits those
    `data:` images **only on `<img src>`** (and only those four subtypes), never on
    `<a href>` — so a `data:text/html` anchor is
@@ -457,6 +476,12 @@ HTTP client) can save a note as a `.md` file directly.
   note with empty
   `content` downloads as a **`200` with an empty body** (empty Markdown is valid,
   per the create constraints) — not `204` and not an error.
+- **Range requests are not supported.** The ogen-generated (or fallback) handler
+  emits the whole body and does not honor a `Range` header; this is acceptable for
+  a personal tool (notes are small). The empty-content download (`200`, zero-length
+  body, `Content-Disposition` set) should be **smoke-tested in a real browser**
+  during the milestone-1 spike, since some browsers handle a zero-length
+  attachment download inconsistently — verify it actually saves an empty `.md`.
 - **GET is side-effect free** (§7) — download only reads.
 
 ### Schemas (informal)
@@ -540,19 +565,23 @@ is one field for both cases:
   **"Characters" means Unicode runes** (counted as `utf8.RuneCountInString`, the
   same unit as the `maxLength: 200` title rule in §3), never bytes — a cut must
   always land on a rune boundary so the excerpt is valid UTF-8 and never splits a
-  multi-byte rune. **A "word boundary" is the last Unicode-whitespace position at
-  or before the 200-rune budget**; the prefix is cut there and the trailing `…`
-  (which itself counts within the 200) is appended. When the first 200 runes
-  contain no whitespace boundary (e.g. CJK text, a long URL, or an unbroken code
-  blob), fall back to a **hard cut at 200 runes** (still on a rune boundary) so
-  the excerpt is always bounded. A note with empty `content` yields an empty
+  multi-byte rune. Because the trailing `…` itself counts within the 200-rune
+  budget, the prefix is cut so that **prefix + `…` ≤ 200 runes** — i.e. the prefix
+  is at most **199** runes. **A "word boundary" is the last Unicode-whitespace
+  position at or before rune 199**; the prefix is cut there and the trailing `…` is
+  appended (total ≤ 200). When the first 199 runes contain no whitespace boundary
+  (e.g. CJK text, a long URL, or an unbroken code blob), fall back to a **hard cut
+  at 199 runes** (still on a rune boundary) before appending `…`, so the excerpt is
+  always bounded at 200 runes. A note with empty `content` yields an empty
   `excerpt`.
 - **Searching (`q` present):** an FTS5 `snippet()` whose matched terms are
   wrapped in **non-HTML sentinel delimiters** (`U+0002` start, `U+0003` end) that
-  cannot occur in normal note text. The client HTML-escapes the entire string,
-  then replaces the sentinel pairs with `<mark>…</mark>`. Because escaping
-  happens first, the wrapped content is inert; the sentinels are the only thing
-  ever turned into markup.
+  cannot occur in stored note text — **write-time validation rejects content
+  containing these (and other C0 controls except tab/newline/CR), §4.1**, so the
+  sentinels are guaranteed unique and always well-paired. The client HTML-escapes
+  the entire string, then replaces the sentinel pairs with `<mark>…</mark>`.
+  Because escaping happens first, the wrapped content is inert; the sentinels are
+  the only thing ever turned into markup.
 
 ### Constraints (declared in `openapi.yaml`, per template security guidance)
 
@@ -571,7 +600,12 @@ is one field for both cases:
   an **out-of-range value is rejected by ogen request validation as `400`**
   (consistent with the malformed-slug `400` above) — the handler never clamps.
   The frontend must therefore keep its computed `limit`/`offset` within range
-  (clamp before sending) rather than relying on server-side clamping.
+  (clamp before sending) rather than relying on server-side clamping. An in-range
+  `offset` **at or beyond `total`** is **not** an error: it returns `200` with an
+  empty `notes` array and the true `total` (the natural SQLite `LIMIT/OFFSET`
+  result for a past-the-end page), so a client that over-pages (e.g. because
+  `total` shrank under a concurrent delete) simply gets an empty page, never a
+  `400`/`404`.
 
 ### Status codes
 
@@ -620,9 +654,17 @@ works without server changes. Replace the hash router with a path router.
   - **`q` length cap (client-side).** `q` carries `maxLength: 200` in
     `openapi.yaml`, enforced by ogen request validation (a `400` for an
     over-length value, §5). The search box must therefore cap the query at 200
-    runes before sending (e.g. a `maxlength`/slice on the debounced value) rather
-    than relying on the server, so a long paste never surfaces a confusing
-    validation `400` through the `api` client.
+    runes before sending rather than relying on the server, so a long paste never
+    surfaces a confusing validation `400` through the `api` client. **Count runes,
+    not UTF-16 code units:** ogen's `maxLength` counts Unicode code points (matching
+    Go's `utf8.RuneCountInString`), whereas the HTML `maxlength` attribute and a
+    naive `String.length`/`.slice` count UTF-16 units, so astral characters (emoji)
+    are mis-measured. Cap with a code-point operation (e.g. `[...q].slice(0, 200)`)
+    rather than the `maxlength` attribute. (The same rune-counting rule applies to
+    every client-side "character" count/truncation in this spec — the title
+    auto-derivation truncation in §3 and the upload size pre-check in §6 — so the
+    client and server agree on the boundary. Capping in UTF-16 units fails *safe*
+    here, since runes ≤ UTF-16 units, but yields a stricter-than-intended limit.)
   - **Paging — "Load more" button.** The list fetches the first page with the
     default `limit` (50) and `offset` 0, then renders a **"Load more" button**
     whenever more results remain. Clicking it requests the next page (same
@@ -632,6 +674,16 @@ works without server changes. Replace the hash router with a path router.
     also shown informationally (e.g. a result count). This applies **identically
     to browsing and searching** — the same accumulate-and-append flow runs whether
     or not `q` is present.
+    - **`total` is best-effort, not transactionally consistent with the page.**
+      The page query and the `COUNT(*)` are separate statements (§9), so a
+      concurrent create/delete (multiple tabs, debounced autosave) can leave
+      `total` momentarily out of step with the rows returned. This is acceptable
+      for a single-user tool (same last-write-wins stance as the racy slug check,
+      §3.1) and self-corrects on the next fetch. The client must therefore tolerate
+      both directions: treat `loaded >= total` as "all loaded" (hide the button),
+      and treat a "Load more" that returns an empty page (offset past a shrunk
+      `total`, §5) as the end of the list (hide the button, keep the rows already
+      shown). It never errors on either.
     - **Reset on query change.** Changing the search box (or clearing it) starts a
       fresh result set: the accumulated rows are discarded and `offset` resets to
       0 before the first request, so pages from a previous query are never mixed
@@ -695,7 +747,10 @@ works without server changes. Replace the hash router with a path router.
     raw-source path off the JSON `api` client. If routed through `api` instead,
     fetch the `text/markdown` body and save it via a `Blob` + object URL — but
     note `api` (§4, "Frontend networking") is built around JSON parsing, so the
-    direct-link form is simpler and avoids buffering large notes in memory.
+    direct-link form is simpler and avoids buffering large notes **in the client's
+    JS heap** (the server-side ogen handler buffers the body as a Go string either
+    way — the "avoid buffering" benefit is client-side only, not a streaming
+    download).
 - **Editor (`/new`, `/notes/{slug}/edit`):**
   - Title input. While untouched, it auto-fills from the first **ATX** heading in
     the content as the user types (rules in §3 — Setext ignored, code fences
@@ -723,6 +778,24 @@ works without server changes. Replace the hash router with a path router.
   - Save (create/update) and Cancel. Unsaved-changes guard covering **both**
     intercepted in-app (pushState) navigations and real browser unload/reload
     (`beforeunload`).
+    - **"Dirty" is a value comparison against the last-saved snapshot**, not a
+      keystroke counter. The editor holds a snapshot of the **last-saved** `(title,
+      content, slug)` and is dirty whenever the current `(title, content, slug)`
+      differs from it. Consequences:
+      - Typing and then reverting back to the saved value clears dirty — **no
+        spurious prompt** for a net-zero edit.
+      - **Auto-title-sync counts as dirty.** When the untouched title tracks the
+        first heading (§3), that programmatic title change still diverges from the
+        snapshot, so it marks the editor dirty (the user will want it saved).
+      - **`/new` baseline is empty** `(title="", content="", slug unset)`, so a
+        brand-new editor is *not* dirty until the user types something (or an
+        auto-derived title appears); an immediately-abandoned `/new` prompts
+        nothing.
+      - The snapshot is updated **only on a successful save** (and seeded from the
+        fetched note when opening `/notes/{slug}/edit`). A failed save (`409`/`400`,
+        §6) does **not** update it, so the guard stays armed and the user can retry
+        or navigate with a warning. The guard is also cleared explicitly before the
+        post-save navigation below (the save's own `pushState` must not be blocked).
     - **Post-save navigation.** On a successful save the editor navigates to the
       saved note's **read view** `/notes/{slug}` in **both** cases — create
       (`/new`) and edit (`/notes/{slug}/edit`). The slug used is the one returned
@@ -777,9 +850,19 @@ from origin to keep the CSP at `script-src 'self'`.
     - From `@codemirror/language`: `syntaxHighlighting`, `defaultHighlightStyle`
       (so the Markdown highlighting is actually visible).
     - From `@codemirror/lang-markdown`: `markdown` (the Markdown language mode).
-    - **Not included in v1:** `@codemirror/search` (no in-editor find/replace)
-      and `lineNumbers`/active-line gutters. Adding either later means extending
-      both the bundle re-exports and the `.d.ts` shim together.
+    - **Not included in v1:** `@codemirror/search` (no in-editor find/replace),
+      `lineNumbers`/active-line gutters, a `placeholder` (no empty-editor hint
+      text), and bracket matching / auto-close brackets (`matchBrackets`,
+      `closeBrackets`). Adding any later means extending both the bundle re-exports
+      and the `.d.ts` shim together.
+    - **Editor sizing/styling is done in CSS, not via a CodeMirror theme.** The
+      minimal surface above intentionally omits `EditorView.theme`; the editor's
+      height, borders, and font are set in `web/static/app.css` by targeting
+      CodeMirror's stable DOM classes (`.cm-editor`, `.cm-scroller`, `.cm-content`).
+      CodeMirror still injects its own structural styles as runtime `<style>`
+      elements (covered by `style-src 'self' 'unsafe-inline'`, §7); the app CSS only
+      sizes and skins the outer container. This keeps the bundle surface fixed and
+      needs no extra export.
   - `vendor/markdown-it.js` — the Markdown renderer.
   - `vendor/dompurify.js` — the sanitizer.
 - **Build pipeline change.** `build.sh` gains an `esbuild` bundling step before
@@ -855,15 +938,21 @@ check, remain untrusted, so render-time gating stands regardless.
    need: `http`/`https`/`mailto`, plus `data:` restricted to the **canonical four
    raster image subtypes** `data:image/(gif|png|jpeg|webp)`. It blocks
    `javascript:`/`vbscript:`/`file:`, `data:text/html`, `data:image/svg+xml`,
-   and everything else (O-5). This is exactly markdown-it's safe **built-in
-   default** `validateLink` behavior (which already permits
-   `data:image/(gif|png|jpeg|webp)` and rejects other `data:` — including
-   `svg+xml` — and the script-y schemes), so v1 keeps that default rather than
-   replacing it. **This four-subtype list is the single canonical `data:` image
-   allow-list** shared by all three gates: the server's Markdown-native scheme
-   check and bluemonday `img@src` rule (§4.1) and DOMPurify (defense 3) all use
-   the same set, deliberately excluding `data:image/svg+xml` (an SVG-script XSS
-   vector). Because only those subtypes survive here, a `data:` value on an anchor
+   and everything else (O-5). This is markdown-it's safe **built-in default**
+   `validateLink` behavior, so v1 keeps that default rather than replacing it.
+   **Be precise about what the default does, though:** it is a *denylist* — it
+   permits `data:image/(gif|png|jpeg|webp)`, rejects every other `data:` (including
+   `svg+xml`) and the script-y schemes (`javascript:`/`vbscript:`/`file:`), and
+   **passes any other scheme it doesn't recognize as dangerous** (e.g. `tel:`). So
+   `validateLink` enforces the *dangerous-scheme* block but **not** the
+   three-scheme (`http`/`https`/`mailto`) link allow-list — that allow-list is
+   enforced authoritatively by the server's Markdown-native scheme check (§4.1) and,
+   at render time, by DOMPurify's `ALLOWED_URI_REGEXP` (defense 3). What the three
+   client/server gates genuinely **share** is the `data:` image rule: **the
+   four-subtype list `data:image/(gif|png|jpeg|webp)` is the single canonical
+   `data:` image allow-list** used by the server's Markdown-native scheme check and
+   bluemonday `img@src` rule (§4.1) and DOMPurify (defense 3) alike, deliberately
+   excluding `data:image/svg+xml` (an SVG-script XSS vector). Because only those subtypes survive here, a `data:` value on an anchor
    is at worst a harmless inline raster image; the dangerous `data:text/html` is
    already gone. The per-tag distinction that matters (`data:` belongs on images, not
    anchors) is enforced authoritatively in DOMPurify (defense 3).
@@ -1115,6 +1204,13 @@ Mirrors the template; rename/replace `item*` with `note*`.
     current slug would appear to already exist and a self-rename (or any PATCH
     that re-sends the unchanged slug) would be misreported as a `409` instead of
     the documented no-op.
+    - **A conflict writes nothing.** The advisory uniqueness check runs **before**
+      the `UPDATE`, and a PATCH applies as a **single `UPDATE` statement** writing
+      all changed columns at once. So whether the collision is caught by the
+      advisory check or by the DB `UNIQUE` constraint (the racy path, mapped to
+      `ErrConflict` → `409`, §3.1), **no column is written** — the single statement
+      either commits in full or rolls back in full, so a 409 never leaves a partial
+      update (a bumped `updated_at` or a written `title` with the slug rejected).
   - **No-op detection is greenfield logic (not inherited from the template).** The
     template's `Update` blindly sets `updated_at = now` and every provided column
     with no prior read. The §5 "actually changed" semantics require the **service**
@@ -1233,8 +1329,10 @@ Follow template conventions (`testify`, in-memory SQLite
   `http`/`https`/`mailto` and root-/scheme-/bare-relative destinations accepted;
   `data:image/(gif|png|jpeg|webp)` accepted on images but rejected on links,
   `data:image/svg+xml` rejected on images too (§7); over-deep nesting
-  rejected; valid GFM and empty content accepted; both create and update paths
-  covered. (No rendering to test server-side.)
+  rejected; **content containing a C0 control char — a sentinel `U+0002`/`U+0003`,
+  or e.g. NUL — rejected, while tab/newline/CR are accepted** (§4.1, §8); valid GFM
+  and empty content accepted; both create and update paths covered. (No rendering
+  to test server-side.)
 - **Handler:** full request/response cycle for each endpoint; error→status
   mapping (400/404/409).
 - **Frontend (the authoritative XSS gate):** unit-test the shared
@@ -1252,9 +1350,13 @@ Follow template conventions (`testify`, in-memory SQLite
   referenced in §4.1); it is acceptable for them to diverge only where DOMPurify
   (authoritative) is the stricter of the two. Include a **`linkify` case** (a bare URL
   and a bare email in plain text, e.g. `http://x.test` / `a@b.test`) asserting
-  markdown-it auto-links them to `http(s):`/`mailto:` anchors that **survive**
-  sanitization unchanged — confirming `linkify` output passes the same
-  scheme gates as explicit links (§4, §7 defense 2). The `data:` cases assert the **per-tag
+  markdown-it auto-links them to `http(s):`/`mailto:` anchors that **survive
+  sanitization** — i.e. the sanitized output still contains the anchor with an
+  allow-listed scheme (assert on the retained `href` scheme, not byte-for-byte
+  equality, since DOMPurify may canonicalize the markup). Use linkify-recognized
+  examples (`.test` is a reserved TLD that linkify-it matches). This confirms
+  `linkify` output passes the same scheme gates as explicit links (§4, §7
+  defense 2). The `data:` cases assert the **per-tag
   scoping decided in §7**: `data:image/png;base64,…` **survives on `<img src>`**,
   while `data:text/html,…` (and any `data:` on an anchor) is **stripped from
   `<a href>`**, and `data:image/svg+xml,…` is **stripped even on `<img src>`**
@@ -1334,3 +1436,20 @@ Follow template conventions (`testify`, in-memory SQLite
 7. **Hardening pass** — DOMPurify/markdown-it config review, CSP review,
    client-side XSS regression tests, `./build.sh` green (bundle + build +
    `go test` + `node --test` + lint).
+
+---
+
+## 12. Open questions (resolved)
+
+These are the design questions raised while drafting MyNotes. All are **resolved**
+in v1; the markers (`O-1`…`O-6`) are referenced inline throughout the spec. This
+appendix lists each so the resolutions are auditable in one place.
+
+| #     | Question                                                              | Resolution (v1)                                                                                                   |
+| ----- | -------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `O-1` | Where is Markdown rendered — server-side or in the browser?          | **Client-side.** The server stores/serves only Markdown source; no `content_html`, no render endpoint (§2, §4).    |
+| `O-2` | Which editor and rendering libraries?                                | **CodeMirror 6** for editing; **markdown-it → DOMPurify** for render+sanitize (§4, §6).                            |
+| `O-3` | Cache rendered HTML server-side?                                     | **No caching.** Reads stay side-effect-free; there is no server HTML to cache (§7).                                |
+| `O-4` | Are slugs mutable, and are old URLs redirected?                      | **Mutable, no redirects.** A slug may change via PATCH; old links break; the UI warns before renaming (§3.1, §6).  |
+| `O-5` | Which Markdown feature set / extensions, and the CSP consequence?    | CommonMark + GFM tables/strikethrough/autolinks, `linkify` on, images on (needs the `img-src` widening); **no** task lists (§4, §7). |
+| `O-6` | Is `title` derived, and where?                                       | **Stored field, auto-derived client-side** from the first ATX heading as an editor convenience; the server validates/stores whatever the client sends (§3). |
