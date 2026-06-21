@@ -28,7 +28,11 @@ design decisions. No code is implemented yet.
 - Real-time collaboration / concurrent multi-user editing.
 - Version history / revisions.
 - Folders, tags, or hierarchical organization (may be added later).
-- File/image attachments and uploads.
+- File/image attachments and uploads. (Note: uploading a **Markdown file to
+  create a note** — §6 — is *not* an attachment; the file's text becomes the
+  note's `content` and the file itself is not stored or referenced. It is a
+  client-side convenience over the existing `POST /notes`, so it does not breach
+  this non-goal.)
 - Public publishing workflow beyond the stable URL existing.
 
 These are listed so the data model and API leave room for them but do not
@@ -418,7 +422,31 @@ works without server changes. Replace the hash router with a path router.
 
 - **List/search (`/`):** search input (debounced, drives `q`), results show
   title, updated time, plain-text excerpt, and search highlights when searching.
-  "New note" button. Empty and loading states.
+  "New note" and "Upload Markdown" buttons. Empty and loading states.
+  - **Upload Markdown (create from file).** A file picker (accepting `.md`/
+    `.markdown`/`text/markdown`/`text/plain`) reads a single chosen file
+    **client-side** as UTF-8 text and creates a note from it via the existing
+    `POST /notes` — **no new API or server support is required**. The file
+    bytes become the note `content` verbatim (Markdown is stored as-is, §4); the
+    file is never persisted or attached (see §1 non-goals).
+    - **Title** is derived client-side, reusing the **first-ATX-heading** rule
+      already specified for the editor (§3 / O-6: Setext ignored, fenced-code
+      lines skipped, truncated to 200 chars with a trailing `…` if longer). If
+      the content has no usable heading, fall back to the **filename with its
+      extension stripped** (e.g. `meeting-notes.md → "meeting-notes"`), itself
+      trimmed and truncated to the `maxLength: 200` title limit. If that too is
+      empty (e.g. a file named only `.md`), fall back to a non-empty default such
+      as `"Untitled"`, so the mandatory `title` is always present.
+    - **Slug** is **not** sent; the server auto-generates it from the title and
+      resolves any collision by suffixing (§3.1), so repeatedly uploading files
+      that derive the same title yields `my-title`, `my-title-2`, … rather than a
+      `409`.
+    - **Constraints/errors:** the file's text is subject to the same
+      `content` `maxLength: 1000000` and UTF-8 validity checks as any create; a
+      file exceeding the limit or failing to decode as UTF-8 is rejected
+      client-side (or surfaced from the server `400`) via the existing `Toast`.
+    - **On success**, navigate to the new note's read view (`/notes/{slug}`)
+      using the slug returned by `POST /notes`.
 - **Read (`/notes/{slug}`):** fetches `content`, renders it with the
   markdown-it → DOMPurify pipeline (§4), and injects the sanitized HTML into a
   constrained, styled container. "Edit", "Delete", and "Download Markdown"
