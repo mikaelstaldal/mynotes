@@ -84,6 +84,13 @@ Notes:
   - In the editor, while the title has not been manually edited, it tracks the
     first heading found in the content as the user types. Once the user edits the
     title by hand, auto-sync stops (the manual value is never clobbered).
+  - **What counts as "the first heading":** the first **ATX** heading only —
+    a line matching `^\s{0,3}#{1,6}\s+(.*?)\s*#*\s*$`, with the captured text as
+    the title. **Setext** headings (a text line underlined with `===`/`---`) are
+    **not** recognized in v1. Lines inside a fenced code block (```` ``` ````/`~~~`)
+    are **skipped**, so a `#` comment in a code sample is never mistaken for the
+    title. Any leading `#` markers and trailing `#` run are stripped from the
+    captured text.
   - A heading line can exceed the `maxLength: 200` title limit. When deriving the
     title from a heading, the client truncates it to 200 characters (with a
     trailing `…`, counted within the 200) so a save never fails with a confusing
@@ -104,8 +111,11 @@ Notes:
   NFKD then drop combining marks** (`é→e`, `ñ→n`), drop any remaining non-ASCII
   (non-Latin scripts are not transliterated — they simply fall away), replace
   runs of non-alphanumerics with `-`, trim leading/trailing `-`, then truncate to
-  the max length (leaving room for any uniqueness suffix per §3.1). If the title
-  yields an empty slug, fall back to `note`.
+  the max length (`maxLength: 100`). Room for a uniqueness suffix is **not**
+  reserved here — it is reserved only at collision time, when a suffix is actually
+  appended (per §3.1, Uniqueness). If the title yields an empty slug (a non-empty
+  title whose characters all fold away — e.g. all-punctuation or a non-Latin
+  script), fall back to `note`.
 - **Uniqueness:** slugs are unique. (The DB enforces uniqueness; the service
   resolves collisions.) Collision handling depends on origin:
   - **Auto-generated** slug (client sent none): on collision the service appends
@@ -125,7 +135,8 @@ Notes:
     silently suffixed — the service returns `ErrConflict` → `409`.
 - **Editing:** a slug *may* be changed via `PATCH`. Setting `slug` to a value
   already used by **another** note returns `409`; setting it to the note's own
-  current slug is a no-op (not a conflict). Changing it changes the note's URL —
+  current slug is a no-op (not a conflict, and — being a no-op — does not bump
+  `updated_at`; see §5). Changing it changes the note's URL —
   old links break. This is acceptable for a personal tool; the UI should warn
   before changing an existing slug. (No automatic redirects in v1.)
 - Reserved slugs: none required, because note URLs live under a `/notes/`
@@ -148,8 +159,10 @@ browser.
   in v1** (they need a markdown-it plugin and would require allowing `<input>`
   through the sanitizer; `- [ ]` simply renders as a literal list item). **Images
   are enabled**: Markdown image
-  syntax renders `<img>`, with `src` restricted to `https` and `data:` schemes
-  (no `http`, to avoid mixed content; no uploads — only referencing remote/inline
+  syntax renders `<img>`. The sanitizer's scheme allow-list permits `https` and
+  `data:` for image `src` (an `http` `src` survives sanitization but is blocked
+  at load time by CSP `img-src`, which omits `http`, avoiding mixed content); no
+  uploads — only referencing remote/inline
   images, consistent with the v1 non-goal on attachments). This requires a small
   CSP `img-src` change (§7).
 - **Storage:** the raw Markdown source is stored verbatim in `content`. It is
@@ -173,11 +186,13 @@ browser.
 1. markdown-it is configured with `html: false`, so raw inline/block HTML in the
    source is escaped to literal text rather than passed through.
 2. markdown-it's link validator (`validateLink`) is a single coarse hook that
-   fires for both links and images, so it accepts the **union** of the allowed
-   schemes (`http`, `https`, `mailto` for links plus `data:` for images) and
-   blocks `javascript:`/`vbscript:`. It cannot by itself forbid `data:` in links
-   while allowing it in images; that per-tag distinction is enforced
-   authoritatively by DOMPurify's URI policy (see §7).
+   fires for both links and images. There is **no per-tag scheme distinction**:
+   it accepts one allow-list — `http`, `https`, `mailto`, `data:` — for both
+   links and images, and blocks `javascript:`/`vbscript:` (and anything else).
+   DOMPurify is configured with the **same single global allow-list** (no custom
+   per-tag hook). The `http`-on-images concern (mixed content) is handled not by
+   the sanitizer but by CSP `img-src` (which omits `http`), so an `http` image
+   stays in the DOM but never loads (see §7).
 3. DOMPurify sanitizes the rendered HTML string before any `innerHTML`
    assignment — the final, authoritative gate.
 4. The CSP stays strict (`script-src 'self'`); all libraries are vendored and
@@ -203,6 +218,12 @@ Error body remains `{"error": "message"}`. Timestamps are RFC 3339 UTC.
 
 There is no render endpoint — Markdown is rendered in the browser (§4).
 
+The `{slug}` **path parameter** carries the slug `pattern`/`maxLength` constraint
+(§3.1) on **every** `/notes/{slug}*` route, including `/download`. A path that
+violates the pattern is rejected by ogen's request validation (a `400`) before
+the handler runs; only a well-formed but unknown slug reaches the handler and
+yields `404`.
+
 ### Markdown download
 
 `GET /notes/{slug}/download` returns the note's `content` as the **raw response
@@ -227,6 +248,17 @@ HTTP client) can save a note as a `.md` file directly.
   response content (`string` schema → raw body, see above). If a future ogen
   version cannot express a raw body together with a response header, fall back to
   a thin non-ogen route — but the contract above is the intended implementation.
+  - **Validate with a spike before relying on it.** Emitting a raw `string`/bytes
+    body *together with* a settable response header on the same `200` is not
+    exercised anywhere in the current template (the generated code only emits
+    `application/json`), so milestone 1 must include a quick `ogen` run that
+    confirms the generated `api.Handler` exposes both the raw body and the
+    `Content-Disposition` setter. Treat milestone 1 as incomplete until this is
+    verified, not assumed.
+  - **Fallback routing:** if the fallback thin route is needed, register it on the
+    mux **before** the `/api/v1/` ogen handler so it isn't shadowed by the
+    catch-all ogen mount; it reuses the service's get-by-slug and sets the headers
+    by hand.
 - **Body is the verbatim stored Markdown** — the same source returned in
   `Note.content`, byte-for-byte, with no HTML conversion and no sanitization
   (consistent with §4: the server never produces HTML). A note with empty
@@ -262,12 +294,18 @@ UpdateNoteRequest (all optional; nil = leave unchanged):
 
   - A present `content: ""` clears the body (empty content is valid, per the
     create constraints); only an absent field leaves it unchanged.
-  - Any successful PATCH sets `updated_at = now` (UTC), including a slug-only
-    change — so renaming a note reorders it in the browse list (`updated_at
-    DESC`). `created_at` is **immutable** after create — no request field touches
-    it and PATCH never rewrites it.
+  - A PATCH that **actually changes** at least one field sets `updated_at = now`
+    (UTC), including a slug-only rename — so renaming a note reorders it in the
+    browse list (`updated_at DESC`). `created_at` is **immutable** after create —
+    no request field touches it and PATCH never rewrites it.
+  - **No-op fields don't bump `updated_at`.** A present field whose value equals
+    the note's current value is not a change: e.g. a PATCH that sets `slug` to the
+    note's own current slug (a no-op, not a conflict — §3.1) leaves `updated_at`
+    untouched and does not reorder the note. Only fields whose value differs from
+    the stored value count toward "actually changed."
   - A PATCH with no recognized fields (all absent) is rejected as `400`
-    (`service.ErrValidation`), not treated as a no-op.
+    (`service.ErrValidation`), not treated as a no-op. (Distinct from the case
+    above: there a field *is* present, it just matches the current value.)
 
 Error: { error: string }
 ```
@@ -344,9 +382,10 @@ works without server changes. Replace the hash router with a path router.
     note `api` (§4, "Frontend networking") is built around JSON parsing, so the
     direct-link form is simpler and avoids buffering large notes in memory.
 - **Editor (`/new`, `/notes/{slug}/edit`):**
-  - Title input. While untouched, it auto-fills from the first heading in the
-    content as the user types (truncated to 200 chars with a trailing `…` if the
-    heading is longer); manual edits stop the auto-sync (O-6).
+  - Title input. While untouched, it auto-fills from the first **ATX** heading in
+    the content as the user types (rules in §3 — Setext ignored, code fences
+    skipped; truncated to 200 chars with a trailing `…` if the heading is
+    longer); manual edits stop the auto-sync (O-6).
   - Slug field: auto-suggested from title for new notes; shown (and editable
     with a warning) when editing an existing note (O-4 — slugs are mutable; no
     redirects, so the UI warns that the URL will change).
@@ -426,14 +465,13 @@ the design still treats stored content as hostile and gates it on render.
 1. **markdown-it `html: false`** — raw inline/block HTML in the source is
    escaped to text, not passed through. Removes the most common injection path
    before sanitization even runs.
-2. **markdown-it link validation** — restrict accepted link URL schemes to
-   `http`, `https`, `mailto`, and image `src` schemes to `https`, `data:`
-   (O-5). Blocks `javascript:`/`vbscript:` URLs. Note that markdown-it's single
-   `validateLink` hook fires for both links and images and cannot by itself apply
-   a different scheme list to each; the per-element distinction (links forbid
-   `data:`, images allow it) is enforced authoritatively by **DOMPurify's URI
-   policy** (configured with the same allow-lists, keyed per tag). `validateLink`
-   is treated as the coarse first pass, DOMPurify as the precise gate.
+2. **markdown-it link validation** — restrict accepted URL schemes to a single
+   allow-list, `http`/`https`/`mailto`/`data:`, applied uniformly to both links
+   and images (O-5). Blocks `javascript:`/`vbscript:` URLs (and anything else).
+   markdown-it's single `validateLink` hook fires for both links and images and
+   cannot apply a different scheme list to each; **we deliberately do not try
+   to** — there is no per-tag scheme distinction. `validateLink` is the coarse
+   first pass, DOMPurify the precise gate, both using this same allow-list.
 3. **DOMPurify (authoritative gate)** — every HTML string is sanitized with
    DOMPurify immediately before any `innerHTML` assignment, in both the read view
    and the editor preview. A single shared helper (e.g.
@@ -451,8 +489,11 @@ the design still treats stored content as hostile and gates it on render.
      `<code>` is **not** allowed (stripped): there is **no read-view syntax
      highlighting in v1**. (If highlighting is added later, allow `class` on
      `code`/`pre` at that point — do not add a highlighter expecting the class to
-     survive.) URI policy mirrors defense 2 above (links: `http`/`https`/
-     `mailto`; images: `https`/`data:`).
+     survive.) URI policy mirrors defense 2 above: a **single global**
+     `ALLOWED_URI_REGEXP` permitting `http`/`https`/`mailto`/`data:` for every
+     element (DOMPurify's URI allow-list is global, not per-tag — so no custom
+     `uponSanitizeAttribute` hook is needed). `http` image `src` is blocked at
+     load time by CSP `img-src`, not by the sanitizer.
 4. **Strict CSP** — `script-src 'self'` (no inline/eval scripts); all vendor
    bundles served from origin; the import-map hash stays covered by
    `commonweb.ImportMapCSPHash`. Even if a sanitization bug slipped through, the
@@ -566,9 +607,15 @@ harmlessly); this is simpler and safer than `UPDATE OF (title, content)`.
   deterministically across `limit`/`offset`.
 - **`total`:** `NoteList.total` is the count of rows matching the current request
   (all notes when browsing; matched notes when `q` is present), so the client can
-  paginate; it is **not** affected by `limit`/`offset`.
+  paginate; it is **not** affected by `limit`/`offset`. This differs from the
+  template, whose `ItemList.total` is the page size (`len(returned)`); the new
+  `openapi.yaml` `total` description and the handler must **not** copy the
+  template's "number of items in this page" wording/logic — it is a second
+  `COUNT(*)` over the same predicate (§9).
 - **Snippets/highlights:** when `q` is present, build the `excerpt` with FTS5
-  `snippet()` over the **`content`** column with a budget of ~30 tokens and `…`
+  `snippet()` over the **`content`** column — column index **1** in
+  `fts5(title, content)`, i.e. `snippet(notes_fts, 1, <start>, <end>, '…', ~30)`
+  — with a budget of ~30 tokens and `…`
   as the leading/trailing ellipsis text, passing the **sentinel** start/end
   strings `U+0002` / `U+0003` (not HTML tags) so matched terms are marked without
   injecting markup. **Title-only matches:** when the query matches only in the
@@ -655,13 +702,29 @@ Follow template conventions (`testify`, in-memory SQLite
   bare Node; it is initialized against a jsdom `window`). This keeps the runner
   itself dependency-free, in line with the project's minimal-toolchain/vendoring
   approach; `jsdom` is a dev-only dependency and is not shipped or embedded.
+  - **Wired into the build (not optional).** `jsdom` is added to `package.json`
+    as a `devDependencies` entry (the current `package.json` has none), and
+    `build.sh` gains a `node --test` step (after `tsc`, alongside `go test`) so
+    the XSS-gate tests actually run on every build. Without this step the security
+    tests never execute — they must be part of `./build.sh` going green, not a
+    manual afterthought.
 
 ---
 
 ## 11. Milestones (suggested build order)
 
+0. **Governing-instructions amendment (do first).** Amend `CLAUDE.md` *before*
+   writing note code: carve the notes-`content` path out of the "Sanitize on every
+   write path … using `sanitize.HTML`" rule (content is stored verbatim Markdown,
+   gated client-side by DOMPurify — §7), and add `esbuild` to the Build & Run
+   tool list (§6). `CLAUDE.md`'s instructions override default behavior, so leaving
+   the old rule in place would directly contradict the central security design and
+   block milestones 1–4. `internal/sanitize` is removed from the note path
+   (default: delete the package; §7, §9).
 1. **API contract** — write `openapi.yaml` for `notes`; regenerate
-   Go stubs and TS types.
+   Go stubs and TS types. **Verify the download wiring spike** (raw `text/markdown`
+   body + `Content-Disposition` header on the same `200`; §5) here — don't assume
+   it generates.
 2. **Persistence** — new schema + FTS triggers in `db.go`; `NoteRepository` with
    tests.
 3. **Service** — validation, slug generation/collision; sentinel errors
@@ -674,5 +737,5 @@ Follow template conventions (`testify`, in-memory SQLite
    client; CodeMirror editor; shared `util/markdown.ts` render+sanitize helper +
    local live preview.
 7. **Hardening pass** — DOMPurify/markdown-it config review, CSP review,
-   client-side XSS regression tests, `./build.sh` green (bundle + build + test +
-   lint).
+   client-side XSS regression tests, `./build.sh` green (bundle + build +
+   `go test` + `node --test` + lint).
