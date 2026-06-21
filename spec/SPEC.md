@@ -298,7 +298,13 @@ HTTP client) can save a note as a `.md` file directly.
   `/api/v1/notes/{slug}/download`.
 - **Body is the verbatim stored Markdown** — the same source returned in
   `Note.content`, byte-for-byte, with no HTML conversion and no sanitization
-  (consistent with §4: the server never produces HTML). A note with empty
+  (consistent with §4: the server never produces HTML). "Byte-for-byte" refers
+  to the **decoded entity body**: the download is served through the same
+  `handler.WithMiddleware` chain as every other route, so the gzip middleware
+  may compress it on the wire — that is transparent transfer-encoding and the
+  bytes the client decodes are identical to `Note.content`. (The chain's
+  `Cache-Control: no-store` also applies and is harmless for a saved file.) A
+  note with empty
   `content` downloads as a **`200` with an empty body** (empty Markdown is valid,
   per the create constraints) — not `204` and not an error.
 - **GET is side-effect free** (§7) — download only reads.
@@ -326,9 +332,21 @@ CreateNoteRequest:
   content  string (0..1000000, optional, default "")
   slug     string (optional; pattern + maxLength 100; auto-generated if absent)
 
-UpdateNoteRequest (all optional; nil = leave unchanged):
-  title, content, slug
+UpdateNoteRequest (all optional; absent = leave unchanged):
+  title    (same constraints as create: 1..200 when present)
+  content  (same constraints as create: 0..1000000 when present)
+  slug     (same constraints as create: pattern + maxLength 100 when present)
 
+  - **Field constraints mirror create.** `UpdateNoteRequest.slug` carries the
+    identical `pattern`/`maxLength: 100` as `CreateNoteRequest.slug`, and
+    `title`/`content` their identical bounds, so a present PATCH field is
+    validated by ogen exactly as on create (no second, weaker validation path).
+  - **Absent vs. `null`.** The optional fields are generated as ogen `Opt*`
+    wrappers (non-nullable). An **absent** field means "leave unchanged"; an
+    explicit JSON `null` is **not** a recognized value and is rejected by ogen
+    request validation as `400` before the handler runs. Only "field absent"
+    vs. "field present with a valid value" matters to the service — there is no
+    null-clears semantic (to clear `content`, send `content: ""`).
   - A present `content: ""` clears the body (empty content is valid, per the
     create constraints); only an absent field leaves it unchanged.
   - A PATCH that **actually changes** at least one field sets `updated_at = now`
@@ -508,10 +526,13 @@ from origin to keep the CSP at `script-src 'self'`.
   - `vendor/dompurify.js` — the sanitizer.
 - **Build pipeline change.** `build.sh` gains an `esbuild` bundling step before
   `tsc`, and **`esbuild` becomes a required tool on `$PATH`** (alongside `go`,
-  `ogen`, `tsc`, `openapi-typescript`, `golangci-lint`). The bundles are
+  `ogen`, `tsc`, `openapi-typescript`, `golangci-lint`). **`node` and `npm` also
+  become required tools on `$PATH`** — `build.sh` runs `npm ci` (to fetch the
+  `jsdom` dev dependency) and `node --test` for the client-side XSS-gate tests
+  (§10), both after the `esbuild` and `tsc` steps. The bundles are
   committed like the existing vendored Preact files so the binary stays
   self-contained via `//go:embed`. (Update `CLAUDE.md` Build & Run accordingly
-  during implementation.)
+  during implementation — see §11 milestone 0.)
 - **Import-map edit (required step).** The three bundles must be added as
   entries in the import map in `web/static/index.html` (alongside the existing
   `preact` entries), e.g. `"codemirror": "./vendor/codemirror.js"`,
@@ -714,7 +735,10 @@ harmlessly); this is simpler and safer than `UPDATE OF (title, content)`.
   filter), not as a query matching nothing. A `q` that has content but whose every
   token is punctuation (e.g. `"..."`) yields a **non-empty** `sanitizeFTSQuery`
   result whose quoted phrase the unicode61 tokenizer reduces to zero tokens; FTS5
-  matches **nothing** for it (it does not raise an error). This is the FTS branch
+  matches **nothing** for it (it does not raise an error — verified against the
+  pinned `modernc.org/sqlite` driver: a `MATCH` on a quoted punctuation-only or
+  empty phrase returns zero rows with a nil error, so no zero-token short-circuit
+  is needed in `sanitizeFTSQuery`). This is the FTS branch
   returning an empty page with `total = 0` — correct and intended, distinct from
   the browse fallback above. No special-casing or error handling is needed.
 - **Ranking:** order by FTS5 relevance (`ORDER BY rank`) when an **effective FTS
@@ -746,7 +770,10 @@ harmlessly); this is simpler and safer than `UPDATE OF (title, content)`.
   string**, whatever the cause — title-only matches are the common case, but a
   content match that lands outside the snippet window can also yield an empty
   snippet; both degrade to the plain prefix, which is acceptable (the row still
-  shows title + a readable excerpt, just without inline highlight markers). When `q` is absent, the `excerpt` is just a
+  shows title + a readable excerpt, just without inline highlight markers). A
+  title-only match on a note whose `content` is **empty** therefore yields an
+  **empty `excerpt`** — the same result as browsing an empty-content note (§5);
+  no placeholder text is substituted. When `q` is absent, the `excerpt` is just a
   ~200-character plain-text prefix of the source (no `snippet()`, no sentinels).
   The client escapes the whole string and only then converts sentinel pairs to
   `<mark>` (§5) — markers are never free-form HTML.
@@ -856,7 +883,11 @@ Follow template conventions (`testify`, in-memory SQLite
   `util/markdown.ts` render+sanitize helper against a table of malicious Markdown
   inputs — `<script>`, `<img onerror=…>`, `[x](javascript:…)`, raw HTML blocks,
   `data:` URLs — asserting the sanitized output contains no script, event
-  handler, or disallowed URL scheme. The `data:` cases assert the **per-tag
+  handler, or disallowed URL scheme. Include a **`linkify` case** (a bare URL
+  and a bare email in plain text, e.g. `http://x.test` / `a@b.test`) asserting
+  markdown-it auto-links them to `http(s):`/`mailto:` anchors that **survive**
+  sanitization unchanged — confirming `linkify` output passes the same
+  scheme gates as explicit links (§4, §7 defense 2). The `data:` cases assert the **per-tag
   scoping decided in §7**: `data:image/png;base64,…` **survives on `<img src>`**,
   while `data:text/html,…` (and any `data:` on an anchor) is **stripped from
   `<a href>`**. These assertions are also the acceptance criteria for the
@@ -898,8 +929,9 @@ Follow template conventions (`testify`, in-memory SQLite
 0. **Governing-instructions amendment (do first).** Amend `CLAUDE.md` *before*
    writing note code: carve the notes-`content` path out of the "Sanitize on every
    write path … using `sanitize.HTML`" rule (content is stored verbatim Markdown,
-   gated client-side by DOMPurify — §7), and add `esbuild` to the Build & Run
-   tool list (§6). `CLAUDE.md`'s instructions override default behavior, so leaving
+   gated client-side by DOMPurify — §7), and add `esbuild`, `node`, and `npm` to
+   the Build & Run tool list (§6, §10 — `node`/`npm` drive the `jsdom`-based
+   client-side XSS-gate tests run from `build.sh`). `CLAUDE.md`'s instructions override default behavior, so leaving
    the old rule in place would directly contradict the central security design and
    block milestones 1–4. `internal/sanitize` is removed from the note path
    (default: delete the package; §7, §9).
