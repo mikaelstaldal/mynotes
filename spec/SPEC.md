@@ -255,10 +255,21 @@ HTTP client) can save a note as a `.md` file directly.
     confirms the generated `api.Handler` exposes both the raw body and the
     `Content-Disposition` setter. Treat milestone 1 as incomplete until this is
     verified, not assumed.
-  - **Fallback routing:** if the fallback thin route is needed, register it on the
-    mux **before** the `/api/v1/` ogen handler so it isn't shadowed by the
-    catch-all ogen mount; it reuses the service's get-by-slug and sets the headers
-    by hand.
+  - **Fallback routing:** if the fallback thin route is needed, register it at its
+    fully-qualified path `/api/v1/notes/{slug}/download` (under the same `/api/v1`
+    base as every other note route — see "URL prefix" below). Go 1.22+'s enhanced
+    `net/http.ServeMux` (this project is on Go 1.26) matches the **most specific**
+    pattern regardless of registration order, so the precise download pattern wins
+    over the `/api/v1/` ogen mount without any ordering dance. The thin route
+    reuses the service's get-by-slug and sets the headers by hand.
+- **URL prefix (every `/notes/*` route, including `/download`).** The paths in the
+  endpoint table and §6 are written **relative to the `/api/v1` base**; the actual
+  served URL of the download is `/api/v1/notes/{slug}/download`. This matters for
+  the frontend: a link to a bare `/notes/{slug}/download` would **not** be served
+  by ogen (mounted only under `/api/v1/`) — it would fall through to
+  `staticHandler` and silently return `index.html` (the SPA shell) instead of the
+  Markdown. The "Download Markdown" link target in §6 is therefore
+  `/api/v1/notes/{slug}/download`.
 - **Body is the verbatim stored Markdown** — the same source returned in
   `Note.content`, byte-for-byte, with no HTML conversion and no sanitization
   (consistent with §4: the server never produces HTML). A note with empty
@@ -375,8 +386,10 @@ works without server changes. Replace the hash router with a path router.
   constrained, styled container. "Edit", "Delete", and "Download Markdown"
   actions. 404 view for missing slugs.
   - **Download Markdown** saves the note's raw source as `<slug>.md`. Preferred
-    implementation: navigate/link to `GET /notes/{slug}/download` (the endpoint's
-    `Content-Disposition: attachment` triggers the browser save), keeping the
+    implementation: navigate/link to `GET /api/v1/notes/{slug}/download` (note the
+    `/api/v1` base — a bare `/notes/...` link would hit the SPA fallback and return
+    `index.html`, see §5 "URL prefix"). The endpoint's
+    `Content-Disposition: attachment` triggers the browser save, keeping the
     raw-source path off the JSON `api` client. If routed through `api` instead,
     fetch the `text/markdown` body and save it via a `Blob` + object URL — but
     note `api` (§4, "Frontend networking") is built around JSON parsing, so the
@@ -433,7 +446,18 @@ from origin to keep the CSP at `script-src 'self'`.
   entries in the import map in `web/static/index.html` (alongside the existing
   `preact` entries), e.g. `"codemirror": "./vendor/codemirror.js"`,
   `"markdown-it": "./vendor/markdown-it.js"`, `"dompurify": "./vendor/dompurify.js"`.
-  This is the one hand-edit the vendoring requires.
+  This is the one hand-edit the **runtime** vendoring requires.
+- **TypeScript resolution for the bundles (required, else `tsc` fails).** The
+  import map only satisfies the browser at runtime; `tsc` resolves bare specifiers
+  separately. As it already does for Preact, `web/ts/tsconfig.json` needs a
+  `paths` entry for each new bare import (`codemirror`, `markdown-it`,
+  `dompurify`) pointing at a `.d.ts` type declaration under `web/ts/vendor/…`,
+  with those declarations committed alongside (the upstream `@types/markdown-it`,
+  `@types/dompurify`, and CodeMirror's bundled types, or a minimal local shim).
+  Because the project compiles with `noEmitOnError: true`, missing types for these
+  imports are a hard `tsc` failure that blocks milestones 5–6 — this is not
+  optional. Keep `exclude: ["vendor"]` so the declarations themselves aren't
+  compiled as sources.
 - **CSP note.** CodeMirror injects its styles as runtime `<style>` elements,
   which the template's existing `style-src 'self' 'unsafe-inline'` already
   permits. No new `script-src` allowances are needed because the bundles load
@@ -472,6 +496,18 @@ the design still treats stored content as hostile and gates it on render.
    cannot apply a different scheme list to each; **we deliberately do not try
    to** — there is no per-tag scheme distinction. `validateLink` is the coarse
    first pass, DOMPurify the precise gate, both using this same allow-list.
+   - **Accepted-risk consequence: `data:` is allowed on `<a href>`, not only on
+     `<img src>` (decided).** Because the allow-list is a single global list, the
+     `data:` scheme that images need is also accepted on anchors, so a
+     `[x](data:text/html,…)` link survives both gates. A `data:text/html` anchor is
+     a known phishing/redirect vector, but navigating it opens a separate,
+     `data:`-origin document — it cannot script the app's origin (the app's strict
+     CSP and same-origin protections are unaffected), and the threat model here is
+     single-user self-XSS. We therefore **accept `data:` links as a documented
+     risk** rather than adding per-tag logic (which would contradict the
+     deliberate "no per-tag distinction" decision above and require a custom
+     DOMPurify hook + tag-aware `validateLink`). If MyNotes ever gains
+     multi-user/shared-note semantics, revisit this and scope `data:` to images.
 3. **DOMPurify (authoritative gate)** — every HTML string is sanitized with
    DOMPurify immediately before any `innerHTML` assignment, in both the read view
    and the editor preview. A single shared helper (e.g.
@@ -505,6 +541,11 @@ the design still treats stored content as hostile and gates it on render.
      https:`**. This permits remote `https` image loads (note the privacy
      implication: viewing a note will fetch its referenced images, leaking the
      viewer's IP to those hosts — acceptable for a personal tool).
+   - **`img-src` is the *only* CSP directive that changes.** The API is same-origin,
+     so XHR/`fetch` stays covered by the existing `default-src 'self'`; **do not add
+     a `connect-src`** (the template has none, and adding one would have to
+     re-enumerate `'self'` for the API). markdown-it `linkify` and `data:` images
+     need no further directives.
 
 ### Server-side responsibilities (unchanged or new)
 
@@ -649,15 +690,47 @@ Mirrors the template; rename/replace `item*` with `note*`.
     write the new slug onto that `id` in the same update. Setting `slug` to the
     note's own current value is a no-op (not a conflict, §3.1); setting it to a
     value held by another note returns `ErrConflict`.
+  - **No-op detection is greenfield logic (not inherited from the template).** The
+    template's `Update` blindly sets `updated_at = now` and every provided column
+    with no prior read. The §5 "actually changed" semantics require the **service**
+    to `GetBySlug` first, diff each *present* PATCH field against the stored value,
+    and then: (a) if no present field differs, issue **no** SQL `UPDATE` at all (so
+    `updated_at` is untouched and the FTS update trigger does not needlessly
+    re-sync) and return the unchanged note; (b) otherwise set `updated_at = now`
+    and write only the changed columns. The all-fields-absent case is rejected
+    `400` *before* this diff (§5). The read-then-write is not transactionally
+    isolated against a concurrent writer, which is acceptable for a single-user
+    tool (last-write-wins, consistent with the racy slug check in §3.1).
   - **`List` returns both the page and the match count.** Signature returns
     `(notes []NoteSummary, total int, err error)` (or an equivalent struct).
     `total` is computed by a second `COUNT(*)` over the same predicate as the
     page query — all rows when browsing, `… WHERE notes_fts MATCH ?` when an
     effective query is present — and is independent of `limit`/`offset` (§5, §8).
+  - **The search/list query is largely greenfield — the template offers no model
+    to copy** for the pieces below; budget for it in milestone 2 rather than
+    assuming a rename suffices:
+    - The browse branch (`updated_at DESC, id DESC`) and the FTS branch
+      (`ORDER BY rank, id DESC`) are two distinct queries selected on the
+      *effective* query (§8); only the FTS branch references `notes_fts`.
+    - `rank` and `snippet()` are **columns/functions of the FTS5 table** and only
+      resolve when the query selects from / joins `notes_fts` (e.g.
+      `notes n JOIN notes_fts f ON f.rowid = n.id WHERE f MATCH ?`); call
+      `snippet()` against the FTS-table side, with column index **1** for
+      `content` (§8). The browse branch must **not** reference `rank`/`snippet()`.
+    - `total` is a second statement: `SELECT COUNT(*) FROM notes` when browsing,
+      `SELECT COUNT(*) FROM notes_fts WHERE notes_fts MATCH ?` when searching.
 - `internal/service`: `NoteService` — validation (title, slug pattern, content
   length, UTF-8), slug generation + collision resolution. Adds `ErrConflict`.
   On create, a nil/absent `content` is coalesced to `""` before storage (matches
   the column `DEFAULT ''` and the API default).
+  - **Trimming (template convention).** The service `strings.TrimSpace`-es the
+    **`title`** before validating it (as the template's item service does), so a
+    whitespace-only title that slips past ogen's `minLength: 1` (e.g. `" "`)
+    becomes `""` and is rejected with `ErrValidation` → `400`. **`content` is
+    never trimmed** — leading/trailing whitespace and blank lines are meaningful
+    Markdown and are stored verbatim. (The auto-derived-title path in §3 already
+    produces trimmed heading text client-side, but the server trim is the
+    authoritative gate.)
   **No Markdown rendering** — the server never converts Markdown to HTML.
 - `internal/sanitize`: no longer on the note path (§7). Default: remove; or keep
   only as an optional raw-HTML strip of the stored source.
@@ -702,12 +775,30 @@ Follow template conventions (`testify`, in-memory SQLite
   bare Node; it is initialized against a jsdom `window`). This keeps the runner
   itself dependency-free, in line with the project's minimal-toolchain/vendoring
   approach; `jsdom` is a dev-only dependency and is not shipped or embedded.
-  - **Wired into the build (not optional).** `jsdom` is added to `package.json`
-    as a `devDependencies` entry (the current `package.json` has none), and
-    `build.sh` gains a `node --test` step (after `tsc`, alongside `go test`) so
-    the XSS-gate tests actually run on every build. Without this step the security
-    tests never execute — they must be part of `./build.sh` going green, not a
-    manual afterthought.
+  - **Tests exercise the real vendored bundles (decided).** The tests import the
+    **exact `web/static/vendor/markdown-it.js` and `web/static/vendor/dompurify.js`
+    esbuild bundles that ship to the browser** — not separate npm copies — so the
+    XSS gate is verified against the artifact users actually run. Consequently
+    **`jsdom` is the *only* npm devDependency**; markdown-it and DOMPurify are
+    *not* added to `package.json`.
+  - **Module resolution for the tests.** The compiled helper and the bundles use
+    bare specifiers (`markdown-it`, `dompurify`) that Node won't resolve on its
+    own. Provide a **small Node resolution shim** that maps those specifiers to the
+    `web/static/vendor/*.js` bundle paths — e.g. a `--import` hook using
+    `module.register`/a custom loader, or a Node `imports`/`exports` map in
+    `package.json` pointing at the bundle files. The shim mirrors the browser
+    import map, so the test environment resolves the same names to the same files.
+    (The bundles are self-contained ESM, so once the specifier resolves they load
+    under jsdom without further deps.)
+  - **Where it lives / wired into the build (not optional).** `package.json` is
+    **`web/ts/package.json`** (today just `{ "type": "module" }`; there is no root
+    `package.json`). Add the `jsdom` `devDependencies` entry there and the
+    resolution shim (loader file or `imports` map). `build.sh` gains an
+    `npm ci`/`npm install` step (to fetch `jsdom`) and a `node --test` step **after
+    `tsc` and after the `esbuild` vendor-bundling step** (the tests need the
+    bundles to exist), alongside `go test`, so the XSS-gate tests run on every
+    build. Without this they never execute — they must be part of `./build.sh`
+    going green, not a manual afterthought.
 
 ---
 
