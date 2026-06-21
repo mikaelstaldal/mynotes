@@ -120,7 +120,11 @@ Notes:
   resolves collisions.) Collision handling depends on origin:
   - **Auto-generated** slug (client sent none): on collision the service appends
     `-2`, `-3`, … until free. The base is first truncated so that base + suffix
-    still fits within `maxLength: 100` (the suffix is never sacrificed). The
+    still fits within `maxLength: 100` (the suffix is never sacrificed). The fit
+    is recomputed **per suffix length**: when the counter rolls from `-9` to
+    `-10` (suffix grows from 2 to 3 chars) the base is re-truncated to
+    `100 - len(suffix)`, so the combined slug never exceeds 100 at any counter
+    value. The
     service-level existence check is advisory and racy (two concurrent creates
     can both pass it); the DB `UNIQUE` constraint is the source of truth. On a
     `UNIQUE` violation for an auto-generated slug, the service re-resolves the
@@ -253,15 +257,24 @@ HTTP client) can save a note as a `.md` file directly.
     exercised anywhere in the current template (the generated code only emits
     `application/json`), so milestone 1 must include a quick `ogen` run that
     confirms the generated `api.Handler` exposes both the raw body and the
-    `Content-Disposition` setter. Treat milestone 1 as incomplete until this is
-    verified, not assumed.
+    `Content-Disposition` setter. The spike should also confirm the emitted
+    `Content-Type` — ogen may serialize a `text/markdown` content declaration
+    without the `; charset=utf-8` parameter. The exact parameter is cosmetic
+    (browsers default `text/*` to UTF-8), so if ogen drops it that is acceptable;
+    just record the actual header the generated code produces rather than
+    assuming the literal `text/markdown; charset=utf-8`. Treat milestone 1 as
+    incomplete until this is verified, not assumed.
   - **Fallback routing:** if the fallback thin route is needed, register it at its
     fully-qualified path `/api/v1/notes/{slug}/download` (under the same `/api/v1`
     base as every other note route — see "URL prefix" below). Go 1.22+'s enhanced
     `net/http.ServeMux` (this project is on Go 1.26) matches the **most specific**
     pattern regardless of registration order, so the precise download pattern wins
     over the `/api/v1/` ogen mount without any ordering dance. The thin route
-    reuses the service's get-by-slug and sets the headers by hand.
+    reuses the service's get-by-slug and sets the headers by hand, and it must be
+    wrapped in `handler.WithMiddleware` (the same recovery/no-store/gzip chain the
+    ogen mount uses — see `internal/handler/middleware.go`) so it does not bypass
+    those cross-cutting concerns; a route registered bare on the mux would skip
+    them.
 - **URL prefix (every `/notes/*` route, including `/download`).** The paths in the
   endpoint table and §6 are written **relative to the `/api/v1` base**; the actual
   served URL of the download is `/api/v1/notes/{slug}/download`. This matters for
@@ -321,8 +334,15 @@ UpdateNoteRequest (all optional; nil = leave unchanged):
 Error: { error: string }
 ```
 
-The list `excerpt` is a **single string field**, never HTML — see §8. It is one
-field for both cases:
+The list `excerpt` is a **single string field**, never HTML — see §8. Its text is
+a slice of the **raw Markdown source**, shown **verbatim**: Markdown syntax is
+**not** stripped in v1, so literal markup (`##`, `[text](url)`, fences, `*`, …) may
+appear in list rows. This keeps both excerpt paths trivial — the browse prefix is a
+plain substring and the search snippet is FTS5 `snippet()` output with no
+post-processing beyond the sentinel→`<mark>` step. (A Markdown-to-plain-text pass is
+a deliberate non-goal for v1; if added later it must strip the browse prefix **and**
+the search snippet while preserving the `U+0002`/`U+0003` highlight sentinels.) It
+is one field for both cases:
 - **Browsing (no `q`):** a plain prefix of the source truncated to ~200
   characters at a word boundary, with a trailing `…` when truncated; no markers.
   A note with empty `content` yields an empty `excerpt`.
@@ -372,6 +392,12 @@ works without server changes. Replace the hash router with a path router.
 - The `/notes/` prefix isolates note URLs from app routes (`/`, `/new`), so no
   slug can shadow an application route.
 - Internal navigation uses `history.pushState`; the app intercepts link clicks.
+  Interception applies **only** to in-app routes (`/`, `/new`, `/notes/{slug}`,
+  `/notes/{slug}/edit`). Links to other paths — notably the
+  `/api/v1/notes/{slug}/download` Markdown download and any external/absolute
+  URL — are **not** intercepted; they perform a real browser navigation so the
+  `Content-Disposition` download (and the editor's unsaved-changes guard) behave
+  correctly.
 - All API calls go through `api` in `web/ts/api/client.ts` (no direct `fetch`
   from components — template convention). Add a `notes` client mirroring the
   existing `items` client. (There is no `render` call — rendering is local; §4.)
@@ -528,8 +554,14 @@ the design still treats stored content as hostile and gates it on render.
      survive.) URI policy mirrors defense 2 above: a **single global**
      `ALLOWED_URI_REGEXP` permitting `http`/`https`/`mailto`/`data:` for every
      element (DOMPurify's URI allow-list is global, not per-tag — so no custom
-     `uponSanitizeAttribute` hook is needed). `http` image `src` is blocked at
-     load time by CSP `img-src`, not by the sanitizer.
+     `uponSanitizeAttribute` hook is needed). The exact value is the **scheme-only**
+     regexp `/^(?:https?|mailto|data):/i`, passed as DOMPurify's
+     `ALLOWED_URI_REGEXP` option to **replace** DOMPurify's stricter built-in
+     default (whose narrower `data:` handling would otherwise strip `data:`
+     images). It deliberately does **not** MIME-scope `data:` — that single global
+     list is exactly what makes the `data:`-on-`<a>` exposure the documented,
+     accepted trade-off of defense 2 rather than an oversight. `http` image `src`
+     is blocked at load time by CSP `img-src`, not by the sanitizer.
 4. **Strict CSP** — `script-src 'self'` (no inline/eval scripts); all vendor
    bundles served from origin; the import-map hash stays covered by
    `commonweb.ImportMapCSPHash`. Even if a sanitization bug slipped through, the
@@ -637,7 +669,12 @@ harmlessly); this is simpler and safer than `UPDATE OF (title, content)`.
 - **Querying:** keep the template's `sanitizeFTSQuery` (quote each token to make
   FTS5 treat user input as literal terms, not operators). An absent `q` **and** a
   present-but-empty/whitespace-only `q` are both treated as "browse" (no search
-  filter), not as a query matching nothing.
+  filter), not as a query matching nothing. A `q` that has content but whose every
+  token is punctuation (e.g. `"..."`) yields a **non-empty** `sanitizeFTSQuery`
+  result whose quoted phrase the unicode61 tokenizer reduces to zero tokens; FTS5
+  matches **nothing** for it (it does not raise an error). This is the FTS branch
+  returning an empty page with `total = 0` — correct and intended, distinct from
+  the browse fallback above. No special-casing or error handling is needed.
 - **Ranking:** order by FTS5 relevance (`ORDER BY rank`) when an **effective FTS
   query** is present (a non-empty result from `sanitizeFTSQuery`); order by
   `updated_at DESC` otherwise. The switch keys on the *effective* query, not on
@@ -717,6 +754,10 @@ Mirrors the template; rename/replace `item*` with `note*`.
       `notes n JOIN notes_fts f ON f.rowid = n.id WHERE f MATCH ?`); call
       `snippet()` against the FTS-table side, with column index **1** for
       `content` (§8). The browse branch must **not** reference `rank`/`snippet()`.
+      In this join every column reference must be **table-qualified** — `n.id`
+      (not bare `id`, which is ambiguous against the FTS table's `rowid`) and the
+      FTS `rank`/`snippet()` against the `f` alias — so the `ORDER BY rank, id
+      DESC` of §8 is written `ORDER BY f.rank, n.id DESC`.
     - `total` is a second statement: `SELECT COUNT(*) FROM notes` when browsing,
       `SELECT COUNT(*) FROM notes_fts WHERE notes_fts MATCH ?` when searching.
 - `internal/service`: `NoteService` — validation (title, slug pattern, content
