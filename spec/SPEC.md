@@ -275,8 +275,12 @@ HTTP client) can save a note as a `.md` file directly.
     without the `; charset=utf-8` parameter. The exact parameter is cosmetic
     (browsers default `text/*` to UTF-8), so if ogen drops it that is acceptable;
     just record the actual header the generated code produces rather than
-    assuming the literal `text/markdown; charset=utf-8`. Treat milestone 1 as
-    incomplete until this is verified, not assumed.
+    assuming the literal `text/markdown; charset=utf-8`. The spike must also
+    confirm the **empty-content case**: a note with empty `content` must download
+    as a `200` with a zero-length body and a correct `Content-Disposition` header
+    (per §5), since ogen may serialize an empty `string` response body specially —
+    verify it emits an empty body rather than omitting it or erroring. Treat
+    milestone 1 as incomplete until this is verified, not assumed.
   - **Fallback routing:** if the fallback thin route is needed, register it at its
     fully-qualified path `/api/v1/notes/{slug}/download` (under the same `/api/v1`
     base as every other note route — see "URL prefix" below). Go 1.22+'s enhanced
@@ -376,8 +380,14 @@ the search snippet while preserving the `U+0002`/`U+0003` highlight sentinels.) 
 is one field for both cases:
 - **Browsing (no `q`):** a plain prefix of the source truncated to ~200
   characters at a word boundary, with a trailing `…` when truncated; no markers.
-  When the first ~200 characters contain no word boundary (e.g. CJK text, a long
-  URL, or an unbroken code blob), fall back to a **hard cut at 200 characters** so
+  **"Characters" means Unicode runes** (counted as `utf8.RuneCountInString`, the
+  same unit as the `maxLength: 200` title rule in §3), never bytes — a cut must
+  always land on a rune boundary so the excerpt is valid UTF-8 and never splits a
+  multi-byte rune. **A "word boundary" is the last Unicode-whitespace position at
+  or before the 200-rune budget**; the prefix is cut there and the trailing `…`
+  (which itself counts within the 200) is appended. When the first 200 runes
+  contain no whitespace boundary (e.g. CJK text, a long URL, or an unbroken code
+  blob), fall back to a **hard cut at 200 runes** (still on a rune boundary) so
   the excerpt is always bounded. A note with empty `content` yields an empty
   `excerpt`.
 - **Searching (`q` present):** an FTS5 `snippet()` whose matched terms are
@@ -463,12 +473,29 @@ works without server changes. Replace the hash router with a path router.
       `content` `maxLength: 1000000` and UTF-8 validity checks as any create; a
       file exceeding the limit or failing to decode as UTF-8 is rejected
       client-side (or surfaced from the server `400`) via the existing `Toast`.
+      The client **must rune-count the decoded text and reject oversized files
+      before `POST /notes`**, because the 1,000,000-character `maxLength` (a
+      `400` with the `{"error": …}` JSON body from ogen) and the 10 MiB
+      `http.MaxBytesHandler` byte cap are different limits: a file over 10 MiB is
+      truncated mid-stream by the body cap and does **not** produce a clean JSON
+      `400`, so relying on the server response alone would surface a confusing
+      error. The client pre-check gives a clear "file too large" Toast.
     - **On success**, navigate to the new note's read view (`/notes/{slug}`)
       using the slug returned by `POST /notes`.
 - **Read (`/notes/{slug}`):** fetches `content`, renders it with the
   markdown-it → DOMPurify pipeline (§4), and injects the sanitized HTML into a
   constrained, styled container. "Edit", "Delete", and "Download Markdown"
   actions. 404 view for missing slugs.
+  - **Malformed-slug deep links (decided).** `/notes/{slug}` is a valid SPA path
+    even when `{slug}` violates the API slug pattern (e.g. `/notes/Bad_Slug!`),
+    so the read flow does **not** pre-validate the slug client-side; it issues the
+    fetch and maps a **`400` slug-pattern rejection from the API** (which ogen
+    raises before the handler — §5) to the **same not-found view as a `404`**.
+    This requires `web/ts/api/client.ts` to surface that `400` as a not-found
+    signal on the `GET /notes/{slug}` path (e.g. the same `NotFoundError` it
+    already throws on `404`), rather than the generic error `Toast` it raises for
+    other non-OK statuses. The one extra round-trip for a malformed slug is
+    acceptable.
   - **Download Markdown** saves the note's raw source as `<slug>.md`. Preferred
     implementation: navigate/link to `GET /api/v1/notes/{slug}/download` (note the
     `/api/v1` base — a bare `/notes/...` link would hit the SPA fallback and return
@@ -521,7 +548,24 @@ from origin to keep the CSP at `script-src 'self'`.
   the bundles under `web/static/vendor/`, and add one import-map entry per
   bundle:
   - `vendor/codemirror.js` — CodeMirror view/state/commands/language +
-    `lang-markdown`.
+    `lang-markdown`. **The bundle re-exports a fixed, minimal symbol surface**
+    (decided), and the hand-authored `.d.ts` shim (see "TypeScript resolution"
+    below) mirrors exactly this surface — there is no single upstream bundled
+    `.d.ts`, so the shim is written by hand to match. The surface for v1 is:
+    - From `@codemirror/view`: `EditorView` (used for the editor instance,
+      `EditorView.updateListener` for live-preview-on-change and
+      unsaved-changes detection, `EditorView.dispatch` for cursor insertion, and
+      **`EditorView.lineWrapping`** — long Markdown lines wrap), `keymap`.
+    - From `@codemirror/state`: `EditorState`, `EditorSelection` (resolve the
+      cursor/selection for the "Link to note" insertion).
+    - From `@codemirror/commands`: `defaultKeymap`, **`history` and
+      `historyKeymap`** (undo/redo — Ctrl/Cmd+Z).
+    - From `@codemirror/language`: `syntaxHighlighting`, `defaultHighlightStyle`
+      (so the Markdown highlighting is actually visible).
+    - From `@codemirror/lang-markdown`: `markdown` (the Markdown language mode).
+    - **Not included in v1:** `@codemirror/search` (no in-editor find/replace)
+      and `lineNumbers`/active-line gutters. Adding either later means extending
+      both the bundle re-exports and the `.d.ts` shim together.
   - `vendor/markdown-it.js` — the Markdown renderer.
   - `vendor/dompurify.js` — the sanitizer.
 - **Build pipeline change.** `build.sh` gains an `esbuild` bundling step before
@@ -543,8 +587,10 @@ from origin to keep the CSP at `script-src 'self'`.
   separately. As it already does for Preact, `web/ts/tsconfig.json` needs a
   `paths` entry for each new bare import (`codemirror`, `markdown-it`,
   `dompurify`) pointing at a `.d.ts` type declaration under `web/ts/vendor/…`,
-  with those declarations committed alongside (the upstream `@types/markdown-it`,
-  `@types/dompurify`, and CodeMirror's bundled types, or a minimal local shim).
+  with those declarations committed alongside (the upstream `@types/markdown-it`
+  and `@types/dompurify`; for `codemirror`, a **hand-authored shim that declares
+  exactly the bundle's re-export surface listed above**, since there is no single
+  upstream bundled `.d.ts` to reuse).
   Because the project compiles with `noEmitOnError: true`, missing types for these
   imports are a hard `tsc` failure that blocks milestones 5–6 — this is not
   optional. Keep `exclude: ["vendor"]` so the declarations themselves aren't
@@ -795,7 +841,12 @@ Mirrors the template; rename/replace `item*` with `note*`.
   - **Slug rename within PATCH:** resolve the *old* (URL) slug to `id` first, then
     write the new slug onto that `id` in the same update. Setting `slug` to the
     note's own current value is a no-op (not a conflict, §3.1); setting it to a
-    value held by another note returns `ErrConflict`.
+    value held by another note returns `ErrConflict`. **The uniqueness check must
+    exclude the note's own row** — it is `SELECT … WHERE slug = ? AND id != ?`
+    (the current `id`), not a bare `WHERE slug = ?`. Otherwise the note's *own*
+    current slug would appear to already exist and a self-rename (or any PATCH
+    that re-sends the unchanged slug) would be misreported as a `409` instead of
+    the documented no-op.
   - **No-op detection is greenfield logic (not inherited from the template).** The
     template's `Update` blindly sets `updated_at = now` and every provided column
     with no prior read. The §5 "actually changed" semantics require the **service**
@@ -816,6 +867,17 @@ Mirrors the template; rename/replace `item*` with `note*`.
     `total` is computed by a second `COUNT(*)` over the same predicate as the
     page query — all rows when browsing, `… WHERE notes_fts MATCH ?` when an
     effective query is present — and is independent of `limit`/`offset` (§5, §8).
+  - **The repository builds the final `excerpt` string for both branches**
+    (decided), so each `NoteSummary` it returns is ready to use and the
+    service/handler pass it through unchanged. The FTS branch sets `excerpt` from
+    `snippet()` (with the empty-snippet → plain-prefix fallback of §8); the browse
+    branch sets it from the plain ~200-rune word-boundary prefix (§5). To avoid
+    pulling full 1,000,000-char `content` into Go for every list row, the browse
+    branch should SQL-truncate the source (e.g. `substr(content, 1, N)` with a
+    generous byte budget covering 200 runes) and apply the rune-accurate
+    word-boundary cut + `…` in Go over that bounded prefix. The sentinel→`<mark>`
+    conversion still happens client-side (§5); the repository emits the raw
+    sentinel-wrapped snippet, never HTML.
   - **The search/list query is largely greenfield — the template offers no model
     to copy** for the pieces below; budget for it in milestone 2 rather than
     assuming a rename suffices:
@@ -942,7 +1004,10 @@ Follow template conventions (`testify`, in-memory SQLite
 2. **Persistence** — new schema + FTS triggers in `db.go`; `NoteRepository` with
    tests.
 3. **Service** — validation, slug generation/collision; sentinel errors
-   (`ErrConflict`); tests. (No rendering.)
+   (`ErrConflict`); tests. (No rendering.) Slug accent-folding uses
+   `golang.org/x/text/unicode/norm` (§3.1); this is currently an **indirect**
+   dependency in `go.mod`, so importing it directly promotes it to a direct
+   dependency — run `go mod tidy` (per `CLAUDE.md`).
 4. **Handler** — implement generated interface + error mapping; handler tests.
 5. **Vendor bundling** — add the `esbuild` step to `build.sh`; produce
    `vendor/codemirror.js`, `vendor/markdown-it.js`, `vendor/dompurify.js`; wire
