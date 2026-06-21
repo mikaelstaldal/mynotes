@@ -111,7 +111,11 @@ Notes:
   NFKD then drop combining marks** (`é→e`, `ñ→n`), drop any remaining non-ASCII
   (non-Latin scripts are not transliterated — they simply fall away), replace
   runs of non-alphanumerics with `-`, trim leading/trailing `-`, then truncate to
-  the max length (`maxLength: 100`). Room for a uniqueness suffix is **not**
+  the max length (`maxLength: 100`) **and trim any trailing `-` again** — a cut can
+  land mid-separator and re-introduce one, which would violate the slug pattern. A
+  generated slug therefore always matches `^[a-z0-9]+(?:-[a-z0-9]+)*$` (or falls
+  back to `note`); no separate validation pass against the pattern is needed.
+  Room for a uniqueness suffix is **not**
   reserved here — it is reserved only at collision time, when a suffix is actually
   appended (per §3.1, Uniqueness). If the title yields an empty slug (a non-empty
   title whose characters all fold away — e.g. all-punctuation or a non-Latin
@@ -120,7 +124,10 @@ Notes:
   resolves collisions.) Collision handling depends on origin:
   - **Auto-generated** slug (client sent none): on collision the service appends
     `-2`, `-3`, … until free. The base is first truncated so that base + suffix
-    still fits within `maxLength: 100` (the suffix is never sacrificed). The fit
+    still fits within `maxLength: 100` (the suffix is never sacrificed), and any
+    trailing `-` left by that truncation is trimmed before the suffix is appended
+    (so the result is never `foo--2`, which has an empty segment and violates the
+    pattern). The fit
     is recomputed **per suffix length**: when the counter rolls from `-9` to
     `-10` (suffix grows from 2 to 3 chars) the base is re-truncated to
     `100 - len(suffix)`, so the combined slug never exceeds 100 at any counter
@@ -189,14 +196,16 @@ browser.
 
 1. markdown-it is configured with `html: false`, so raw inline/block HTML in the
    source is escaped to literal text rather than passed through.
-2. markdown-it's link validator (`validateLink`) is a single coarse hook that
-   fires for both links and images. There is **no per-tag scheme distinction**:
-   it accepts one allow-list — `http`, `https`, `mailto`, `data:` — for both
-   links and images, and blocks `javascript:`/`vbscript:` (and anything else).
-   DOMPurify is configured with the **same single global allow-list** (no custom
-   per-tag hook). The `http`-on-images concern (mixed content) is handled not by
-   the sanitizer but by CSP `img-src` (which omits `http`), so an `http` image
-   stays in the DOM but never loads (see §7).
+2. markdown-it's link validator (`validateLink`) is the coarse first pass. It
+   accepts `http`/`https`/`mailto` for both links and images, plus `data:` **only
+   for image MIME types** (`data:image/*`), and blocks `javascript:`/`vbscript:`/
+   `file:`, `data:text/html`, and anything else. DOMPurify is the authoritative
+   second gate: it allows `http`/`https`/`mailto` everywhere but admits `data:`
+   **only on `<img src>`**, never on `<a href>` — so a `data:text/html` anchor is
+   stripped (closing the known `data:`-link phishing vector). The `http`-on-images
+   concern (mixed content) is handled not by the sanitizer but by CSP `img-src`
+   (which omits `http`), so an `http` image stays in the DOM but never loads
+   (see §7).
 3. DOMPurify sanitizes the rendered HTML string before any `innerHTML`
    assignment — the final, authoritative gate.
 4. The CSP stays strict (`script-src 'self'`); all libraries are vendored and
@@ -345,7 +354,10 @@ the search snippet while preserving the `U+0002`/`U+0003` highlight sentinels.) 
 is one field for both cases:
 - **Browsing (no `q`):** a plain prefix of the source truncated to ~200
   characters at a word boundary, with a trailing `…` when truncated; no markers.
-  A note with empty `content` yields an empty `excerpt`.
+  When the first ~200 characters contain no word boundary (e.g. CJK text, a long
+  URL, or an unbroken code blob), fall back to a **hard cut at 200 characters** so
+  the excerpt is always bounded. A note with empty `content` yields an empty
+  `excerpt`.
 - **Searching (`q` present):** an FTS5 `snippet()` whose matched terms are
   wrapped in **non-HTML sentinel delimiters** (`U+0002` start, `U+0003` end) that
   cannot occur in normal note text. The client HTML-escapes the entire string,
@@ -436,7 +448,11 @@ works without server changes. Replace the hash router with a path router.
     note" action opens a picker that searches notes (reusing `GET /notes?q=`)
     and, on selection, inserts a Markdown link to that note's stable URL —
     `[<title>](/notes/<slug>)` — using the chosen note's title as the link text
-    (editable afterward like any other text). The inserted path is an in-app
+    (editable afterward like any other text). The title is **escaped for link-text
+    context** before insertion — backslash-escape `\`, `[`, and `]` — so a title
+    like `TODO [urgent]` produces a valid link rather than broken Markdown. (The
+    `<slug>` needs no escaping: the slug pattern already excludes `)` and every
+    other character that is special in a link destination.) The inserted path is an in-app
     route (§6), so following it navigates within the SPA; it needs no new API or
     server support and passes through the same `validateLink`/DOMPurify gates as
     any other link (§7).
@@ -515,25 +531,19 @@ the design still treats stored content as hostile and gates it on render.
 1. **markdown-it `html: false`** — raw inline/block HTML in the source is
    escaped to text, not passed through. Removes the most common injection path
    before sanitization even runs.
-2. **markdown-it link validation** — restrict accepted URL schemes to a single
-   allow-list, `http`/`https`/`mailto`/`data:`, applied uniformly to both links
-   and images (O-5). Blocks `javascript:`/`vbscript:` URLs (and anything else).
-   markdown-it's single `validateLink` hook fires for both links and images and
-   cannot apply a different scheme list to each; **we deliberately do not try
-   to** — there is no per-tag scheme distinction. `validateLink` is the coarse
-   first pass, DOMPurify the precise gate, both using this same allow-list.
-   - **Accepted-risk consequence: `data:` is allowed on `<a href>`, not only on
-     `<img src>` (decided).** Because the allow-list is a single global list, the
-     `data:` scheme that images need is also accepted on anchors, so a
-     `[x](data:text/html,…)` link survives both gates. A `data:text/html` anchor is
-     a known phishing/redirect vector, but navigating it opens a separate,
-     `data:`-origin document — it cannot script the app's origin (the app's strict
-     CSP and same-origin protections are unaffected), and the threat model here is
-     single-user self-XSS. We therefore **accept `data:` links as a documented
-     risk** rather than adding per-tag logic (which would contradict the
-     deliberate "no per-tag distinction" decision above and require a custom
-     DOMPurify hook + tag-aware `validateLink`). If MyNotes ever gains
-     multi-user/shared-note semantics, revisit this and scope `data:` to images.
+2. **markdown-it link validation** — the coarse first pass. markdown-it's single
+   `validateLink` hook fires for both links and images and cannot apply a
+   different scheme list to each, so it accepts the **union** of what either may
+   need: `http`/`https`/`mailto`, plus `data:` restricted to image MIME types
+   (`data:image/*`). It blocks `javascript:`/`vbscript:`/`file:`, `data:text/html`,
+   and everything else (O-5). This is exactly markdown-it's safe **built-in
+   default** `validateLink` behavior (which already permits
+   `data:image/(gif|png|jpeg|webp)` and rejects other `data:` and the script-y
+   schemes), so v1 keeps that default rather than replacing it with a coarser
+   list. Because only `data:image/*` survives here, a `data:` value on an anchor is
+   at worst a harmless inline image; the dangerous `data:text/html` is already
+   gone. The per-tag distinction that matters (`data:` belongs on images, not
+   anchors) is enforced authoritatively in DOMPurify (defense 3).
 3. **DOMPurify (authoritative gate)** — every HTML string is sanitized with
    DOMPurify immediately before any `innerHTML` assignment, in both the read view
    and the editor preview. A single shared helper (e.g.
@@ -551,17 +561,21 @@ the design still treats stored content as hostile and gates it on render.
      `<code>` is **not** allowed (stripped): there is **no read-view syntax
      highlighting in v1**. (If highlighting is added later, allow `class` on
      `code`/`pre` at that point — do not add a highlighter expecting the class to
-     survive.) URI policy mirrors defense 2 above: a **single global**
-     `ALLOWED_URI_REGEXP` permitting `http`/`https`/`mailto`/`data:` for every
-     element (DOMPurify's URI allow-list is global, not per-tag — so no custom
-     `uponSanitizeAttribute` hook is needed). The exact value is the **scheme-only**
-     regexp `/^(?:https?|mailto|data):/i`, passed as DOMPurify's
-     `ALLOWED_URI_REGEXP` option to **replace** DOMPurify's stricter built-in
-     default (whose narrower `data:` handling would otherwise strip `data:`
-     images). It deliberately does **not** MIME-scope `data:` — that single global
-     list is exactly what makes the `data:`-on-`<a>` exposure the documented,
-     accepted trade-off of defense 2 rather than an oversight. `http` image `src`
-     is blocked at load time by CSP `img-src`, not by the sanitizer.
+     survive.) **URI policy — `data:` scoped to images, blocked on anchors.** Set
+     `ALLOWED_URI_REGEXP` to the scheme-only regexp `/^(?:https?|mailto):/i`
+     (`http`/`https`/`mailto`, **no `data:`**). DOMPurify's own built-in `data:`
+     handling is already restricted to image-bearing tags (it admits `data:` on
+     `img` and a few media tags, **never on `<a>`**), so with `data:` left out of
+     `ALLOWED_URI_REGEXP` the net effect is: `data:` images survive on `<img src>`
+     while `data:` on `<a href>` is stripped — the per-tag scoping we want, from
+     DOMPurify's defaults rather than custom code. **This exact behavior is
+     version-dependent and must be confirmed by the spike (§10 / milestone 7):**
+     assert that `data:image/png;base64,…` survives on `<img>` and that `data:` (in
+     particular `data:text/html,…`) is stripped from `<a href>`. If the pinned
+     DOMPurify version does **not** produce this out of the box, add an
+     `uponSanitizeAttribute` hook that explicitly permits `data:image/…` on
+     `img@src` only and strips `data:` on every other element/attribute. `http`
+     image `src` is blocked at load time by CSP `img-src`, not by the sanitizer.
 4. **Strict CSP** — `script-src 'self'` (no inline/eval scripts); all vendor
    bundles served from origin; the import-map hash stays covered by
    `commonweb.ImportMapCSPHash`. Even if a sanitization bug slipped through, the
@@ -730,8 +744,12 @@ Mirrors the template; rename/replace `item*` with `note*`.
   - **No-op detection is greenfield logic (not inherited from the template).** The
     template's `Update` blindly sets `updated_at = now` and every provided column
     with no prior read. The §5 "actually changed" semantics require the **service**
-    to `GetBySlug` first, diff each *present* PATCH field against the stored value,
-    and then: (a) if no present field differs, issue **no** SQL `UPDATE` at all (so
+    to `GetBySlug` first, diff each *present* PATCH field against the stored value.
+    The `title` diff compares the **post-`TrimSpace`** value (the same
+    normalization the service applies before storing, §9 "Trimming"), so a
+    whitespace-only title delta (e.g. `"Foo "` vs stored `"Foo"`) is a no-op rather
+    than a pointless `updated_at` bump; `content` is compared verbatim (never
+    trimmed). After this diff: (a) if no present field differs, issue **no** SQL `UPDATE` at all (so
     `updated_at` is untouched and the FTS update trigger does not needlessly
     re-sync) and return the unchanged note; (b) otherwise set `updated_at = now`
     and write only the changed columns. The all-fields-absent case is rejected
@@ -810,7 +828,11 @@ Follow template conventions (`testify`, in-memory SQLite
   `util/markdown.ts` render+sanitize helper against a table of malicious Markdown
   inputs — `<script>`, `<img onerror=…>`, `[x](javascript:…)`, raw HTML blocks,
   `data:` URLs — asserting the sanitized output contains no script, event
-  handler, or disallowed URL scheme. This requires a JS/TS test runner in
+  handler, or disallowed URL scheme. The `data:` cases assert the **per-tag
+  scoping decided in §7**: `data:image/png;base64,…` **survives on `<img src>`**,
+  while `data:text/html,…` (and any `data:` on an anchor) is **stripped from
+  `<a href>`**. These assertions are also the acceptance criteria for the
+  DOMPurify `data:` spike referenced in §7 defense 3. This requires a JS/TS test runner in
   `web/ts` — **decided: Node's built-in `node:test`**, with **`jsdom`** as a dev
   dependency to provide the DOM that DOMPurify requires (DOMPurify cannot run in
   bare Node; it is initialized against a jsdom `window`). This keeps the runner
