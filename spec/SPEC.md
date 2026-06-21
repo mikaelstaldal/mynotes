@@ -95,6 +95,20 @@ Notes:
     are **skipped**, so a `#` comment in a code sample is never mistaken for the
     title. Any leading `#` markers and trailing `#` run are stripped from the
     captured text.
+  - **Empty-text headings are skipped.** The `\s+` after the markers means a bare
+    `#`/`##` (markers with no following space/text) does not match at all. A line
+    like `## ` (markers, space, nothing) *does* match but captures empty text;
+    since an empty title is never usable (it would fail `minLength: 1`), such a
+    heading is **skipped** and scanning continues to the next candidate. The
+    derived title is therefore always the first heading with **non-empty,
+    non-whitespace** captured text — or, if none exists, no title is derived (the
+    editor leaves the field for the user to fill; the upload flow falls back to
+    the filename, §6).
+  - **Unclosed fences run to end of input.** Fenced-code skipping tracks open/
+    close fences; an **unclosed** fence (an opening ```` ``` ````/`~~~` with no
+    matching close) extends to EOF — matching CommonMark — so every `#` line after
+    it is treated as code and never taken as the title. This keeps the client's
+    derivation consistent with how markdown-it renders the same source.
   - A heading line can exceed the `maxLength: 200` title limit. When deriving the
     title from a heading, the client truncates it to 200 characters (with a
     trailing `…`, counted within the 200) so a save never fails with a confusing
@@ -147,7 +161,15 @@ Notes:
     (`500`)** rather than looping — exhaustion is practically impossible for a
     single-user tool.
   - **Explicit** slug (client supplied one): a collision is an error, never
-    silently suffixed — the service returns `ErrConflict` → `409`.
+    silently suffixed — the service returns `ErrConflict` → `409`. The advisory
+    existence check here is racy too (like the auto-generated path), but it is
+    **not** retried/suffixed — the client asked for that exact slug. Instead, a
+    concurrent write that passes the advisory check yet hits the DB `UNIQUE`
+    constraint on the `INSERT`/`UPDATE` is mapped to **`ErrConflict` → `409`**
+    (the same outcome as the advisory check catching it), **not** surfaced as a
+    raw `500`. This applies to **both** an explicit-slug create and a `PATCH`
+    slug rename (§9): the editor's debounced autosave makes the double-submit
+    race real, and a `409` is the correct, consistent response in every case.
 - **Editing:** a slug *may* be changed via `PATCH`. Setting `slug` to a value
   already used by **another** note returns `409`; setting it to the note's own
   current slug is a no-op (not a conflict, and — being a no-op — does not bump
@@ -249,7 +271,9 @@ linkify/autolinks) and walks the resulting AST, rejecting the write with
     `form`/`input`/`button`, raw media) and all `on*` event handlers. To it we add
     the project's URL rules (and disable the additions noted above): keep
     `http`/`https`/`mailto` and relative URLs, and additionally permit
-    **`data:image/*` on `img@src`** (UGCPolicy omits `data:`). The client DOMPurify
+    **`data:image/(gif|png|jpeg|webp)` on `img@src`** (UGCPolicy omits `data:`) —
+    the same canonical four-subtype list used for Markdown-native images below,
+    excluding `data:image/svg+xml`. The client DOMPurify
     config (§7) is set to the **same** element/attribute/scheme profile so the two
     gates agree on "safe HTML."
   - **Parity is a goal, not a security dependency.** Because DOMPurify is the
@@ -264,8 +288,15 @@ linkify/autolinks) and walks the resulting AST, rejecting the write with
   `ast.KindLink` / `ast.KindAutoLink` / `ast.KindImage` nodes (not HTML), so the
   service checks **those** destinations separately against the same scheme
   allow-list. The allow-list **mirrors §7**: `http`, `https`, `mailto` for links
-  and images, plus `data:image/*` for **image** destinations only (never on
-  links). Destinations
+  and images, plus `data:` for **image** destinations only (never on links) and
+  then restricted to the **canonical four raster subtypes**
+  `data:image/(gif|png|jpeg|webp)` — **the exact set markdown-it's default
+  `validateLink` accepts** (§7 defense 2). This deliberately **excludes
+  `data:image/svg+xml`** (an XSS vector — SVG can carry script) and any other
+  `data:image/...` subtype, so the server never stores a `data:` image the client
+  refuses to render, and the SVG-script surface is closed at every gate. (The
+  `image/*` wildcard is *not* used — see §7 for the single canonical list shared
+  by the server check, markdown-it `validateLink`, and DOMPurify.) Destinations
   that carry **no scheme** — root-relative (`/notes/x`, the in-app note links of
   §6 depend on this), scheme-relative (`//host/...`), and bare-relative — are
   allowed; only an explicit non-allow-listed scheme (`javascript:`, `vbscript:`,
@@ -308,10 +339,12 @@ passes.
    outside the safe allow-list (§4.1).
 2. markdown-it's link validator (`validateLink`) is the coarse first pass. It
    accepts `http`/`https`/`mailto` for both links and images, plus `data:` **only
-   for image MIME types** (`data:image/*`), and blocks `javascript:`/`vbscript:`/
+   for the canonical four raster image subtypes** (`data:image/(gif|png|jpeg|webp)`,
+   excluding `svg+xml`), and blocks `javascript:`/`vbscript:`/
    `file:`, `data:text/html`, and anything else. DOMPurify is the authoritative
-   second gate: it allows `http`/`https`/`mailto` everywhere but admits `data:`
-   **only on `<img src>`**, never on `<a href>` — so a `data:text/html` anchor is
+   second gate: it allows `http`/`https`/`mailto` everywhere but admits those
+   `data:` images **only on `<img src>`** (and only those four subtypes), never on
+   `<a href>` — so a `data:text/html` anchor is
    stripped (closing the known `data:`-link phishing vector). The `http`-on-images
    concern (mixed content) is handled not by the sanitizer but by CSP `img-src`
    (which omits `http`), so an `http` image stays in the DOM but never loads
@@ -385,8 +418,15 @@ HTTP client) can save a note as a `.md` file directly.
     confirm the **empty-content case**: a note with empty `content` must download
     as a `200` with a zero-length body and a correct `Content-Disposition` header
     (per §5), since ogen may serialize an empty `string` response body specially —
-    verify it emits an empty body rather than omitting it or erroring. Treat
-    milestone 1 as incomplete until this is verified, not assumed.
+    verify it emits an empty body rather than omitting it or erroring. The spike
+    must **also** confirm the **mixed-media-type response shape**: this one
+    operation declares a `text/markdown` (raw `string`) body on `200` but the
+    standard `application/json` `{"error": …}` body on `404` (and other errors).
+    Emitting different content types per status code on a single operation — with
+    one of them a raw string body — is a distinct assumption from the raw-body +
+    header one; verify ogen generates a usable handler/response type for it. (Any
+    of these three checks failing is a trigger for the thin-route fallback below.)
+    Treat milestone 1 as incomplete until this is verified, not assumed.
   - **Fallback routing:** if the fallback thin route is needed, register it at its
     fully-qualified path `/api/v1/notes/{slug}/download` (under the same `/api/v1`
     base as every other note route — see "URL prefix" below). Go 1.22+'s enhanced
@@ -475,6 +515,17 @@ UpdateNoteRequest (all optional; absent = leave unchanged):
 Error: { error: string }
 ```
 
+**Field optionality in `openapi.yaml`.** All **response** fields are declared
+`required`, so ogen emits plain (non-`Opt`) Go fields and `openapi-typescript`
+emits non-optional TS properties. In particular `NoteSummary.excerpt` is
+**required**: an empty excerpt (empty-content note, or a title-only match on an
+empty-content note — §8) is the empty string `""`, never an absent field. The
+full required set is: `Note` → `slug`, `title`, `content`, `created_at`,
+`updated_at`; `NoteSummary` → `slug`, `title`, `updated_at`, `excerpt`;
+`NoteList` → `total`, `notes`. Only the **request** bodies carry optional fields
+(`CreateNoteRequest.content`/`slug`, all of `UpdateNoteRequest`), per their
+sections above.
+
 The list `excerpt` is a **single string field**, never HTML — see §8. Its text is
 a slice of the **raw Markdown source**, shown **verbatim**: Markdown syntax is
 **not** stripped in v1, so literal markup (`##`, `[text](url)`, fences, `*`, …) may
@@ -515,7 +566,12 @@ is one field for both cases:
   it is not part of ogen request validation.
 - `slug`: `maxLength: 100`, `pattern: '^[a-z0-9]+(?:-[a-z0-9]+)*$'`.
 - `q`: `maxLength: 200`.
-- `limit`: 1–200, default 50. `offset`: ≥ 0, default 0.
+- `limit`: 1–200, default 50. `offset`: ≥ 0, default 0. These bounds are
+  declared as `minimum`/`maximum` on the query parameters in `openapi.yaml`, so
+  an **out-of-range value is rejected by ogen request validation as `400`**
+  (consistent with the malformed-slug `400` above) — the handler never clamps.
+  The frontend must therefore keep its computed `limit`/`offset` within range
+  (clamp before sending) rather than relying on server-side clamping.
 
 ### Status codes
 
@@ -748,15 +804,20 @@ check, remain untrusted, so render-time gating stands regardless.
 2. **markdown-it link validation** — the coarse first pass. markdown-it's single
    `validateLink` hook fires for both links and images and cannot apply a
    different scheme list to each, so it accepts the **union** of what either may
-   need: `http`/`https`/`mailto`, plus `data:` restricted to image MIME types
-   (`data:image/*`). It blocks `javascript:`/`vbscript:`/`file:`, `data:text/html`,
+   need: `http`/`https`/`mailto`, plus `data:` restricted to the **canonical four
+   raster image subtypes** `data:image/(gif|png|jpeg|webp)`. It blocks
+   `javascript:`/`vbscript:`/`file:`, `data:text/html`, `data:image/svg+xml`,
    and everything else (O-5). This is exactly markdown-it's safe **built-in
    default** `validateLink` behavior (which already permits
-   `data:image/(gif|png|jpeg|webp)` and rejects other `data:` and the script-y
-   schemes), so v1 keeps that default rather than replacing it with a coarser
-   list. Because only `data:image/*` survives here, a `data:` value on an anchor is
-   at worst a harmless inline image; the dangerous `data:text/html` is already
-   gone. The per-tag distinction that matters (`data:` belongs on images, not
+   `data:image/(gif|png|jpeg|webp)` and rejects other `data:` — including
+   `svg+xml` — and the script-y schemes), so v1 keeps that default rather than
+   replacing it. **This four-subtype list is the single canonical `data:` image
+   allow-list** shared by all three gates: the server's Markdown-native scheme
+   check and bluemonday `img@src` rule (§4.1) and DOMPurify (defense 3) all use
+   the same set, deliberately excluding `data:image/svg+xml` (an SVG-script XSS
+   vector). Because only those subtypes survive here, a `data:` value on an anchor
+   is at worst a harmless inline raster image; the dangerous `data:text/html` is
+   already gone. The per-tag distinction that matters (`data:` belongs on images, not
    anchors) is enforced authoritatively in DOMPurify (defense 3).
 3. **DOMPurify (authoritative gate)** — every HTML string is sanitized with
    DOMPurify immediately before any `innerHTML` assignment, in both the read view
@@ -791,15 +852,20 @@ check, remain untrusted, so render-time gating stands regardless.
      (`http`/`https`/`mailto`, **no `data:`**). DOMPurify's own built-in `data:`
      handling is already restricted to image-bearing tags (it admits `data:` on
      `img` and a few media tags, **never on `<a>`**), so with `data:` left out of
-     `ALLOWED_URI_REGEXP` the net effect is: `data:` images survive on `<img src>`
-     while `data:` on `<a href>` is stripped — the per-tag scoping we want, from
-     DOMPurify's defaults rather than custom code. **This exact behavior is
-     version-dependent and must be confirmed by the spike (§10 / milestone 7):**
-     assert that `data:image/png;base64,…` survives on `<img>` and that `data:` (in
-     particular `data:text/html,…`) is stripped from `<a href>`. If the pinned
-     DOMPurify version does **not** produce this out of the box, add an
-     `uponSanitizeAttribute` hook that explicitly permits `data:image/…` on
-     `img@src` only and strips `data:` on every other element/attribute. `http`
+     `ALLOWED_URI_REGEXP` the baseline net effect is: `data:` images survive on
+     `<img src>` while `data:` on `<a href>` is stripped — the per-tag scoping we
+     want. **But DOMPurify's built-in allowance is by *tag*, not by image
+     subtype** — it would let `data:image/svg+xml` through on `<img>`, which the
+     canonical four-subtype list (defense 2) deliberately excludes as an
+     SVG-script vector. To match that list, **add an `uponSanitizeAttribute`
+     hook** that permits a `data:` value **only** when it is on `img@src` **and**
+     matches `data:image/(gif|png|jpeg|webp)`, and strips `data:` on every other
+     element/attribute (and any other `data:image/...` subtype, including
+     `svg+xml`). Do not treat this hook as an optional fallback — it is required to
+     close the SVG subtype that DOMPurify's defaults would otherwise admit. **The
+     spike (§10 / milestone 7) must confirm:** `data:image/png;base64,…` survives
+     on `<img>`; `data:image/svg+xml,…` is **stripped** from `<img>`; and `data:`
+     (in particular `data:text/html,…`) is stripped from `<a href>`. `http`
      image `src` is blocked at load time by CSP `img-src`, not by the sanitizer.
 4. **Strict CSP** — `script-src 'self'` (no inline/eval scripts); all vendor
    bundles served from origin; the import-map hash stays covered by
@@ -931,7 +997,11 @@ harmlessly); this is simpler and safer than `UPDATE OF (title, content)`.
   the browse fallback above. No special-casing or error handling is needed.
 - **Ranking:** order by FTS5 relevance (`ORDER BY rank`) when an **effective FTS
   query** is present (a non-empty result from `sanitizeFTSQuery`); order by
-  `updated_at DESC` otherwise. The switch keys on the *effective* query, not on
+  `updated_at DESC` otherwise. **Note the direction:** FTS5's `rank` is a bm25
+  score that is more negative for better matches, so `ORDER BY rank`
+  (**ascending**, the default) already puts the **best match first** — do *not*
+  write `ORDER BY rank DESC` (that would invert relevance). `updated_at DESC` is
+  descending as usual. The switch keys on the *effective* query, not on
   the mere presence of the `q` parameter — a present-but-empty/whitespace `q` is
   "browse" and uses `updated_at DESC`, consistent with the browse rule above and
   with how `total`, snippets, and the excerpt mode are all selected. In both cases add
@@ -946,7 +1016,11 @@ harmlessly); this is simpler and safer than `UPDATE OF (title, content)`.
   `COUNT(*)` over the same predicate (§9).
 - **Snippets/highlights:** when `q` is present, build the `excerpt` with FTS5
   `snippet()` over the **`content`** column — column index **1** in
-  `fts5(title, content)`, i.e. `snippet(notes_fts, 1, <start>, <end>, '…', ~30)`
+  `fts5(title, content)`, i.e. `snippet(f, 1, <start>, <end>, '…', ~30)` where
+  `f` is the FTS table's alias in the join (§9: `notes n JOIN notes_fts f`). The
+  first argument is the **same FTS table reference used in the query** — use the
+  alias `f` consistently rather than the bare table name `notes_fts`, so the two
+  passages (§8 here and §9) agree
   — with a budget of ~30 tokens and `…`
   as the leading/trailing ellipsis text, passing the **sentinel** start/end
   strings `U+0002` / `U+0003` (not HTML tags) so matched terms are marked without
@@ -1037,6 +1111,14 @@ Mirrors the template; rename/replace `item*` with `note*`.
       DESC` of §8 is written `ORDER BY f.rank, n.id DESC`.
     - `total` is a second statement: `SELECT COUNT(*) FROM notes` when browsing,
       `SELECT COUNT(*) FROM notes_fts WHERE notes_fts MATCH ?` when searching.
+      The count must use the **same predicate** as the page query so the two
+      cannot disagree (an off-by-one here makes pagination show a phantom extra
+      page): the searching count keys on the identical `MATCH ?` term, and the
+      external-content triggers (§8) keep `notes` and `notes_fts` in strict 1:1
+      sync, so the join-based page (`notes n JOIN notes_fts f`) and the
+      `notes_fts`-based count return the same row set. (Rows written outside the
+      API without firing the triggers — §7 — would break this invariant, but that
+      is out of scope: all writes go through the API.)
 - `internal/service`: `NoteService` — validation (title, slug pattern, content
   length, UTF-8, **and structural Markdown validation of `content` — Goldmark AST
   walk + bluemonday HTML-fragment check, §4.1**), slug generation + collision
@@ -1097,7 +1179,8 @@ Follow template conventions (`testify`, in-memory SQLite
   schemes on **Markdown-native** links/images (`javascript:`/`data:text/html`/…)
   rejected;
   `http`/`https`/`mailto` and root-/scheme-/bare-relative destinations accepted;
-  `data:image/*` accepted on images but rejected on links; over-deep nesting
+  `data:image/(gif|png|jpeg|webp)` accepted on images but rejected on links,
+  `data:image/svg+xml` rejected on images too (§7); over-deep nesting
   rejected; valid GFM and empty content accepted; both create and update paths
   covered. (No rendering to test server-side.)
 - **Handler:** full request/response cycle for each endpoint; error→status
@@ -1122,7 +1205,10 @@ Follow template conventions (`testify`, in-memory SQLite
   scheme gates as explicit links (§4, §7 defense 2). The `data:` cases assert the **per-tag
   scoping decided in §7**: `data:image/png;base64,…` **survives on `<img src>`**,
   while `data:text/html,…` (and any `data:` on an anchor) is **stripped from
-  `<a href>`**. These assertions are also the acceptance criteria for the
+  `<a href>`**, and `data:image/svg+xml,…` is **stripped even on `<img src>`**
+  (the canonical four-subtype list `gif|png|jpeg|webp` excludes SVG — §7). The
+  shared server/client parity vector includes a `data:image/svg+xml` image
+  destination, asserting **both** gates reject it. These assertions are also the acceptance criteria for the
   DOMPurify `data:` spike referenced in §7 defense 3. This requires a JS/TS test runner in
   `web/ts` — **decided: Node's built-in `node:test`**, with **`jsdom`** as a dev
   dependency to provide the DOM that DOMPurify requires (DOMPurify cannot run in
