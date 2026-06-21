@@ -617,6 +617,31 @@ works without server changes. Replace the hash router with a path router.
 - **List/search (`/`):** search input (debounced, drives `q`), results show
   title, updated time, plain-text excerpt, and search highlights when searching.
   "New note" and "Upload Markdown" buttons. Empty and loading states.
+  - **`q` length cap (client-side).** `q` carries `maxLength: 200` in
+    `openapi.yaml`, enforced by ogen request validation (a `400` for an
+    over-length value, §5). The search box must therefore cap the query at 200
+    runes before sending (e.g. a `maxlength`/slice on the debounced value) rather
+    than relying on the server, so a long paste never surfaces a confusing
+    validation `400` through the `api` client.
+  - **Paging — "Load more" button.** The list fetches the first page with the
+    default `limit` (50) and `offset` 0, then renders a **"Load more" button**
+    whenever more results remain. Clicking it requests the next page (same
+    `limit`, `offset` advanced by the number of rows already loaded) and
+    **appends** the new rows to the list. The button is shown while
+    `loaded < NoteList.total` and hidden once all rows are loaded; `total` is
+    also shown informationally (e.g. a result count). This applies **identically
+    to browsing and searching** — the same accumulate-and-append flow runs whether
+    or not `q` is present.
+    - **Reset on query change.** Changing the search box (or clearing it) starts a
+      fresh result set: the accumulated rows are discarded and `offset` resets to
+      0 before the first request, so pages from a previous query are never mixed
+      in. (Each `GET /notes` request carries the current `q`.)
+    - **Bounds.** `limit` stays at the in-range default (50) and `offset` is only
+      ever advanced by a multiple of it, so both remain within their declared
+      ranges (§5: `limit` 1–200, `offset` ≥ 0); the client still **clamps both
+      before sending** per §5 rather than relying on the server. With a fixed
+      `limit` of 50 the largest `offset` the UI issues grows with `total` and
+      stays valid.
   - **Upload Markdown (create from file).** A file picker (accepting `.md`/
     `.markdown`/`text/markdown`/`text/plain`) reads a single chosen file
     **client-side** as UTF-8 text and creates a note from it via the existing
@@ -698,7 +723,30 @@ works without server changes. Replace the hash router with a path router.
   - Save (create/update) and Cancel. Unsaved-changes guard covering **both**
     intercepted in-app (pushState) navigations and real browser unload/reload
     (`beforeunload`).
-  - Errors surfaced via the existing `Toast` component.
+    - **Post-save navigation.** On a successful save the editor navigates to the
+      saved note's **read view** `/notes/{slug}` in **both** cases — create
+      (`/new`) and edit (`/notes/{slug}/edit`). The slug used is the one returned
+      in the response body, never the slug the editor started with: a `POST`
+      may have had its slug auto-generated or collision-suffixed (§3.1), and a
+      `PATCH` may have **renamed** the slug, leaving the old `/notes/{old}/edit`
+      URL dead — so the read-view target is always built from the response slug.
+      The unsaved-changes guard is cleared before this navigation so the save's
+      own `pushState` is not blocked.
+    - **Stale note (404 on Save/Delete).** A `PATCH` or `DELETE` issued from a
+      stale tab can target a slug that no longer exists (the note was deleted or
+      renamed elsewhere), yielding `404`. In that case the UI shows a `Toast`
+      ("This note no longer exists") and navigates to the list (`/`); it does
+      **not** show the not-found view, which is reserved for direct deep-links
+      (§6 Read). The same applies to the read view's **Edit**/**Delete** actions
+      when the underlying note is already gone. (A `404` on the *initial* fetch
+      of a read/edit view still renders the not-found view as before.)
+  - Errors surfaced via the existing `Toast` component. A **slug conflict
+    (`409`)** on save (an explicit or renamed slug already taken — §3.1) is
+    surfaced as a **generic error `Toast` showing the server's `{"error": …}`
+    message verbatim**; the server returns a clear message (e.g. `"slug already
+    in use"`) for this case. No dedicated client error type or slug-field
+    highlight is added in v1 — `client.ts` needs no special `409` branch, so the
+    existing generic non-OK-status `Toast` path covers it.
 
 ### Editor & rendering libraries (resolves O-2)
 
@@ -980,8 +1028,12 @@ CREATE TRIGGER notes_au AFTER UPDATE ON notes BEGIN
 END;
 ```
 
-The UPDATE trigger fires on any row change (slug/timestamp-only updates re-sync
-harmlessly); this is simpler and safer than `UPDATE OF (title, content)`.
+The UPDATE trigger is unscoped — `AFTER UPDATE ON notes`, not the template's
+`AFTER UPDATE OF title, content` — so it re-syncs FTS on any row change; this is
+simpler and safer than enumerating columns. In practice the service issues an
+`UPDATE` only when at least one field actually changed (§9: a no-op PATCH issues
+no SQL at all), so the trigger fires only on real changes; a slug-only rename
+still fires it, harmlessly re-syncing the unchanged `title`/`content` into FTS.
 
 - **Querying:** keep the template's `sanitizeFTSQuery` (quote each token to make
   FTS5 treat user input as literal terms, not operators). An absent `q` **and** a
