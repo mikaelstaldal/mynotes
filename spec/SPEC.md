@@ -383,8 +383,15 @@ resulting AST, rejecting the write with
   is at worst a rendering wrinkle on pathological input, never a hole.
 - **C0 control characters** — `content` containing any C0 control character
   **except** tab (`U+0009`), newline (`U+000A`), and carriage return (`U+000D`) is
-  rejected. This is a flat byte/rune scan (it does **not** require the Goldmark
-  parse), but it is part of the same write-time accept/reject gate. Its specific
+  rejected. This is a flat **byte** scan (it does **not** require the Goldmark
+  parse), but it is part of the same write-time accept/reject gate. A byte scan
+  suffices and is robust **independent of check ordering**: every C0 control is
+  `< 0x80`, and a byte `< 0x80` is never a lead or continuation byte of a UTF-8
+  multi-byte sequence, so a raw `0x02`/`0x03` (or any other C0 byte) is always a
+  standalone control character — the scan catches every sentinel even on otherwise
+  malformed input, so it does not depend on the separate UTF-8-validity check
+  running first. (UTF-8 validity is still enforced as its own check, and the
+  Goldmark parse below operates on the source regardless.) Its specific
   purpose is to guarantee the search-highlight **sentinels `U+0002`/`U+0003` (§8)
   truly never occur in stored note text** — so an FTS5 `snippet()` can use them as
   unambiguous `<mark>` delimiters without a user-supplied control char ever
@@ -887,7 +894,13 @@ works without server changes. Replace the hash router with a path router.
   - **Download Markdown** saves the note's raw source as `<slug>.md`. Preferred
     implementation: navigate/link to `GET /api/v1/notes/{slug}/download` (note the
     `/api/v1` base — a bare `/notes/...` link would hit the SPA fallback and return
-    `index.html`, see §5 "URL prefix"). The endpoint's
+    `index.html`, see §5 "URL prefix"). The href must be **root-absolute** (a
+    leading `/`): the template's JSON `api` client uses a **relative** base
+    (`const BASE = 'api/v1'` in `web/ts/api/client.ts`), and this download link is
+    hand-authored *outside* that client, so reusing the relative form would resolve
+    against the current path (e.g. on `/notes/my-slug` it becomes
+    `/notes/api/v1/notes/my-slug/download`) and miss the route. Write the literal
+    `/api/v1/notes/{slug}/download` with the leading slash. The endpoint's
     `Content-Disposition: attachment` triggers the browser save, keeping the
     raw-source path off the JSON `api` client. If routed through `api` instead,
     fetch the `text/markdown` body and save it via a `Blob` + object URL — but
@@ -1533,6 +1546,15 @@ Mirrors the template; rename/replace `item*` with `note*`.
   resolution. Adds `ErrConflict`.
   On create, a nil/absent `content` is coalesced to `""` before storage (matches
   the column `DEFAULT ''` and the API default).
+  - **Remove the template's content-mutating sanitize call.** The template's item
+    service mutates the body in place on write — `content = sanitize.HTML(content)`
+    on create and `clean := sanitize.HTML(*content)` on update (today at
+    `internal/service/*.go:68` and `:85`). These **must be deleted** on the note
+    write paths: notes store Markdown **verbatim** (§4), and running an HTML
+    sanitizer over the whole source would corrupt it (`&`→`&amp;`, mangled `<` in
+    prose). bluemonday is reused here only to *validate* extracted HTML fragments
+    (accept/reject), never to rewrite stored content (§4.1, §7). Porting by rename
+    alone would silently leave this mutation in place — explicitly drop it.
   - **Create timestamps.** On create the service sets `created_at = updated_at =
     now` (UTC RFC 3339), the same instant for both. This guarantees a freshly
     created note sorts to the top of the browse list (`updated_at DESC, id DESC`,
