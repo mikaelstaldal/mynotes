@@ -118,6 +118,19 @@ Notes:
     matching close) extends to EOF — matching CommonMark — so every `#` line after
     it is treated as code and never taken as the title. This keeps the client's
     derivation consistent with how markdown-it renders the same source.
+  - **A tab in the captured heading text is replaced with a single space.** A
+    heading's inline text may contain a literal tab (`# foo⇥bar`), and a tab is the
+    **only** C0 control that can ever reach a derived title: `content` rejects every
+    other C0 control except tab/newline/CR (§4.1), and a heading is a single line so
+    no newline/CR is captured. But the server rejects **all** C0 controls in `title`,
+    **tab included** (§4.1, §9), so a derived `foo\tbar` would 400. The client
+    therefore **replaces each tab in the captured text with one space** before using
+    it as the title — markdown-it renders the tab as whitespace in the `<h1>` anyway,
+    so this matches what the user sees, and it preserves the same "never surface a
+    confusing `400` for a title the user never typed" guarantee as the truncation
+    rule below. The space substitution happens **before** the `maxLength: 200`
+    truncation. (The upload filename fallback — §6 — does not need this; filenames
+    do not carry tabs into the title.)
   - A heading line can exceed the `maxLength: 200` title limit. When deriving the
     title from a heading, the client truncates it to 200 characters (with a
     trailing `…`, counted within the 200) so a save never fails with a confusing
@@ -256,7 +269,14 @@ is a **structural allow-list** over the parsed document. On **create and update*
 (`POST /notes`, `PATCH /notes/{slug}` when `content` is present) the service
 parses `content` with **Goldmark** (`github.com/yuin/goldmark`, configured to
 match the client's enabled feature set — GFM tables, strikethrough, and
-linkify/autolinks; **raw HTML and images need no extra parser option** — both are
+linkify/autolinks, wired via Goldmark's **individual** extensions
+(`extension.Table`, `extension.Strikethrough`, `extension.Linkify`) **rather than
+the `extension.GFM` bundle**, so Goldmark's GFM **task-list** parser stays off and
+the server mirrors the client's no-task-lists feature set (§4). (Even if the
+task-list parser were on it would be harmless to this gate, which only walks
+HTML/link/image/nesting nodes — a task-list item is just a list item with a
+checkbox node the walk ignores — so this is a fidelity choice, not a correctness
+one.) **Raw HTML and images need no extra parser option** — both are
 CommonMark-core and already appear in Goldmark's default AST as
 `ast.KindRawHTML`/`ast.KindHTMLBlock` and `ast.KindImage` nodes, which is all this
 gate walks. `WithUnsafe` is a *renderer* option governing HTML **output** and is
@@ -297,10 +317,21 @@ resulting AST, rejecting the write with
     actually strips or rewrites diverges and trips the rejection. (Block HTML is
     captured whole as one `ast.KindHTMLBlock` node and validated the same way.) For this to hold the
     validation policy must be configured **removal-only** — it must **not inject
-    or rewrite** attributes (no `rel="nofollow"`, no `target="_blank"`, none of
-    UGCPolicy's default additions), because any addition would make even safe HTML
-    differ from its re-serialization and be falsely rejected. The policy strips
-    disallowed content; it never augments allowed content.
+    or rewrite** attributes. `UGCPolicy()` stays the base (next bullet), but every
+    attribute-injecting default it sets must be **explicitly turned off** on the
+    policy: `RequireNoFollowOnLinks(false)`,
+    `RequireNoFollowOnFullyQualifiedLinks(false)`, `RequireNoReferrerOnLinks(false)`,
+    `RequireNoReferrerOnFullyQualifiedLinks(false)`,
+    `AddTargetBlankToFullyQualifiedLinks(false)`, and
+    `RequireCrossOriginAnonymous(false)` — so no `rel="nofollow"`,
+    `rel="noreferrer"`, `target="_blank"`, or `crossorigin` is ever added. Any such
+    addition would make even safe HTML (a plain `<a href="https://x">`) differ from
+    its re-serialization and be falsely rejected. The policy strips disallowed
+    content; it never augments allowed content. **A milestone-3 spike must assert
+    this round-trips** — a plain `<a href="https://x">…</a>`, a `<br>`, and a
+    representative slice of the broad allow-listed set (§4.1, §10) pass the gate
+    **unrejected** — so that a missed injector (or one a future bluemonday version
+    adds) is caught before it false-rejects benign notes rather than in production.
   - **Policy = a broad "safe HTML" allow-list.** The goal is to accept **any tag
     that is safe and reasonable to embed in Markdown**, not just the few tags
     markdown-it itself emits. The server's bluemonday policy uses
@@ -709,7 +740,13 @@ is one field for both cases:
 - **Searching (`q` present):** an FTS5 `snippet()` — a short window (~30 tokens)
   centred on the match, so this branch is **token-bounded** and does **not** share
   the browse branch's 200-rune budget above; the two excerpt shapes deliberately
-  differ (a match-centred window vs. a leading prefix). Its matched terms are
+  differ (a match-centred window vs. a leading prefix). Because it is token-bounded
+  rather than rune-bounded, `NoteSummary.excerpt` carries **no `maxLength`** in
+  `openapi.yaml` (it is `required` but unbounded). In the normal case the ~30-token
+  window is small; the one pathological case is content with a single enormous
+  whitespace-free token (FTS5 treats it as one token, so a snippet centred on it can
+  be large) — accepted for v1, since `content` is already capped at 1,000,000
+  characters and this is a single-user tool. Its matched terms are
   wrapped in **non-HTML sentinel delimiters** (`U+0002` start, `U+0003` end) that
   cannot occur in stored note text — **write-time validation rejects content
   containing these (and other C0 controls except tab/newline/CR), §4.1**, so the
@@ -1137,8 +1174,10 @@ from origin to keep the CSP at `script-src 'self'`.
   exactly the bundle's re-export surface listed above**, since there is no single
   upstream bundled `.d.ts` to reuse).
   Because the project compiles with `noEmitOnError: true`, missing types for these
-  imports are a hard `tsc` failure that blocks milestones 5–6 — this is not
-  optional. Keep `exclude: ["vendor"]` so the declarations themselves aren't
+  imports are a hard `tsc` failure that blocks **milestone 6** (the frontend
+  `tsc` compile) — milestone 5's `esbuild` bundling does not run `tsc`, so the
+  failure surfaces when the app TypeScript is compiled, not when the bundles are
+  produced. This is not optional. Keep `exclude: ["vendor"]` so the declarations themselves aren't
   compiled as sources.
 - **CSP note.** CodeMirror injects its styles as runtime `<style>` elements,
   which the template's existing `style-src 'self' 'unsafe-inline'` already
@@ -1365,7 +1404,12 @@ CREATE TABLE notes (
   updated_at TEXT NOT NULL
 );
 
-CREATE INDEX idx_notes_updated_at ON notes(updated_at DESC);
+CREATE INDEX idx_notes_updated_at ON notes(updated_at DESC, id DESC);
+-- The index carries the id tie-break so the browse ORDER BY
+-- (updated_at DESC, id DESC — §8, §9) is satisfied directly, without a
+-- separate sort step even at deep offsets. A bare (updated_at DESC) index
+-- could not: SQLite appends the rowid to an index ascending, so it cannot
+-- serve a descending secondary id sort.
 -- slug already has a UNIQUE index from the column constraint.
 ```
 
@@ -1502,6 +1546,13 @@ Mirrors the template; rename/replace `item*` with `note*`.
 - `internal/model`: `Note` struct (adds `Slug`).
 - `internal/repository`: `NoteRepository` (`List`, `GetBySlug`, `Create`,
   `Update`, `Delete`, slug-existence check). `db.go` gets the new schema + FTS.
+  - **`GetBySlug` returns the full row.** It selects **all six** columns —
+    internal `id` plus the five exposed `Note` fields (`slug`, `title`, `content`,
+    `created_at`, `updated_at`) — so the read view has the complete note and the
+    `PATCH` no-op diff (§5, below) can compare every present field against its
+    stored value (and resolve the slug→`id` it mutates by). The narrower
+    `NoteSummary` column set (slug, title, updated_at, excerpt) belongs to the
+    `List` query only.
   - **Slug is the external key; `id` stays internal.** `Update` and `Delete`
     resolve the URL `{slug}` to the row `id` first (via `GetBySlug`), then mutate
     by `id` (signatures take a slug, or take the resolved `id` from a handler-side
@@ -1777,7 +1828,11 @@ Follow template conventions (`testify`, in-memory SQLite
    adds a **new direct dependency** on `github.com/yuin/goldmark` (parse + AST
    walk only — not used to render) and **reuses `internal/sanitize`'s bluemonday**
    (already a template dependency) for the embedded-HTML fragment check, comparing
-   against a `golang.org/x/net/html` re-serialization (§4.1). Run `go mod tidy`
+   against a `golang.org/x/net/html` re-serialization (§4.1). Include the
+   **removal-only policy spike** (§4.1): assert a plain `<a href="https://x">`, a
+   `<br>`, and a representative allow-listed HTML slice round-trip the bluemonday
+   gate **unrejected**, confirming every UGCPolicy attribute-injector is disabled
+   before it can false-reject benign notes. Run `go mod tidy`
    after adding the new imports (per `CLAUDE.md`).
 4. **Handler** — implement generated interface + error mapping; handler tests.
 5. **Vendor bundling** — add the `esbuild` step to `build.sh`; produce
