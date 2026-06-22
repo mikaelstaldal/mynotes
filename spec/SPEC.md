@@ -711,6 +711,12 @@ is one field for both cases:
   (new sentinel `service.ErrConflict` → `409`). Auto-generated slugs never
   conflict (the service resolves them), so `409` only arises when the client
   insists on a specific taken slug.
+- **`DELETE` of an unknown slug is `404`, not idempotent.** A well-formed but
+  unknown slug resolves to `service.ErrNotFound` → `404` (a malformed slug is the
+  earlier ogen `400`); `204` is returned **only** when a row was actually deleted.
+  `DELETE` is therefore **not** idempotent — re-deleting an already-deleted note
+  yields `404`, which is the stale-tab case the UI handles with a Toast + navigate
+  to the list (§6).
 
 ---
 
@@ -768,8 +774,13 @@ works without server changes. Replace the hash router with a path router.
   - **Paging — "Load more" button.** The list fetches the first page with the
     default `limit` (50) and `offset` 0, then renders a **"Load more" button**
     whenever more results remain. Clicking it requests the next page (same
-    `limit`, `offset` advanced by the number of rows already loaded) and
-    **appends** the new rows to the list. The button is shown while
+    `limit`, `offset` advanced by the number of rows **received from the server**
+    so far — a multiple of `limit`, per **Bounds** below — **not** the count of
+    rows currently displayed, which the slug de-duplication below can make
+    smaller) and **appends** the new rows to the list. The two counters are
+    therefore tracked separately: `offset` follows the server (cumulative rows
+    fetched), while the displayed count (`loaded`, the de-duplicated accumulated
+    rows) drives the button. The button is shown while
     `loaded < NoteList.total` and hidden once all rows are loaded; `total` is
     also shown informationally (e.g. a result count). This applies **identically
     to browsing and searching** — the same accumulate-and-append flow runs whether
@@ -863,6 +874,15 @@ works without server changes. Replace the hash router with a path router.
     JS heap** (the server-side ogen handler buffers the body as a Go string either
     way — the "avoid buffering" benefit is client-side only, not a streaming
     download).
+    - **Stale download (note gone) is *not* specially handled.** Because the
+      preferred form is a real (non-intercepted, §6 routing) browser navigation
+      that bypasses the `api` client, a note deleted or renamed in another tab
+      makes Download land the browser on the raw `{"error": …}` JSON `404` page,
+      replacing the SPA — it does **not** get the Toast + navigate-to-list
+      treatment that Save/Delete's stale-`404` path does (§6 "Stale note"). This is
+      accepted for a single-user tool: the race is rare, the user can navigate
+      back, and routing Download through `api` purely to prettify this case is not
+      worth the added Blob/object-URL code. (Same last-write-wins stance as §3.1.)
 - **Editor (`/new`, `/notes/{slug}/edit`):**
   - Title input. While untouched, it auto-fills from the first **ATX** heading in
     the content as the user types (rules in §3 — Setext ignored, code fences
@@ -871,6 +891,17 @@ works without server changes. Replace the hash router with a path router.
   - Slug field: auto-suggested from title for new notes; shown (and editable
     with a warning) when editing an existing note (O-4 — slugs are mutable; no
     redirects, so the UI warns that the URL will change).
+    - **An *unedited* suggested slug is not sent — the server generates it.** On
+      `/new`, the suggestion is a **display-only preview** of what the server will
+      likely derive; while the user leaves it untouched the create request omits
+      `slug` entirely, so the server auto-generates and **auto-suffixes** on
+      collision (`my-title`, `my-title-2`, … — §3.1), exactly like the Upload flow.
+      The field becomes an **explicit** slug only once the user edits it by hand;
+      from then on it is sent verbatim and a collision is a `409` (§3.1, never
+      silently suffixed). This keeps the common "just type a title and save" path
+      free of surprising `409`s on duplicate titles, while still honoring a slug
+      the user deliberately chose. (Tracking "did the user edit the slug?" mirrors
+      the title auto-sync dirty flag of §3.)
   - **CodeMirror 6** Markdown source editor plus a **live preview** pane rendered
     locally (markdown-it → DOMPurify) on a debounced change of the editor
     contents. Split or toggle layout. No network round-trip for preview.
@@ -889,6 +920,14 @@ works without server changes. Replace the hash router with a path router.
     any other link (§7). For the relative `/notes/<slug>` href to survive
     DOMPurify, its `ALLOWED_URI_REGEXP` must admit relative URLs (§7) — without
     that, the inserted link would render hrefless.
+    - **The picker shows only the first page (no paging).** It issues a single
+      `GET /notes?q=` at the default `limit` (50) and does **not** offer
+      "Load more" — notes beyond the first 50 matches are reached by **typing a
+      more specific query** to narrow the result set, not by paging the picker.
+      This is acceptable for a personal tool and keeps the picker simple; the list
+      view's accumulate-and-append paging (above) is not reused here. (The empty-`q`
+      case still browses, so an unfiltered picker shows the 50 most-recently-updated
+      notes.)
     - **The note being edited is filtered out of its own picker.** When editing an
       existing note (`/notes/{slug}/edit`), the picker excludes that note from its
       results (`results.filter(n => n.slug !== currentSlug)`), so a note cannot be
