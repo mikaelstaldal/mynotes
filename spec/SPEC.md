@@ -89,8 +89,14 @@ Notes:
     first heading found in the content as the user types. Once the user edits the
     title by hand, auto-sync stops (the manual value is never clobbered).
   - **What counts as "the first heading":** the first **ATX** heading only —
-    a line matching `^\s{0,3}#{1,6}\s+(.*?)(?:\s+#+)?\s*$`, with the captured text
-    as the title. **Setext** headings (a text line underlined with `===`/`---`) are
+    a line matching `^ {0,3}#{1,6}[ \t]+(.*?)(?:[ \t]+#+)?[ \t]*$`, with the captured
+    text as the title. **The leading-indent class is literal spaces (` {0,3}`), not
+    `\s`** — CommonMark treats a leading **tab** as 4 columns, which makes a
+    `\t# Foo` line an *indented code block* (rendered as code, not a heading) by
+    markdown-it; matching only 0–3 **spaces** keeps the client derivation consistent
+    with markdown-it (the separator/closing classes use `[ \t]` because a space *or*
+    tab is a valid ATX delimiter *after* the markers). **Setext** headings (a text
+    line underlined with `===`/`---`) are
     **not** recognized in v1. Lines inside a fenced code block (```` ``` ````/`~~~`)
     are **skipped**, so a `#` comment in a code sample is never mistaken for the
     title. A trailing `#` run is stripped from the captured text **only when it is
@@ -98,7 +104,7 @@ Notes:
     heading like `# Done###` keeps the literal `###` (it derives `Done###`, the same
     text markdown-it renders in the `<h1>`) while `# Done ###` derives `Done`. This
     keeps the derivation consistent with how markdown-it parses the same heading.
-  - **Empty-text headings are skipped.** The `\s+` after the markers means a bare
+  - **Empty-text headings are skipped.** The `[ \t]+` after the markers means a bare
     `#`/`##` (markers with no following space/text) does not match at all. A line
     like `## ` (markers, space, nothing) *does* match but captures empty text;
     since an empty title is never usable (it would fail `minLength: 1`), such a
@@ -369,7 +375,16 @@ resulting AST, rejecting the write with
   outside the explicit scheme allow-list, so the write is rejected rather than
   silently stored. (Detecting one is a simple leading-`//` check on the
   destination.) Any explicit non-allow-listed scheme (`javascript:`, `vbscript:`,
-  `file:`, `data:text/html`, …) is rejected as before.
+  `file:`, `data:text/html`, …) is rejected as before. **Scheme comparison is
+  case-insensitive** — a destination's scheme is lower-cased before it is matched
+  against the allow-list (so `HTTP:`, `MailTo:`, `Data:Image/PNG;…` are treated
+  identically to their lowercase forms), per RFC 3986 (URI schemes are
+  case-insensitive) and matching DOMPurify's case-insensitive `ALLOWED_URI_REGEXP`
+  (`/i`, §7), so the server check and the render-time gate agree on explicit-link
+  verdicts. The `data:`-image subtype/parameter match (the canonical
+  `^data:image/(gif|png|jpeg|webp);` regexp) is likewise applied case-insensitively
+  to the scheme+subtype, consistent with that regexp's `/i`-equivalent use at the
+  other gates.
 - **Excessive nesting** — block/inline nesting deeper than **100** levels,
   matching markdown-it's `maxNesting: 100` default on the client and bounding
   parser/render cost. **Parity here is a goal, not a guarantee** (same disclaimer
@@ -580,8 +595,17 @@ HTTP client) can save a note as a `.md` file directly.
   (emitting the empty body uncompressed, no `Content-Encoding`), but since this
   empty-download path is load-bearing, inspect the actual on-wire response rather
   than assuming — a `Content-Encoding: gzip` (or a non-empty compressed stream)
-  over an empty body is the failure mode to rule out, and is a trigger for the
-  thin-route fallback if `go-server-common`'s gzip layer produces it.
+  over an empty body is the failure mode to rule out. **If the gzip layer mis-handles
+  the empty body, the thin-route fallback is *not* the fix** — the fallback is
+  wrapped in the **same** `handler.WithMiddleware` chain (and therefore the same
+  `go-server-common` gzip layer, per the fallback-routing bullet above), so it
+  inherits the identical behavior. The remedy is instead to **bypass gzip for the
+  download route specifically** (omit the gzip wrapper from this one route's
+  middleware chain, or confirm the layer's min-length threshold already skips the
+  zero-length body). In practice gzip middleware almost always skips sub-threshold
+  bodies, so this is expected to be a no-op; the spike confirms it rather than the
+  thin-route fallback, which only addresses the ogen raw-body/header generation
+  question, not gzip.
 - **GET is side-effect free** (§7) — download only reads.
 
 ### Schemas (informal)
@@ -693,6 +717,15 @@ is one field for both cases:
   the entire string, then replaces the sentinel pairs with `<mark>…</mark>`.
   Because escaping happens first, the wrapped content is inert; the sentinels are
   the only thing ever turned into markup.
+  - **Sentinel transport over JSON (no special handling).** `U+0002`/`U+0003` are
+    C0 control characters, which JSON forbids *unescaped* in a string. This needs
+    **no special code**: Go's `encoding/json` (used by ogen) automatically emits
+    them as `\u0002`/`\u0003` on the wire, and the browser's `JSON.parse` restores
+    the raw runes — so the client's `String.replace` sees the actual `U+0002`/
+    `U+0003` runes after parsing. Do **not** pre-escape the sentinels to literal
+    `\u0002` text in the repository or hand-handle them at the JSON boundary; doing
+    so would either double-escape them or leave literal text the client's
+    sentinel→`<mark>` replacement never matches.
 
 ### Constraints (declared in `openapi.yaml`, per template security guidance)
 
@@ -705,7 +738,12 @@ is one field for both cases:
   (`service.ErrValidation`). This check cannot be expressed in `openapi.yaml`, so
   it is not part of ogen request validation.
 - `slug`: `maxLength: 100`, `pattern: '^[a-z0-9]+(?:-[a-z0-9]+)*$'`.
-- `q`: `maxLength: 200`.
+- `q`: **optional**, `maxLength: 200`, **no `minLength`**. It must be declared
+  not-required and without a `minLength`, because an **absent** `q` and a
+  **present-but-empty** `q` (`?q=`) are both valid "browse" inputs (§8): a stray
+  `minLength: 1` would make `?q=` an ogen `400` before the service's empty-⇒-browse
+  rule runs. (Whitespace-only `q` is also browse — handled in the service, not by
+  ogen.)
 - `limit`: 1–200, default 50 (`minimum: 1`, `maximum: 200`). `offset`: ≥ 0,
   default 0 — a `minimum: 0` **only; no `maximum` is declared, intentionally.**
   With a fixed `limit`, the largest `offset` the "Load more" flow issues grows
@@ -980,7 +1018,18 @@ works without server changes. Replace the hash router with a path router.
     - **"Dirty" is a value comparison against the last-saved snapshot**, not a
       keystroke counter. The editor holds a snapshot of the **last-saved** `(title,
       content, slug)` and is dirty whenever the current `(title, content, slug)`
-      differs from it. Consequences:
+      differs from it. **The `slug` component of the tuple is the *to-be-sent* slug,
+      not the displayed suggestion.** On `/new` the slug field shows an
+      auto-suggested *preview* that tracks the title, but the value compared in the
+      dirty tuple is what a save would actually send — `undefined`/unset while the
+      user has not manually edited the field (the same "did the user edit the slug?"
+      flag that decides whether `slug` is sent at all, §6 editor), and the field's
+      verbatim value once edited. This keeps the dirty check aligned with the send
+      decision and preserves the net-zero guarantee below: reverting a title to `""`
+      leaves the to-be-sent slug `undefined` again (no stale suggested-preview string
+      lingering in the tuple), so the editor returns to clean. (On
+      `/notes/{slug}/edit` the slug is unambiguous — the snapshot and current value
+      are both the note's actual slug.) Consequences:
       - Typing and then reverting back to the saved value clears dirty — **no
         spurious prompt** for a net-zero edit.
       - **Auto-title-sync counts as dirty.** When the untouched title tracks the
@@ -1545,7 +1594,12 @@ Mirrors the template; rename/replace `item*` with `note*`.
   walk + bluemonday HTML-fragment check, §4.1**), slug generation + collision
   resolution. Adds `ErrConflict`.
   On create, a nil/absent `content` is coalesced to `""` before storage (matches
-  the column `DEFAULT ''` and the API default).
+  the column `DEFAULT ''` and the API default). **The service performs this
+  coalescing itself** — it does **not** rely on ogen materializing the schema
+  `default: ""`; the `default` in `openapi.yaml` documents intent only. ogen emits
+  the optional `content` as an `Opt` wrapper whose unset state the service reads as
+  "absent" and replaces with `""`, so the behavior is identical whether or not a
+  given ogen version applies the schema `default`.
   - **Remove the template's content-mutating sanitize call.** The template's item
     service mutates the body in place on write — `content = sanitize.HTML(content)`
     on create and `clean := sanitize.HTML(*content)` on update (today at
