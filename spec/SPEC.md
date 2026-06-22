@@ -157,7 +157,11 @@ Notes:
     can both pass it); the DB `UNIQUE` constraint is the source of truth. On a
     `UNIQUE` violation for an auto-generated slug, the service re-resolves the
     suffix and retries the insert (**bounded at 5 attempts**), so concurrent
-    double-submits/autosaves never surface a spurious error. The `-2`/`-3`/…
+    double-submits/autosaves never surface a spurious error. "Re-resolves" means
+    it **re-runs the full suffix scan from `-2` against current DB state** (not
+    resume from the last counter): the re-scan observes the now-committed colliding
+    slug and selects the next free suffix, so the retry is self-healing and a
+    repeated collision on the same suffix cannot burn attempts. The `-2`/`-3`/…
     suffix search itself is data-bounded (it scans existing slugs) and is separate
     from this retry, which guards only the rare write race. If all 5 attempts
     still hit a `UNIQUE` violation, the service returns an **internal error
@@ -522,7 +526,10 @@ HTTP client) can save a note as a `.md` file directly.
     wrapped in `handler.WithMiddleware` (the same recovery/no-store/gzip chain the
     ogen mount uses — see `internal/handler/middleware.go`) so it does not bypass
     those cross-cutting concerns; a route registered bare on the mux would skip
-    them.
+    them. On an unknown slug (`service.ErrNotFound`) the thin route must emit the
+    **standard `{"error": "message"}` JSON body with a `404`**, reusing the same
+    error encoder as the ogen handler (do not hand-roll a different error shape),
+    so the fallback's error responses are byte-identical to every other route's.
 - **URL prefix (every `/notes/*` route, including `/download`).** The paths in the
   endpoint table and §6 are written **relative to the `/api/v1` base**; the actual
   served URL of the download is `/api/v1/notes/{slug}/download`. This matters for
@@ -679,7 +686,12 @@ is one field for both cases:
   it is not part of ogen request validation.
 - `slug`: `maxLength: 100`, `pattern: '^[a-z0-9]+(?:-[a-z0-9]+)*$'`.
 - `q`: `maxLength: 200`.
-- `limit`: 1–200, default 50. `offset`: ≥ 0, default 0. These bounds are
+- `limit`: 1–200, default 50 (`minimum: 1`, `maximum: 200`). `offset`: ≥ 0,
+  default 0 — a `minimum: 0` **only; no `maximum` is declared, intentionally.**
+  With a fixed `limit`, the largest `offset` the "Load more" flow issues grows
+  without bound as the collection grows (§6), so a `maximum` on `offset` would
+  break paging past that point; do **not** add one for symmetry with `limit`.
+  These bounds are
   declared as `minimum`/`maximum` on the query parameters in `openapi.yaml`, so
   an **out-of-range value is rejected by ogen request validation as `400`**
   (consistent with the malformed-slug `400` above) — the handler never clamps.
@@ -1344,8 +1356,9 @@ still fires it, harmlessly re-syncing the unchanged `title`/`content` into FTS.
   no matched phrase in that column it returns an **unmarked leading slice** of the
   content (its own ~30-token window, no `U+0002`/`U+0003`). Keying the fallback on
   "no sentinel present" therefore catches every no-highlight case — the title-only
-  match (unmarked slice), the empty-content note (empty string), and a content
-  match whose window happens to land with no marker — and rebuilds the excerpt
+  match (unmarked slice) and the empty-content note (empty string). (A genuine
+  content match is always marked by `snippet()`, so it never falls through to this
+  branch.) The fallback rebuilds the excerpt
   from the `substr(n.content, 1, 201)` the FTS query already selects (§9), so the
   result is the **same plain ~200-rune word-boundary prefix used when browsing**
   rather than `snippet()`'s shorter unmarked window. The row still shows title + a
@@ -1415,8 +1428,8 @@ Mirrors the template; rename/replace `item*` with `note*`.
     source `substr(n.content, 1, 201)` **as two columns of the same row** (the
     `substr` exactly as for the browse branch below). The repository then decides
     **per row**: if the `snippet()` value contains a `U+0002` start-sentinel, use it
-    as the excerpt; otherwise (title-only match, empty content, or an unmarked
-    window — §8) discard the snippet and build the plain ~200-rune word-boundary
+    as the excerpt; otherwise (title-only match or empty content — §8) discard
+    the snippet and build the plain ~200-rune word-boundary
     prefix from the `substr` column instead. Selecting only one of the two would
     leave the fallback with no content to render. The browse
     branch sets it from the plain ~200-rune word-boundary prefix (§5). To avoid
