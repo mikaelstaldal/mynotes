@@ -157,7 +157,8 @@ Notes:
     can both pass it); the DB `UNIQUE` constraint is the source of truth. On a
     `UNIQUE` violation for an auto-generated slug, the service re-resolves the
     suffix and retries the insert (**bounded at 5 attempts**), so concurrent
-    double-submits/autosaves never surface a spurious error. "Re-resolves" means
+    double-submits (a double-clicked Save, or a Save issued from two tabs) never
+    surface a spurious error. "Re-resolves" means
     it **re-runs the full suffix scan from `-2` against current DB state** (not
     resume from the last counter): the re-scan observes the now-committed colliding
     slug and selects the next free suffix, so the retry is self-healing and a
@@ -175,8 +176,10 @@ Notes:
     constraint on the `INSERT`/`UPDATE` is mapped to **`ErrConflict` → `409`**
     (the same outcome as the advisory check catching it), **not** surfaced as a
     raw `500`. This applies to **both** an explicit-slug create and a `PATCH`
-    slug rename (§9): the editor's debounced autosave makes the double-submit
-    race real, and a `409` is the correct, consistent response in every case.
+    slug rename (§9): the editor's Save can be issued concurrently (a
+    double-clicked Save button, or the same note open in two tabs), making the
+    double-submit race real, and a `409` is the correct, consistent response in
+    every case.
 - **Editing:** a slug *may* be changed via `PATCH`. Setting `slug` to a value
   already used by **another** note returns `409`; setting it to the note's own
   current slug is a no-op (not a conflict, and — being a no-op — does not bump
@@ -276,7 +279,17 @@ resulting AST, rejecting the write with
     **canonical re-serialization of the original fragment through the same HTML
     tokenizer** (`golang.org/x/net/html`, which bluemonday itself uses): pure
     formatting differences cancel on both sides, so only genuinely stripped or
-    rewritten (i.e. unsafe) content trips the rejection. For this to hold the
+    rewritten (i.e. unsafe) content trips the rejection. The comparison is at the
+    **token-stream level** (re-emit each tokenizer token), matching how bluemonday
+    processes input — *not* a parse-tree (`html.Parse`) balancing. This matters
+    because inline raw HTML tokenizes **one tag at a time**: a CommonMark inline
+    `<a href="https://x">text</a>` is two separate `ast.KindRawHTML` nodes
+    (`<a href="https://x">` and `</a>`) with the link text parsed as Markdown in
+    between, and each node is validated on its own. A lone start or end tag
+    re-serializes **identically** on both sides (no auto-balancing is introduced),
+    so a safe lone tag is never falsely rejected; only a fragment bluemonday
+    actually strips or rewrites diverges and trips the rejection. (Block HTML is
+    captured whole as one `ast.KindHTMLBlock` node and validated the same way.) For this to hold the
     validation policy must be configured **removal-only** — it must **not inject
     or rewrite** attributes (no `rel="nofollow"`, no `target="_blank"`, none of
     UGCPolicy's default additions), because any addition would make even safe HTML
@@ -382,8 +395,8 @@ resulting AST, rejecting the write with
   this only **accepts or rejects** — it never strips or rewrites the stored bytes.
   - **`title` rejects *all* C0 control characters** — including tab/newline/CR,
     which `content` allows. `title` is a single-line display string (shown as a
-    list-row heading and the read-view `<h1>`) with no legitimate use for any
-    control character, and it is **FTS-indexed alongside `content`** (§8), so the
+    list-row heading and used as the browser tab `<title>` on the read view — §6)
+    with no legitimate use for any control character, and it is **FTS-indexed alongside `content`** (§8), so the
     same sentinel concern applies: a `U+0002`/`U+0003` in a title must never reach
     storage. This is the same flat rune scan (post-`TrimSpace`, §9), applied to the
     submitted title on **create and update**, rejecting with `service.ErrValidation`
@@ -787,7 +800,7 @@ works without server changes. Replace the hash router with a path router.
     or not `q` is present.
     - **`total` is best-effort, not transactionally consistent with the page.**
       The page query and the `COUNT(*)` are separate statements (§9), so a
-      concurrent create/delete (multiple tabs, debounced autosave) can leave
+      concurrent create/delete (multiple tabs, or a double-clicked Save) can leave
       `total` momentarily out of step with the rows returned. This is acceptable
       for a single-user tool (same last-write-wins stance as the racy slug check,
       §3.1) and self-corrects on the next fetch. The client must therefore tolerate
@@ -852,6 +865,15 @@ works without server changes. Replace the hash router with a path router.
   markdown-it → DOMPurify pipeline (§4), and injects the sanitized HTML into a
   constrained, styled container. "Edit", "Delete", and "Download Markdown"
   actions. 404 view for missing slugs.
+  - **The stored `title` is *not* rendered in the read-view body.** A note's
+    `content` almost always opens with its own `# heading` (that heading is exactly
+    what the title auto-derives from, §3), so rendering a separate title `<h1>`
+    above the body would duplicate it. The read view therefore shows **only** the
+    rendered Markdown; the on-page heading comes from the content itself. The stored
+    `title` is still used as the **browser tab `<title>`** (set on navigation to the
+    read view), in list rows, and for search — just not injected as a body heading.
+    (A note whose content has no leading heading simply renders without one; this is
+    accepted for v1 and the title remains visible in the tab and list.)
   - **Malformed-slug deep links (decided).** `/notes/{slug}` is a valid SPA path
     even when `{slug}` violates the API slug pattern (e.g. `/notes/Bad_Slug!`),
     so the read flow does **not** pre-validate the slug client-side; it issues the
