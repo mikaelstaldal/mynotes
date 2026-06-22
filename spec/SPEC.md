@@ -178,7 +178,14 @@ Notes:
   current slug is a no-op (not a conflict, and — being a no-op — does not bump
   `updated_at`; see §5). Changing it changes the note's URL —
   old links break. This is acceptable for a personal tool; the UI should warn
-  before changing an existing slug. (No automatic redirects in v1.)
+  before changing an existing slug. (No automatic redirects in v1.) A `PATCH`
+  slug is **always an explicit value** the client supplies: there is **no
+  auto-regeneration or re-derivation from the title on update** (auto-generation
+  and collision-suffixing happen only on create, when no slug is sent — §3.1
+  Generation/Uniqueness). To change a slug the client sends the exact new value;
+  to leave it unchanged the client omits the field. A slug can never be emptied
+  (the `minLength`/pattern forbid `""`), so there is no "clear slug" semantic
+  paralleling `content: ""`.
 - Reserved slugs: none required, because note URLs live under a `/notes/`
   prefix that cannot collide with app routes (see §6).
 
@@ -640,6 +647,14 @@ is one field for both cases:
   at 199 runes** (still on a rune boundary) before appending `…`, so the excerpt is
   always bounded at 200 runes. A note with empty `content` yields an empty
   `excerpt`.
+  - **When `…` is appended (no spurious ellipsis at the boundary).** The `…` is
+    added **only when the source is actually longer than the displayed prefix** —
+    i.e. when the content exceeds 200 runes. Implemented over the `substr(content,
+    1, 201)` probe (§9): the probe returns **201** runes exactly when the content is
+    longer than 200 (so truncation is needed and `…` is appended); a probe result
+    of **≤200** runes is the *entire* content, which is shown **verbatim with no
+    `…`** (a 200-rune note is not truncated). In particular content of exactly 200
+    runes must not gain a trailing `…`.
 - **Searching (`q` present):** an FTS5 `snippet()` — a short window (~30 tokens)
   centred on the match, so this branch is **token-bounded** and does **not** share
   the browse branch's 200-rune budget above; the two excerpt shapes deliberately
@@ -724,7 +739,11 @@ works without server changes. Replace the hash router with a path router.
     `openapi.yaml`, enforced by ogen request validation (a `400` for an
     over-length value, §5). The search box must therefore cap the query at 200
     runes before sending rather than relying on the server, so a long paste never
-    surfaces a confusing validation `400` through the `api` client. **Count runes,
+    surfaces a confusing validation `400` through the `api` client. The cap is a
+    **silent truncation of the outgoing `q`** (the text actually sent to `GET
+    /notes`) to its first 200 runes; the input field itself is not hard-blocked,
+    matching the silent-truncation approach used for the title auto-derivation (§3)
+    and upload filename/title (§6). **Count runes,
     not UTF-16 code units:** ogen's `maxLength` counts Unicode code points (matching
     Go's `utf8.RuneCountInString`), whereas the HTML `maxlength` attribute and a
     naive `String.length`/`.slice` count UTF-16 units, so astral characters (emoji)
@@ -757,6 +776,18 @@ works without server changes. Replace the hash router with a path router.
       fresh result set: the accumulated rows are discarded and `offset` resets to
       0 before the first request, so pages from a previous query are never mixed
       in. (Each `GET /notes` request carries the current `q`.)
+    - **De-duplicate appended rows by slug.** Offset-based paging over an
+      `updated_at DESC` ordering is **not** stable under concurrent writes: a
+      create/edit between two page fetches shifts rows across the page boundary, so
+      a note already shown can reappear in the next page (or, symmetrically, a row
+      can be skipped). To avoid a **visibly duplicated** list row, the client
+      **drops any incoming row whose `slug` is already in the accumulated list**
+      when appending (`newRows.filter(r => !shown.has(r.slug))`, keyed by the
+      unique `slug`). This is purely cosmetic de-duplication on top of the
+      best-effort `total` (above) — both follow the same single-user,
+      last-write-wins stance (§3.1); a skipped row is accepted and self-corrects on
+      the next fresh fetch. It is **not** a guarantee of a transactionally
+      consistent page.
     - **Bounds.** `limit` stays at the in-range default (50) and `offset` is only
       ever advanced by a multiple of it, so both remain within their declared
       ranges (§5: `limit` 1–200, `offset` ≥ 0); the client still **clamps both
@@ -843,7 +874,20 @@ works without server changes. Replace the hash router with a path router.
     other character that is special in a link destination.) The inserted path is an in-app
     route (§6), so following it navigates within the SPA; it needs no new API or
     server support and passes through the same `validateLink`/DOMPurify gates as
-    any other link (§7).
+    any other link (§7). For the relative `/notes/<slug>` href to survive
+    DOMPurify, its `ALLOWED_URI_REGEXP` must admit relative URLs (§7) — without
+    that, the inserted link would render hrefless.
+    - **The note being edited is filtered out of its own picker.** When editing an
+      existing note (`/notes/{slug}/edit`), the picker excludes that note from its
+      results (`results.filter(n => n.slug !== currentSlug)`), so a note cannot be
+      linked to itself. (On `/new` there is no current slug, so nothing is
+      filtered.)
+    - **Links use server-current slugs (mid-rename race accepted).** The picker
+      shows each note's slug as returned by `GET /notes?q=`, so if a note is being
+      renamed in another tab the inserted link can point at a soon-to-be-dead slug.
+      This is accepted, not guarded — the same single-user, last-write-wins stance
+      as the racy slug check (§3.1) and the best-effort paging above; a stale in-app
+      link simply resolves to the §6 not-found view if followed after the rename.
   - Save (create/update) and Cancel. Unsaved-changes guard covering **both**
     intercepted in-app (pushState) navigations and real browser unload/reload
     (`beforeunload`).
@@ -1062,9 +1106,20 @@ check, remain untrusted, so render-time gating stands regardless.
      markdown-it emits on fenced `<code>` now **survives** (class is allowed) but
      is inert — there is still **no read-view syntax highlighting in v1**; adding
      one later needs no allow-list change. **URI policy — `data:` scoped to images,
-     blocked on anchors.** Set
-     `ALLOWED_URI_REGEXP` to the scheme-only regexp `/^(?:https?|mailto):/i`
-     (`http`/`https`/`mailto`, **no `data:`**). DOMPurify's own built-in `data:`
+     blocked on anchors, relative URLs allowed.** Set
+     `ALLOWED_URI_REGEXP` to
+     **`/^(?:(?:https?|mailto):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i`** — the
+     three-scheme allow-list (`http`/`https`/`mailto`, **no `data:`**) **plus
+     DOMPurify's own relative-URL alternation taken verbatim**. The relative
+     alternation is **load-bearing, not optional**: a scheme-only regexp like
+     `/^(?:https?|mailto):/i` would match no relative URL and DOMPurify would
+     strip the `href` from every **root-relative** in-app link — exactly the
+     `[<title>](/notes/<slug>)` links the "Link to note" feature (§6) and the §4.1
+     no-scheme allowance depend on — silently breaking SPA navigation. The
+     alternation (`[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$)`) admits root-relative
+     (`/notes/x`) and bare-relative (`foo`, `./bar`) destinations while still
+     rejecting any disallowed explicit scheme, matching §4.1's "no-scheme
+     destinations are allowed" rule. DOMPurify's own built-in `data:`
      handling is already restricted to image-bearing tags (it admits `data:` on
      `img` and a few media tags, **never on `<a>`**), so with `data:` left out of
      `ALLOWED_URI_REGEXP` the baseline net effect is: `data:` images survive on
@@ -1186,6 +1241,16 @@ base table, kept in sync by triggers). Index `title` and `content` (the Markdown
 source — searching the source is acceptable and simple; punctuation/markup noise
 is minor).
 
+The `MATCH ?` predicate (in both the page query and the `COUNT(*)`, §9) is
+**unqualified** — it is `notes_fts MATCH ?` / `f MATCH ?`, **not**
+`content MATCH ?` — so a query matches against **both** indexed columns (`title`
+and `content`). This is load-bearing: a title-only match (a `q` that hits only
+the `title` column) is exactly the case the §8 snippet fallback handles, and it
+can only arise if `title` participates in the match. A column-qualified
+`content MATCH ?` would silently break title search and the title-only-match
+fallback. (The snippet, by contrast, is taken only from the `content` column —
+index 1 — see below.)
+
 ```sql
 CREATE VIRTUAL TABLE notes_fts USING fts5(
   title, content,
@@ -1255,10 +1320,20 @@ still fires it, harmlessly re-syncing the unchanged `title`/`content` into FTS.
   first argument is the **same FTS table reference used in the query** — use the
   alias `f` consistently rather than the bare table name `notes_fts`, so the two
   passages (§8 here and §9) agree
-  — with a budget of ~30 tokens and `…`
+  — with a budget of ~30 tokens (within FTS5's required 1..64 range for the
+  token-count argument) and `…`
   as the leading/trailing ellipsis text, passing the **sentinel** start/end
   strings `U+0002` / `U+0003` (not HTML tags) so matched terms are marked without
-  injecting markup. **Title-only matches:** when the query matches only in the
+  injecting markup. The mark/ellipsis arguments to `snippet()` are **literals in
+  the SQL text** of the call — FTS5's `snippet()` does **not** accept bind
+  parameters for them, so only the `MATCH` term is a bound `?`. **Express the two
+  control sentinels as SQLite `char(2)`/`char(3)`** rather than raw control bytes
+  embedded in the Go query-string constant: the call reads
+  `snippet(f, 1, char(2), char(3), '…', 30)`, which keeps the Go source readable
+  and free of invisible control characters while producing the identical `U+0002`/
+  `U+0003` delimiters at query time. (The result is byte-for-byte equivalent to
+  embedding the literal control bytes; `char(2)`/`char(3)` is purely a
+  source-readability choice.) **Title-only matches:** when the query matches only in the
   `title` column, the content snippet carries **no marked term**, so it falls
   back to the plain truncated content prefix (the same value used when browsing,
   no sentinels). The title itself is already shown separately as the row heading,
@@ -1336,10 +1411,14 @@ Mirrors the template; rename/replace `item*` with `note*`.
     (decided), so each `NoteSummary` it returns is ready to use and the
     service/handler pass it through unchanged. The FTS branch sets `excerpt` from
     `snippet()` (with the empty-snippet → plain-prefix fallback of §8) — and so the
-    FTS join query must **also select the truncated source** (`substr(n.content, 1,
-    201)`, as for the browse branch below), so the title-only-match fallback (the
-    common case, §8) has that plain prefix available to build from; without it the
-    fallback has no content to render. The browse
+    FTS join query must **select both** the `snippet(...)` **and** the truncated
+    source `substr(n.content, 1, 201)` **as two columns of the same row** (the
+    `substr` exactly as for the browse branch below). The repository then decides
+    **per row**: if the `snippet()` value contains a `U+0002` start-sentinel, use it
+    as the excerpt; otherwise (title-only match, empty content, or an unmarked
+    window — §8) discard the snippet and build the plain ~200-rune word-boundary
+    prefix from the `substr` column instead. Selecting only one of the two would
+    leave the fallback with no content to render. The browse
     branch sets it from the plain ~200-rune word-boundary prefix (§5). To avoid
     pulling full 1,000,000-char `content` into Go for every list row, the browse
     branch should SQL-truncate the source — note that SQLite's `substr(content, 1,
@@ -1380,6 +1459,12 @@ Mirrors the template; rename/replace `item*` with `note*`.
   resolution. Adds `ErrConflict`.
   On create, a nil/absent `content` is coalesced to `""` before storage (matches
   the column `DEFAULT ''` and the API default).
+  - **Create timestamps.** On create the service sets `created_at = updated_at =
+    now` (UTC RFC 3339), the same instant for both. This guarantees a freshly
+    created note sorts to the top of the browse list (`updated_at DESC, id DESC`,
+    §8) and makes the immutable-`created_at` rule (§5) consistent with the initial
+    `updated_at`. (`PATCH` never touches `created_at`; it bumps `updated_at` only
+    on a real change, §5.)
   - **Trimming (template convention).** The service `strings.TrimSpace`-es the
     **`title`** before validating it (as the template's item service does), so a
     whitespace-only title that slips past ogen's `minLength: 1` (e.g. `" "`)
