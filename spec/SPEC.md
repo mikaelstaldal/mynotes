@@ -236,7 +236,12 @@ is a **structural allow-list** over the parsed document. On **create and update*
 (`POST /notes`, `PATCH /notes/{slug}` when `content` is present) the service
 parses `content` with **Goldmark** (`github.com/yuin/goldmark`, configured to
 match the client's enabled feature set — GFM tables, strikethrough, and
-linkify/autolinks) and walks the resulting AST, rejecting the write with
+linkify/autolinks; **raw HTML and images need no extra parser option** — both are
+CommonMark-core and already appear in Goldmark's default AST as
+`ast.KindRawHTML`/`ast.KindHTMLBlock` and `ast.KindImage` nodes, which is all this
+gate walks. `WithUnsafe` is a *renderer* option governing HTML **output** and is
+irrelevant here, since the content is never rendered server-side) and walks the
+resulting AST, rejecting the write with
 `service.ErrValidation` → `400` if any of the following appears:
 
 - **Embedded HTML with disallowed elements, attributes, or schemes.** Embedded
@@ -342,8 +347,16 @@ linkify/autolinks) and walks the resulting AST, rejecting the write with
   destination.) Any explicit non-allow-listed scheme (`javascript:`, `vbscript:`,
   `file:`, `data:text/html`, …) is rejected as before.
 - **Excessive nesting** — block/inline nesting deeper than **100** levels,
-  matching markdown-it's `maxNesting: 100` default on the client (so anything the
-  server accepts the client can also render) and bounding parser/render cost.
+  matching markdown-it's `maxNesting: 100` default on the client and bounding
+  parser/render cost. **Parity here is a goal, not a guarantee** (same disclaimer
+  as the HTML and linkify divergences above): Goldmark counts AST depth while
+  markdown-it's `maxNesting` counts its own parser recursion, so the two notions of
+  "depth" do not correspond 1:1 and equal numbers do **not** strictly guarantee
+  "anything the server accepts the client can also render." This is not a security
+  gap — DOMPurify is the authoritative render-time gate (§7 defense 3), and the
+  check's real job is **bounding parser/render cost** (a coarse DoS guard), for
+  which any reasonable bound works. A divergence at the extreme (≈100-deep nesting)
+  is at worst a rendering wrinkle on pathological input, never a hole.
 - **C0 control characters** — `content` containing any C0 control character
   **except** tab (`U+0009`), newline (`U+000A`), and carriage return (`U+000D`) is
   rejected. This is a flat byte/rune scan (it does **not** require the Goldmark
@@ -356,6 +369,15 @@ linkify/autolinks) and walks the resulting AST, rejecting the write with
   are rejected alongside them; the three whitespace controls above are the only
   ones meaningful in Markdown source and stay allowed. Like every other check here
   this only **accepts or rejects** — it never strips or rewrites the stored bytes.
+  - **`title` rejects *all* C0 control characters** — including tab/newline/CR,
+    which `content` allows. `title` is a single-line display string (shown as a
+    list-row heading and the read-view `<h1>`) with no legitimate use for any
+    control character, and it is **FTS-indexed alongside `content`** (§8), so the
+    same sentinel concern applies: a `U+0002`/`U+0003` in a title must never reach
+    storage. This is the same flat rune scan (post-`TrimSpace`, §9), applied to the
+    submitted title on **create and update**, rejecting with `service.ErrValidation`
+    → `400`. (The tab/newline/CR exception is `content`-only because those carry
+    Markdown meaning in body source; a title has none.)
 
 This check is enforced in the **service layer**, not by ogen: it is structural,
 not a string `pattern`/`maxLength`, so `openapi.yaml` cannot express it (length
@@ -519,6 +541,13 @@ HTTP client) can save a note as a `.md` file directly.
   body, `Content-Disposition` set) should be **smoke-tested in a real browser**
   during the milestone-1 spike, since some browsers handle a zero-length
   attachment download inconsistently — verify it actually saves an empty `.md`.
+  The spike must **also** confirm the gzip middleware behaves sanely over the
+  zero-length body: most gzip layers skip bodies below a min-length threshold
+  (emitting the empty body uncompressed, no `Content-Encoding`), but since this
+  empty-download path is load-bearing, inspect the actual on-wire response rather
+  than assuming — a `Content-Encoding: gzip` (or a non-empty compressed stream)
+  over an empty body is the failure mode to rule out, and is a trigger for the
+  thin-route fallback if `go-server-common`'s gzip layer produces it.
 - **GET is side-effect free** (§7) — download only reads.
 
 ### Schemas (informal)
@@ -611,7 +640,10 @@ is one field for both cases:
   at 199 runes** (still on a rune boundary) before appending `…`, so the excerpt is
   always bounded at 200 runes. A note with empty `content` yields an empty
   `excerpt`.
-- **Searching (`q` present):** an FTS5 `snippet()` whose matched terms are
+- **Searching (`q` present):** an FTS5 `snippet()` — a short window (~30 tokens)
+  centred on the match, so this branch is **token-bounded** and does **not** share
+  the browse branch's 200-rune budget above; the two excerpt shapes deliberately
+  differ (a match-centred window vs. a leading prefix). Its matched terms are
   wrapped in **non-HTML sentinel delimiters** (`U+0002` start, `U+0003` end) that
   cannot occur in stored note text — **write-time validation rejects content
   containing these (and other C0 controls except tab/newline/CR), §4.1**, so the
@@ -1227,17 +1259,25 @@ still fires it, harmlessly re-syncing the unchanged `title`/`content` into FTS.
   as the leading/trailing ellipsis text, passing the **sentinel** start/end
   strings `U+0002` / `U+0003` (not HTML tags) so matched terms are marked without
   injecting markup. **Title-only matches:** when the query matches only in the
-  `title` column, the content snippet is empty; in that case fall back to the
-  plain truncated content prefix (the same value used when browsing, no
-  sentinels). The title itself is already shown separately as the row heading, so
-  no title snippet is produced. The fallback is triggered by an **empty snippet
-  string**, whatever the cause — title-only matches are the common case, but a
-  content match that lands outside the snippet window can also yield an empty
-  snippet; both degrade to the plain prefix, which is acceptable (the row still
-  shows title + a readable excerpt, just without inline highlight markers). A
-  title-only match on a note whose `content` is **empty** therefore yields an
-  **empty `excerpt`** — the same result as browsing an empty-content note (§5);
-  no placeholder text is substituted. When `q` is absent, the `excerpt` is just a
+  `title` column, the content snippet carries **no marked term**, so it falls
+  back to the plain truncated content prefix (the same value used when browsing,
+  no sentinels). The title itself is already shown separately as the row heading,
+  so no title snippet is produced. **The fallback is triggered by the absence of
+  any `U+0002` start-sentinel in the snippet — not by an empty string.** This is
+  deliberate: for a title-only match on a note with **non-empty** `content`, FTS5
+  `snippet()` over the `content` column does **not** return an empty string — with
+  no matched phrase in that column it returns an **unmarked leading slice** of the
+  content (its own ~30-token window, no `U+0002`/`U+0003`). Keying the fallback on
+  "no sentinel present" therefore catches every no-highlight case — the title-only
+  match (unmarked slice), the empty-content note (empty string), and a content
+  match whose window happens to land with no marker — and rebuilds the excerpt
+  from the `substr(n.content, 1, 201)` the FTS query already selects (§9), so the
+  result is the **same plain ~200-rune word-boundary prefix used when browsing**
+  rather than `snippet()`'s shorter unmarked window. The row still shows title + a
+  readable excerpt, just without inline highlight markers. A title-only match on a
+  note whose `content` is **empty** therefore yields an **empty `excerpt`** — the
+  same result as browsing an empty-content note (§5); no placeholder text is
+  substituted. When `q` is absent, the `excerpt` is just a
   ~200-character plain-text prefix of the source (no `snippet()`, no sentinels).
   The client escapes the whole string and only then converts sentinel pairs to
   `<mark>` (§5) — markers are never free-form HTML.
@@ -1343,7 +1383,12 @@ Mirrors the template; rename/replace `item*` with `note*`.
   - **Trimming (template convention).** The service `strings.TrimSpace`-es the
     **`title`** before validating it (as the template's item service does), so a
     whitespace-only title that slips past ogen's `minLength: 1` (e.g. `" "`)
-    becomes `""` and is rejected with `ErrValidation` → `400`. **`content` is
+    becomes `""` and is rejected with `ErrValidation` → `400`. After trimming, the
+    service also rejects a `title` containing **any C0 control character**
+    (including tab/newline/CR — stricter than the `content` scan, which allows
+    those three; see §4.1): a title is a single-line, FTS-indexed display string
+    with no legitimate control characters, and this guarantees the search sentinels
+    `U+0002`/`U+0003` never enter a title either. **`content` is
     never trimmed** — leading/trailing whitespace and blank lines are meaningful
     Markdown and are stored verbatim. (The auto-derived-title path in §3 already
     produces trimmed heading text client-side, but the server trim is the
@@ -1401,7 +1446,9 @@ Follow template conventions (`testify`, in-memory SQLite
   parameter-less `data:image/png,…` (no `;`) rejected, and
   `data:image/svg+xml` rejected on images too (§7); over-deep nesting
   rejected; **content containing a C0 control char — a sentinel `U+0002`/`U+0003`,
-  or e.g. NUL — rejected, while tab/newline/CR are accepted** (§4.1, §8); valid GFM
+  or e.g. NUL — rejected, while tab/newline/CR are accepted** (§4.1, §8); **a
+  `title` containing *any* C0 control char — including tab/newline/CR — rejected**
+  (stricter than the content scan, §4.1/§9); valid GFM
   and empty content accepted; both create and update paths covered. (No rendering
   to test server-side.)
 - **Handler:** full request/response cycle for each endpoint; error→status
