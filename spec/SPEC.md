@@ -200,10 +200,13 @@ it to HTML. All Markdown→HTML conversion happens in the browser.
   through the sanitizer; `- [ ]` simply renders as a literal list item). **Images
   are enabled**: Markdown image
   syntax renders `<img>`. The sanitizer's scheme allow-list permits `https` and
-  `data:` for image `src` (an `http` `src` survives sanitization but is blocked
-  at load time by CSP `img-src`, which omits `http`, avoiding mixed content); no
+  the canonical `data:` raster set for image `src`; an `http` `src` survives
+  client sanitization but is blocked at load time by CSP `img-src` (which omits
+  `http`, avoiding mixed content), and on **write** the server goes further and
+  **rejects** an `http` image destination outright (§4.1), so a silently-broken
+  `http` image is never stored via the API in the first place. No
   uploads — only referencing remote/inline
-  images, consistent with the v1 non-goal on attachments). This requires a small
+  images, consistent with the v1 non-goal on attachments. This requires a small
   CSP `img-src` change (§7).
 - **Storage:** the raw Markdown source is stored verbatim in `content`. It is
   **not** HTML-sanitized on the way in (that would corrupt the source). Length,
@@ -272,11 +275,18 @@ linkify/autolinks) and walks the resulting AST, rejecting the write with
     `details`/`summary`, `figure`, `div`/`span`, `a`, `img`), which **excludes**
     the dangerous/interactive set (`script`, `style`, `iframe`/`object`/`embed`,
     `form`/`input`/`button`, raw media) and all `on*` event handlers. To it we add
-    the project's URL rules (and disable the additions noted above): keep
-    `http`/`https`/`mailto` and relative URLs, and additionally permit
-    **`data:image/(gif|png|jpeg|webp)` on `img@src`** (UGCPolicy omits `data:`) —
-    the same canonical four-subtype list used for Markdown-native images below,
-    excluding `data:image/svg+xml`. The client DOMPurify
+    the project's URL rules (and disable the additions noted above). On `<a href>`
+    keep `http`/`https`/`mailto` and relative URLs. On `img@src` allow **only
+    `https`, relative URLs, and the canonical `data:` raster set** —
+    `data:image/(gif|png|jpeg|webp);` (note the required trailing `;`, §7 defense 2;
+    UGCPolicy omits `data:`), **excluding `data:image/svg+xml`** and **dropping
+    `http`** — so an embedded-HTML `<img>` obeys the same rule as a Markdown-native
+    image (the bullet below): no `http` images are stored, matching the "reject up
+    front rather than render a silently-broken image" decision. bluemonday enforces
+    the per-element `img@src` rule with a `Matching` regexp on the `src` attribute
+    (ANDed with the global scheme policy), so an `http` or non-canonical `data:`
+    `src` is stripped — which trips the canonical-reserialization compare (above)
+    and **rejects the whole write**. The client DOMPurify
     config (§7) is set to the **same** element/attribute/scheme profile so the two
     gates agree on "safe HTML."
   - **Parity is a goal, not a security dependency.** Because DOMPurify is the
@@ -286,24 +296,51 @@ linkify/autolinks) and walks the resulting AST, rejecting the write with
     DOMPurify would keep, the user sees a `400`. Neither is unsafe. Milestone 7
     pins the two against a **shared test vector** (§10) so they stay aligned, but
     they need not be byte-identical.
+  - **The same disclaimer covers linkify divergence.** markdown-it's `linkify`
+    (`linkify-it`) and Goldmark's linkify recognize **different** bare-text
+    URL/email patterns (e.g. `www.host` with no scheme, and differing email/IP
+    heuristics), so a bare string the client auto-links into an anchor may stay
+    plain text on the server — and thus skip the server's Markdown-native scheme
+    check (below) — or vice-versa. This is **not** a security gap: any link the
+    client actually renders still passes markdown-it `validateLink` **and**
+    DOMPurify (the authoritative render-time gate, §7 defense 3), which enforce the
+    scheme rules regardless of whether the server's parser saw the same link. The
+    server-side scheme check is defense-in-depth over the links Goldmark *does*
+    recognize, never a guarantee that the two linkifiers produce identical link
+    sets. (Linkified destinations are always `http`/`https`/`mailto`, the
+    allow-listed schemes, so even when the server does recognize them they pass.)
 - **Disallowed URL schemes in Markdown-native links/images** — bluemonday (above)
   governs schemes *inside embedded HTML*; Markdown link/image **syntax** parses as
   `ast.KindLink` / `ast.KindAutoLink` / `ast.KindImage` nodes (not HTML), so the
-  service checks **those** destinations separately against the same scheme
-  allow-list. The allow-list **mirrors §7**: `http`, `https`, `mailto` for links
-  and images, plus `data:` for **image** destinations only (never on links) and
-  then restricted to the **canonical four raster subtypes**
-  `data:image/(gif|png|jpeg|webp)` — **the exact set markdown-it's default
-  `validateLink` accepts** (§7 defense 2). This deliberately **excludes
-  `data:image/svg+xml`** (an XSS vector — SVG can carry script) and any other
-  `data:image/...` subtype, so the server never stores a `data:` image the client
-  refuses to render, and the SVG-script surface is closed at every gate. (The
-  `image/*` wildcard is *not* used — see §7 for the single canonical list shared
-  by the server check, markdown-it `validateLink`, and DOMPurify.) Destinations
-  that carry **no scheme** — root-relative (`/notes/x`, the in-app note links of
-  §6 depend on this), scheme-relative (`//host/...`), and bare-relative — are
-  allowed; only an explicit non-allow-listed scheme (`javascript:`, `vbscript:`,
-  `file:`, `data:text/html`, …) is rejected.
+  service checks **those** destinations separately against the scheme allow-list,
+  which **differs by destination kind** (mirroring §7):
+  - **Links** (`ast.KindLink` / `ast.KindAutoLink`): `http`, `https`, `mailto`.
+  - **Images** (`ast.KindImage`): `https` and the canonical `data:` raster set
+    only — **`http` is *not* allowed on an image destination.** (An `http` image
+    only ever gets blocked at load time by CSP `img-src`, rendering a
+    silently-broken image with no feedback, so the write is rejected up front
+    instead.) The `data:` allowance is the **canonical four raster subtypes**,
+    expressed as the regexp **`^data:image/(gif|png|jpeg|webp);`** — note the
+    **required trailing `;`** (the subtype must be followed by a media-type
+    parameter such as `;base64,`). This is **markdown-it's default `validateLink`
+    `data:` rule verbatim** (`GOOD_DATA_RE = /^data:image\/(gif|png|jpeg|webp);/`,
+    §7 defense 2), so it deliberately **excludes `data:image/svg+xml`** (an XSS
+    vector — SVG can carry script), any other `data:image/...` subtype, **and** a
+    parameter-less `data:image/png,…` (no `;`) — the server never stores a `data:`
+    image the client refuses to render, and the SVG-script surface is closed at
+    every gate. `data:` is **never** allowed on a link. (The `image/*` wildcard is
+    *not* used — see §7 for the single canonical list shared by the server check,
+    markdown-it `validateLink`, and DOMPurify.)
+
+  Destinations that carry **no scheme** — root-relative (`/notes/x`, the in-app
+  note links of §6 depend on this) and bare-relative (`foo`, `./bar`) — are
+  allowed. **Scheme-relative destinations (`//host/...`) are rejected** on both
+  links and images: they inherit the page scheme and reach an arbitrary external
+  host (the same mixed-content/privacy surface as a remote image) while sitting
+  outside the explicit scheme allow-list, so the write is rejected rather than
+  silently stored. (Detecting one is a simple leading-`//` check on the
+  destination.) Any explicit non-allow-listed scheme (`javascript:`, `vbscript:`,
+  `file:`, `data:text/html`, …) is rejected as before.
 - **Excessive nesting** — block/inline nesting deeper than **100** levels,
   matching markdown-it's `maxNesting: 100` default on the client (so anything the
   server accepts the client can also render) and bounding parser/render cost.
@@ -952,7 +989,16 @@ check, remain untrusted, so render-time gating stands regardless.
    four-subtype list `data:image/(gif|png|jpeg|webp)` is the single canonical
    `data:` image allow-list** used by the server's Markdown-native scheme check and
    bluemonday `img@src` rule (§4.1) and DOMPurify (defense 3) alike, deliberately
-   excluding `data:image/svg+xml` (an SVG-script XSS vector). Because only those subtypes survive here, a `data:` value on an anchor
+   excluding `data:image/svg+xml` (an SVG-script XSS vector). **Precisely, the
+   canonical allow-list is the regexp `^data:image/(gif|png|jpeg|webp);`** — note
+   the **required trailing `;`** (the subtype must be followed by a media-type
+   parameter such as `;base64,`), which is markdown-it's built-in `validateLink`
+   rule verbatim (`GOOD_DATA_RE = /^data:image\/(gif|png|jpeg|webp);/`). The
+   server's Markdown-native scheme check, the bluemonday `img@src` `Matching`
+   regexp (§4.1), and the DOMPurify `uponSanitizeAttribute` hook (defense 3) all use
+   this **same** regexp, so a parameter-less `data:image/png,…` (no `;`) is rejected
+   by every gate. **Every shorthand `data:image/(gif|png|jpeg|webp)` elsewhere in
+   this spec denotes this exact regexp.** Because only those subtypes survive here, a `data:` value on an anchor
    is at worst a harmless inline raster image; the dangerous `data:text/html` is
    already gone. The per-tag distinction that matters (`data:` belongs on images, not
    anchors) is enforced authoritatively in DOMPurify (defense 3).
@@ -1002,8 +1048,19 @@ check, remain untrusted, so render-time gating stands regardless.
      close the SVG subtype that DOMPurify's defaults would otherwise admit. **The
      spike (§10 / milestone 7) must confirm:** `data:image/png;base64,…` survives
      on `<img>`; `data:image/svg+xml,…` is **stripped** from `<img>`; and `data:`
-     (in particular `data:text/html,…`) is stripped from `<a href>`. `http`
-     image `src` is blocked at load time by CSP `img-src`, not by the sanitizer.
+     (in particular `data:text/html,…`) is stripped from `<a href>`. The hook's
+     `data:` test is the **canonical `^data:image/(gif|png|jpeg|webp);` regexp**
+     (with the trailing `;`, §7 defense 2), so it stays identical to the server's
+     check and to markdown-it's `validateLink`. **`http` image `src` note:** an
+     `http` `src` is *not* stripped by this client sanitizer (DOMPurify keeps it,
+     `ALLOWED_URI_REGEXP` admits `http`) — it is blocked at load time by CSP
+     `img-src`, which omits `http`. The DOMPurify config is deliberately **not**
+     tightened to drop `http` images: doing so cleanly would also strip `http`
+     *links*, which are allowed. The server is the gate that rejects `http` image
+     *destinations* on write (§4.1); for any legacy/out-of-band note that still
+     carries one, CSP remains the render-time backstop. (So for `http` images the
+     server is the **stricter** gate — the acceptable direction, since the user
+     gets a `400` rather than anything unsafe.)
 4. **Strict CSP** — `script-src 'self'` (no inline/eval scripts); all vendor
    bundles served from origin; the import-map hash stays covered by
    `commonweb.ImportMapCSPHash`. Even if a sanitization bug slipped through, the
@@ -1014,7 +1071,11 @@ check, remain untrusted, so render-time gating stands regardless.
      images, widen the directive from `'self' data:` to **`'self' data:
      https:`**. This permits remote `https` image loads (note the privacy
      implication: viewing a note will fetch its referenced images, leaking the
-     viewer's IP to those hosts — acceptable for a personal tool).
+     viewer's IP to those hosts — acceptable for a personal tool). **`http` is
+     deliberately omitted** (no mixed content); combined with the server rejecting
+     `http` image destinations on write (§4.1), an `http` image is neither storable
+     via the API nor loadable, and DOMPurify keeping an `http` `src` through (for
+     legacy/out-of-band content) is harmless because CSP never loads it.
    - **`img-src` is the *only* CSP directive that changes.** The API is same-origin,
      so XHR/`fetch` stays covered by the existing `default-src 'self'`; **do not add
      a `connect-src`** (the template has none, and adding one would have to
@@ -1234,12 +1295,18 @@ Mirrors the template; rename/replace `item*` with `note*`.
   - **The repository builds the final `excerpt` string for both branches**
     (decided), so each `NoteSummary` it returns is ready to use and the
     service/handler pass it through unchanged. The FTS branch sets `excerpt` from
-    `snippet()` (with the empty-snippet → plain-prefix fallback of §8); the browse
+    `snippet()` (with the empty-snippet → plain-prefix fallback of §8) — and so the
+    FTS join query must **also select the truncated source** (`substr(n.content, 1,
+    201)`, as for the browse branch below), so the title-only-match fallback (the
+    common case, §8) has that plain prefix available to build from; without it the
+    fallback has no content to render. The browse
     branch sets it from the plain ~200-rune word-boundary prefix (§5). To avoid
     pulling full 1,000,000-char `content` into Go for every list row, the browse
-    branch should SQL-truncate the source (e.g. `substr(content, 1, N)` with a
-    generous byte budget covering 200 runes) and apply the rune-accurate
-    word-boundary cut + `…` in Go over that bounded prefix. The sentinel→`<mark>`
+    branch should SQL-truncate the source — note that SQLite's `substr(content, 1,
+    N)` on a TEXT value counts **characters (code points), not bytes**, so
+    `substr(content, 1, 201)` returns the first 201 runes (enough to locate the
+    ≤199-rune word boundary and to detect that truncation is needed) — and apply the
+    rune-accurate word-boundary cut + `…` in Go over that bounded prefix. The sentinel→`<mark>`
     conversion still happens client-side (§5); the repository emits the raw
     sentinel-wrapped snippet, never HTML.
   - **The search/list query is largely greenfield — the template offers no model
@@ -1326,8 +1393,12 @@ Follow template conventions (`testify`, in-memory SQLite
   canonical-reserialization compare + removal-only policy, §4.1); disallowed
   schemes on **Markdown-native** links/images (`javascript:`/`data:text/html`/…)
   rejected;
-  `http`/`https`/`mailto` and root-/scheme-/bare-relative destinations accepted;
-  `data:image/(gif|png|jpeg|webp)` accepted on images but rejected on links,
+  `http`/`https`/`mailto` links and root-/bare-relative destinations accepted,
+  **scheme-relative (`//host/…`) rejected on both links and images** (§4.1); `https`
+  images accepted but an **`http` image destination rejected** (Markdown-native
+  *and* embedded-HTML `<img>`, §4.1); the canonical `data:image/(gif|png|jpeg|webp);…`
+  (with the trailing `;`) accepted on images but rejected on links, a
+  parameter-less `data:image/png,…` (no `;`) rejected, and
   `data:image/svg+xml` rejected on images too (§7); over-deep nesting
   rejected; **content containing a C0 control char — a sentinel `U+0002`/`U+0003`,
   or e.g. NUL — rejected, while tab/newline/CR are accepted** (§4.1, §8); valid GFM
