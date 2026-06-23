@@ -1,0 +1,475 @@
+## Amend governing instructions
+
+Before writing any note code, amend `CLAUDE.md` (a symlink to `AGENTS.md` in this
+repo). Two changes: (1) Restate the "Sanitize on every write path … using
+`sanitize.HTML`" rule for the notes-`content` path as **validate-and-reject, not
+sanitize-and-store** — note `content` is stored verbatim Markdown, its embedded
+HTML is validated (never mutated) by bluemonday on write, and DOMPurify is the
+authoritative render-time gate. `internal/sanitize` is retained and reused as the
+embedded-HTML validator, not removed. (2) Add `node` to the Build & Run
+required-tools list (it runs the `node --test` client-side XSS-gate tests from
+`build.sh`). **`build.sh` must never invoke `npm`/`npx`/`yarn`/`pnpm`/`bun`** (a
+deliberate supply-chain constraint — no package-manager install runs as part of
+the build). `esbuild` and `npm` are required only by the separate, manually-run
+vendor-rebuild script (see "Vendor the third-party bundles" below), which is
+out-of-band and not part of `build.sh` or CI; document them there, not in the
+Build & Run list. Leaving the old mutate-on-write wording in place would
+contradict the verbatim-storage design.
+
+## Write the OpenAPI contract for notes
+
+Rewrite `openapi.yaml` to replace the `items` resource with `notes` under base
+`/api/v1`. Define the operations: `GET /notes` (query `q`, `limit`, `offset`),
+`POST /notes`, `GET /notes/{slug}`, `PATCH /notes/{slug}`, `DELETE
+/notes/{slug}`, and `GET /notes/{slug}/download`. Schemas: `Note` (slug, title,
+content, created_at date-time, updated_at date-time), `NoteSummary` (slug, title,
+updated_at, excerpt), `NoteList` (total, notes), `CreateNoteRequest`,
+`UpdateNoteRequest`, and the `{error}` error body.
+
+Constraints (per `ARCHITECTURE.md` "REST API"): all **response** fields
+`required` (including `excerpt`, which is `""` not absent); `title` 1..200
+required; `content` maxLength 1000000, optional on create (default ""), optional
+on update; `slug` maxLength 100 pattern `^[a-z0-9]+(?:-[a-z0-9]+)*$`, optional;
+`UpdateNoteRequest` all optional with identical constraints; `q` optional
+maxLength 200 with **no** minLength; `limit` minimum 1 maximum 200 default 50;
+`offset` minimum 0 with **no** maximum. The `{slug}` path param carries the slug
+pattern/maxLength on every `/notes/{slug}*` route including `/download`. `POST`
+returns 201 + full `Note`; `PATCH` returns 200 + full `Note`; `DELETE` 204;
+`/download` returns `200` with a single `text/markdown` `string` content plus a
+`Content-Disposition` response header, and the standard JSON error body on 404.
+
+Then regenerate code: run `go generate ./...` (ogen → `internal/api/`) and
+regenerate `web/ts/api/types.ts` via `openapi-typescript`. Never hand-edit
+generated files.
+
+## Spike: verify the download wiring generates
+
+Confirm ogen can express the download operation before relying on it (do not
+assume it generates). Run the regeneration from the previous task and inspect the
+generated `api.Handler`: verify it exposes **both** a raw `text/markdown` body and
+a settable `Content-Disposition` header on the same `200`, that the mixed
+media-type response (raw `text/markdown` on 200, JSON `{"error":…}` on 404)
+generates a usable handler/response type, and that an empty-`content` note can be
+expressed as a `200` zero-length body. Record the actual `Content-Type` emitted
+(the `; charset=utf-8` parameter is cosmetic — note whatever ogen produces). If
+any of these fail, plan the thin-route fallback (a non-ogen route at
+`/api/v1/notes/{slug}/download`, wrapped in `handler.WithMiddleware`, reusing the
+service get-by-slug and the shared JSON error encoder). Treat milestone 1 as
+incomplete until this is verified.
+
+## Replace the schema and add FTS in db.go
+
+In `internal/repository/db.go`, replace the template's `items` schema with the
+MyNotes `schemaV1` as `migrations[0]` (discard the `items` migration history;
+`PRAGMA user_version` driven from 1). Create the `notes` table (id PK
+autoincrement, slug TEXT NOT NULL UNIQUE, title TEXT NOT NULL, content TEXT NOT
+NULL DEFAULT '', created_at/updated_at TEXT NOT NULL) and the composite index
+`idx_notes_updated_at ON notes(updated_at DESC, id DESC)`. Add the external-content
+FTS5 virtual table `notes_fts(title, content, content='notes',
+content_rowid='id')` and the `AFTER INSERT/DELETE/UPDATE` triggers that keep it in
+sync — the DELETE and UPDATE triggers must use the `'delete'` bookkeeping command
+(a plain DELETE/INSERT mirror corrupts an external-content index). The UPDATE
+trigger is unscoped (`AFTER UPDATE ON notes`). See `ARCHITECTURE.md`
+"Data model & persistence" for the exact DDL.
+
+## Implement NoteRepository
+
+Replace `internal/repository/item_repo.go` with a `NoteRepository` exposing
+`List`, `GetBySlug`, `Create`, `Update`, `Delete`, and a slug-existence check.
+Update `internal/model` with the `Note` struct (adds `Slug`).
+
+- `GetBySlug` selects all six columns (internal `id` + the five exposed fields) so
+  the read view has the full note and the PATCH no-op diff can compare and resolve
+  slug→id.
+- `Create` inserts a row. `Update`/`Delete` resolve the URL slug to `id` first,
+  then mutate by `id`; a missing slug surfaces as `ErrNotFound`.
+- A PATCH slug rename writes the new slug onto the resolved `id` in the **same
+  single `UPDATE` statement** as the other changed columns (so a conflict writes
+  nothing). The uniqueness check must exclude the note's own row (`WHERE slug = ?
+  AND id != ?`).
+- `List` returns `(notes []NoteSummary, total int, err error)`. Two distinct
+  queries selected on the *effective* query: browse (`ORDER BY updated_at DESC, id
+  DESC`, no FTS reference) and search (`notes n JOIN notes_fts f ON f.rowid = n.id
+  WHERE f MATCH ? ORDER BY f.rank, n.id DESC`). Reuse the template's
+  `sanitizeFTSQuery`. `total` is a second `COUNT(*)` over the same predicate
+  (`FROM notes` browse; `FROM notes_fts WHERE notes_fts MATCH ?` search),
+  independent of limit/offset.
+- **Build the `excerpt` per row in the repository.** Browse: plain ~200-rune
+  word-boundary prefix via `substr(content, 1, 201)` in SQL + a rune-accurate cut
+  and trailing `…` in Go (append `…` only when the probe returns 201 runes; ≤200
+  is verbatim). Search: select **both** `snippet(f, 1, char(2), char(3), '…', 30)`
+  (content column index 1, sentinels `U+0002`/`U+0003`) and
+  `substr(n.content,1,201)`; if the snippet contains a `U+0002` sentinel use it,
+  otherwise (title-only match / empty content) fall back to the plain prefix from
+  the substr column. Emit raw sentinel-wrapped text — never HTML. See
+  `ARCHITECTURE.md` for the exact ordering/regexp details.
+
+## Repository tests
+
+Write `_test.go` tests beside the package against in-memory SQLite
+(`file::memory:?cache=shared`, full schema migrated, `testify`). Cover:
+create/get-by-slug/update/delete; UNIQUE slug enforcement; FTS search returns
+expected matches and ranking order; trigger sync after update (a changed
+title/content is reflected in search); browse vs. search excerpt construction
+including the title-only-match fallback and empty-content cases.
+
+
+
+## Implement NoteService with validation and slug logic
+
+Replace `internal/service/service.go` (item service) with a `NoteService`. Add a
+new sentinel `ErrConflict` (alongside `ErrNotFound`, `ErrValidation`).
+
+- **Validation:** `strings.TrimSpace` the title before validating (reject a
+  whitespace-only title as `ErrValidation`); reject a title containing **any** C0
+  control char (incl. tab/newline/CR). Validate slug pattern, content length, and
+  UTF-8. **Never trim `content`.** Delete the template's content-mutating
+  `sanitize.HTML(content)` calls on the create and update write paths — notes
+  store Markdown verbatim.
+- **Slug generation** (create, no slug supplied): derive from title — lowercase,
+  fold accents via `golang.org/x/text/unicode/norm` NFKD + drop combining marks,
+  drop remaining non-ASCII, collapse non-alphanumerics to `-`, trim, truncate to
+  100 and re-trim trailing `-`; empty result falls back to `note`.
+- **Collision resolution:** auto-generated slug appends `-2`, `-3`, … (re-trim
+  base per suffix length so base+suffix ≤ 100; never produce `foo--2`). The
+  service existence check is advisory/racy — the DB UNIQUE constraint is the
+  source of truth: on a UNIQUE violation for an auto-generated slug, re-run the
+  full suffix scan and retry the insert, **bounded at 5 attempts**, then 500. An
+  **explicit** slug collision is `ErrConflict`→409, never suffixed; a UNIQUE
+  violation on an explicit-slug create or a PATCH slug rename also maps to
+  `ErrConflict`→409 (not a raw 500).
+- **Create timestamps:** set `created_at = updated_at = now` (UTC RFC 3339, same
+  instant). Coalesce a nil/absent `content` to `""` in the service itself (don't
+  rely on ogen materializing the schema default). `created_at` is immutable.
+- **PATCH no-op detection (greenfield):** `GetBySlug` first, diff each *present*
+  field against the stored value (title compared post-`TrimSpace`, content
+  verbatim, slug-to-own-value is a no-op not a conflict). If nothing differs,
+  issue no SQL `UPDATE` and return the unchanged note; otherwise set `updated_at =
+  now` and write only the changed columns. All-fields-absent is rejected 400
+  before the diff.
+
+## Implement structural Markdown validation (§4.1 gate)
+
+In the service, add the write-time structural validation of `content`, run on
+create and on update when `content` is present, rejecting with `ErrValidation`→400.
+This adds a direct dependency on `github.com/yuin/goldmark` (parse + AST walk
+only, never render) and reuses `internal/sanitize`'s bluemonday. Parse with
+Goldmark wired via the **individual** extensions `extension.Table`,
+`extension.Strikethrough`, `extension.Linkify` (not the `extension.GFM` bundle, so
+task-lists stay off), and walk the AST rejecting:
+
+- **Embedded HTML outside the safe allow-list:** pull each `ast.KindRawHTML` /
+  `ast.KindHTMLBlock` fragment, run bluemonday over just that fragment, and
+  compare against a canonical re-serialization of the original fragment through
+  the same `golang.org/x/net/html` tokenizer (token-stream level). Any divergence
+  = reject the whole write. bluemonday output is used only for the decision, never
+  stored. Configure `internal/sanitize` to expose a **removal-only** policy: base
+  `bluemonday.UGCPolicy()` with every attribute injector disabled
+  (`RequireNoFollowOnLinks(false)`, the fully-qualified and no-referrer variants,
+  `AddTargetBlankToFullyQualifiedLinks(false)`,
+  `RequireCrossOriginAnonymous(false)`), `<a href>` keeping
+  `http`/`https`/`mailto`/relative, and `img@src` restricted via a `Matching`
+  regexp to `https`/relative/canonical-`data:`-raster only. The package may need a
+  small API addition to expose the policy and return the cleaned fragment.
+- **Disallowed schemes on Markdown-native destinations** (`ast.KindLink` /
+  `ast.KindAutoLink` / `ast.KindImage`): links allow `http`/`https`/`mailto`;
+  images allow only `https` + canonical `data:` raster
+  (`^data:image/(gif|png|jpeg|webp);`, trailing `;` required, excludes
+  `svg+xml`). No-scheme (root-/bare-relative) allowed; scheme-relative
+  (`//host/…`) rejected on both; any other explicit scheme rejected; scheme
+  comparison case-insensitive.
+- **Nesting deeper than 100 levels** (coarse DoS bound).
+- **C0 control characters in `content`** except tab/newline/CR — a flat byte scan
+  (independent of the Goldmark parse).
+
+See `ARCHITECTURE.md` "Markdown rendering & validation pipeline" for exact
+regexps and rationale. Run `go mod tidy` after adding imports (`norm` and
+`goldmark` become direct dependencies).
+
+## Service tests
+
+Cover: slug generation (accents, punctuation, empty-title→`note` fallback,
+truncation); collision resolution (`-2`, `-3`); slug-pattern validation;
+content-length and UTF-8 limits; both create and update paths. Structural Markdown
+validation: safe embedded HTML across the broad allow-list (`<details>`, `<sub>`,
+`<kbd>`, `<div>`, an aligned `<table>`, a plain `<a>`/`<img>`) **accepted**;
+unsafe HTML (`<script>`, `<img onerror=…>`, `javascript:`/`data:text/html` href,
+`<style>`, `<iframe>`, `<input>`) **rejected**; benign HTML bluemonday merely
+reformats (`<br>`, unquoted attrs) and a plain `<a href="https://…">` accepted
+(no false positive — the **removal-only round-trip spike** asserting these and a
+representative allow-listed slice pass unrejected); disallowed Markdown-native
+schemes rejected; `http`/`https`/`mailto` links and root-/bare-relative accepted,
+scheme-relative `//host/…` rejected on both; `https` images accepted but `http`
+image destination rejected (Markdown-native and embedded `<img>`); canonical
+`data:image/...;` accepted on images but rejected on links, parameter-less
+`data:image/png,…` rejected, `data:image/svg+xml` rejected on images; over-deep
+nesting rejected; content with a C0 control (sentinel `U+0002`/`U+0003` or NUL)
+rejected while tab/newline/CR accepted; title with **any** C0 control rejected;
+valid GFM and empty content accepted.
+
+
+
+## Implement the notes handler and error mapping
+
+Implement the generated `api.Handler` for notes in `internal/handler/`,
+replacing the item handler. The handler is a thin adapter over the service. Map
+sentinel errors in `NewError`: `ErrNotFound`→404, `ErrValidation`→400,
+`ErrConflict`→409. No `render` operation. Implement the download operation: return
+`content` as the raw `text/markdown` body and set `Content-Disposition:
+attachment; filename="<slug>.md"`, reusing the service get-by-slug (no new
+business logic). If the milestone-1 spike showed ogen cannot express the download,
+add the thin-route fallback at `/api/v1/notes/{slug}/download` wrapped in
+`handler.WithMiddleware` and reusing the shared JSON error encoder (404 on unknown
+slug). DELETE of an unknown slug returns 404 (not idempotent — 204 only when a row
+was deleted). A past-the-end `offset` returns 200 with an empty `notes` array and
+the true `total`.
+
+## Handler tests
+
+Test the full request/response cycle for each endpoint and the error→status
+mapping (400/404/409), against in-memory SQLite with the full schema migrated.
+Include the download endpoint (raw body, `Content-Disposition`, empty-content
+note) and the past-the-end-offset empty-page case.
+
+
+
+## Vendor the third-party bundles (out-of-band, committed)
+
+Pre-build the third-party bundles **out-of-band** and **commit** them, exactly
+like the existing vendored Preact files — `build.sh` consumes the committed
+artifacts and never rebuilds them, so `build.sh` needs neither `npm` nor
+`esbuild`. The bundling lives in a separate maintainer script (e.g.
+`web/ts/vendor/rebuild.sh`, not invoked by `build.sh` or CI) that a human runs
+only when updating a vendored library; that script is the single place `npm` (to
+fetch the upstream sources into a throwaway, `.gitignore`d `node_modules`) and
+`esbuild` (to bundle them) are used. Keeping the package-manager install manual,
+audited, and outside the automated build is the supply-chain mitigation. Pin
+upstream versions and run `npm ci --ignore-scripts` (no lifecycle scripts) in
+that script.
+
+Produce each vendor library as a self-contained ESM file under
+`web/static/vendor/`, committed like the existing vendored Preact files:
+
+- `vendor/codemirror.js` — re-export a **fixed minimal symbol surface**: from
+  `@codemirror/view` `EditorView` (with `updateListener`, `dispatch`,
+  `lineWrapping`) + `keymap`; from `@codemirror/state` `EditorState`,
+  `EditorSelection`; from `@codemirror/commands` `defaultKeymap`, `history`,
+  `historyKeymap`; from `@codemirror/language` `syntaxHighlighting`,
+  `defaultHighlightStyle`; from `@codemirror/lang-markdown` `markdown`. Exclude
+  search, line numbers/gutters, placeholder, bracket matching, and `EditorView.theme`.
+- `vendor/markdown-it.js` — the Markdown renderer.
+- `vendor/dompurify.js` — the sanitizer.
+
+The same rebuild script also produces a committed, **test-only** `jsdom` bundle
+under `web/ts/vendor/test/` (esbuild `--platform=node --format=esm`) so the
+`node --test` XSS-gate tests get a DOM without any `npm ci` at build time (see
+"Client-side XSS-gate tests"). It is never shipped to the browser and not added
+to the import map. If `jsdom` proves un-bundleable by esbuild, the fallback is to
+commit its pinned install tree under `web/ts/vendor/test/node_modules/` (vendored,
+no install-time scripts) rather than reintroduce `npm ci` into `build.sh`.
+
+Add one import-map entry per browser bundle in `web/static/index.html` (alongside
+the preact entries): `"codemirror"`, `"markdown-it"`, `"dompurify"` →
+`./vendor/*.js`. Note `build.sh` requires `node` (for `node --test`) but **not**
+`esbuild` or `npm`; `esbuild`/`npm` belong to the out-of-band rebuild script
+only — update `CLAUDE.md` Build & Run accordingly. The import-map CSP hash adapts
+automatically via `commonweb.ImportMapCSPHash` — no manual hash update.
+
+## Add TypeScript type resolution for the bundles
+
+`tsc` resolves bare specifiers separately from the runtime import map. Add `paths`
+entries in `web/ts/tsconfig.json` for `codemirror`, `markdown-it`, `dompurify`
+pointing at `.d.ts` declarations committed under `web/ts/vendor/…`: upstream
+`@types/markdown-it` and `@types/dompurify`, and a **hand-authored** shim for
+`codemirror` declaring exactly the bundle's re-export surface (above). Keep
+`exclude: ["vendor"]` so the declarations aren't compiled as sources. Because
+`noEmitOnError: true`, missing types are a hard `tsc` failure — this is not
+optional.
+
+
+
+## Build the path router and notes API client
+
+Replace the hash router with a History-API path router in `web/ts`. Routes: `/`
+(list+search), `/new` (new editor), `/notes/{slug}` (read view),
+`/notes/{slug}/edit` (existing editor). The `/notes/` prefix isolates note URLs
+from app routes. Internal navigation uses `history.pushState`; intercept link
+clicks **only** for in-app routes — the `/api/v1/notes/{slug}/download` link and
+external/absolute URLs do real browser navigations.
+
+Add a `notes` client in `web/ts/api/client.ts` mirroring the existing `items`
+client (no `render` call). All requests go through `api` (no direct `fetch` from
+components). Map a `400` slug-pattern rejection on `GET /notes/{slug}` to the same
+not-found signal the client throws on `404` (so malformed-slug deep links render
+the not-found view).
+
+## Build the shared render+sanitize helper
+
+Create `web/ts/util/markdown.ts` — the single shared helper that owns the
+markdown-it → DOMPurify pipeline. markdown-it runs with `html: true`, `linkify`
+on, GFM tables/strikethrough/autolinks, `maxNesting: 100`. DOMPurify is configured
+with the broad safe-HTML allow-list matching the server bluemonday profile
+(exclude `script`/`style`/`iframe`/object/embed/form-controls/raw-media and all
+`on*` handlers; allow the prose/table/inline/disclosure/figure/`a`/`img` set and
+the listed attributes). Set `ALLOWED_URI_REGEXP =
+/^(?:(?:https?|mailto):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i` (three-scheme
+allow-list **plus** DOMPurify's relative-URL alternation — load-bearing for
+in-app `/notes/<slug>` links). Add an `uponSanitizeAttribute` hook permitting
+`data:` **only** on `img@src` matching `^data:image/(gif|png|jpeg|webp);` and
+stripping `data:` everywhere else. This is the only place note-derived HTML is
+assigned to `innerHTML`; reuse it in both the read view and the editor preview.
+See `ARCHITECTURE.md` "Security model" for the full config.
+
+## Build the list/search view
+
+Build the `/` view: a debounced search box driving `q`, results showing title,
+updated time, excerpt, and search highlights (escape the whole excerpt string,
+then convert `U+0002`/`U+0003` sentinel pairs to `<mark>…</mark>`). Empty and
+loading states. A "Load more" button: fetch the first page (limit 50, offset 0),
+advance `offset` by the number of rows **received from the server** (not the
+displayed count), append new rows de-duplicated by slug (`shown.has(r.slug)`),
+show the button while `loaded < total` and hide it when an empty page returns or
+all rows are loaded; show `total` informationally. Reset accumulated rows and
+offset on query change. Clamp `limit`/`offset` to range before sending. Cap the
+outgoing `q` to 200 **runes** (code points, e.g. `[...q].slice(0,200)`, not the
+`maxlength` attribute). "New note" and "Upload Markdown" actions.
+
+## Implement Upload Markdown (create from file)
+
+Add the Upload Markdown action to the list view: a file picker
+(`.md`/`.markdown`/`text/markdown`/`text/plain`) reads one file client-side as
+UTF-8 and creates a note via `POST /notes` (no new API). The file text becomes
+`content` verbatim. Derive the title client-side reusing the first-ATX-heading
+rule (shared with the editor); fall back to the filename with extension stripped
+(trimmed, truncated to 200 runes with `…`), then to `"Untitled"`. Do **not** send
+a slug (server auto-generates/suffixes). Rune-count the decoded text and reject
+oversized files (>1,000,000 chars) before posting — the char `maxLength` and the
+10 MiB body cap are different limits — surfacing a clear "file too large" toast.
+On success navigate to `/notes/{slug}` using the returned slug.
+
+## Build the read view
+
+Build the `/notes/{slug}` view: fetch `content`, render via the shared
+`util/markdown.ts` helper into a constrained styled container. Do **not** render
+the stored `title` as a body heading (it duplicates the content's own `# heading`);
+use the stored title as the browser tab `<title>` on navigation. "Edit", "Delete",
+and "Download Markdown" actions. The Download link is a hand-authored
+**root-absolute** href `/api/v1/notes/{slug}/download` (leading slash — the JSON
+`api` client's relative base must not be reused here), doing a real navigation so
+`Content-Disposition` triggers the save; a stale download landing on the JSON 404
+is accepted (not specially handled). A 404 or malformed-slug deep link renders the
+not-found view; Edit/Delete on an already-gone note shows a toast and navigates to
+the list.
+
+## Build the CodeMirror editor view
+
+Build the editor for `/new` and `/notes/{slug}/edit` using the vendored
+CodeMirror 6 with the Markdown language mode, plus a live preview pane rendered
+locally via `util/markdown.ts` on a debounced change (split/toggle layout, no
+network round-trip). Wire `EditorView.updateListener` for preview + dirty
+detection, `EditorView.lineWrapping`, `defaultKeymap`/`historyKeymap` (undo/redo),
+and `syntaxHighlighting(defaultHighlightStyle)`. Editor sizing/styling lives in
+`app.css` targeting `.cm-editor`/`.cm-scroller`/`.cm-content`.
+
+- **Title input:** auto-fills from the first ATX heading while untouched (shared
+  rule: Setext ignored, fenced-code lines skipped, empty headings skipped,
+  unclosed fence to EOF, tab in captured text → single space, truncate to 200
+  runes with `…`); manual edits stop the auto-sync.
+- **Slug field:** on `/new`, show an auto-suggested **display-only preview** that
+  tracks the title; while untouched the create request omits `slug` (server
+  generates+suffixes). The field becomes an **explicit** slug only once edited by
+  hand (then sent verbatim; a collision is a 409). When editing, the slug is shown
+  editable with a warning that the URL will change.
+
+## Implement the "Link to note" picker
+
+Add a "Link to note" action in the editor that opens a picker searching notes via
+`GET /notes?q=` (single first page, default limit 50, **no** "Load more" — narrow
+by typing). Exclude the note being edited from its own results
+(`results.filter(n => n.slug !== currentSlug)`). On selection, insert
+`[<title>](/notes/<slug>)` at the cursor (via `EditorView.dispatch` /
+`EditorSelection`), with the title **escaped for link-text context**
+(backslash-escape `\`, `[`, `]`). The slug needs no escaping. Stale links from a
+concurrent rename are accepted (resolve to the not-found view if followed).
+
+## Implement save, cancel, and the unsaved-changes guard
+
+Wire Save (create via `POST`, update via `PATCH`) and Cancel.
+
+- **Dirty** is a value comparison of current `(title, content, slug)` against the
+  last-saved snapshot — not a keystroke counter. The slug component is the
+  *to-be-sent* slug (`undefined` while the user hasn't edited the field on `/new`,
+  the verbatim value once edited; the note's actual slug when editing). Reverting
+  to saved values clears dirty; auto-title-sync counts as dirty; `/new` baseline
+  is empty so a brand-new editor isn't dirty until the user types. The snapshot
+  updates only on a successful save (and is seeded from the fetched note when
+  opening edit); a failed save does not update it.
+- **Unsaved-changes guard** covers both intercepted in-app pushState navigations
+  and real browser unload/reload (`beforeunload`). Clear it explicitly before the
+  post-save navigation so the save's own pushState isn't blocked.
+- **Cancel** navigates context-aware computed from the route (not
+  `history.back()`): from edit → that note's read view; from `/new` → the list. It
+  is an in-app navigation subject to the dirty guard.
+- **Post-save navigation:** on success navigate to `/notes/{slug}` using the slug
+  from the **response body** (may be auto-generated, suffixed, or renamed) in both
+  create and edit cases.
+- **Errors:** a 404 on save/delete (stale tab) → toast ("This note no longer
+  exists") + navigate to the list (not the not-found view). A 409 slug conflict →
+  generic error toast showing the server's `{"error":…}` message verbatim (no
+  special client branch).
+
+
+
+## CSP and security hardening pass
+
+Widen the CSP `img-src` from `'self' data:` to `'self' data: https:` (the **only**
+CSP change — no `http` for images, no `connect-src` since the API is same-origin
+under `default-src 'self'`). Keep `script-src 'self'` and `frame-ancestors
+'none'`; confirm CodeMirror's runtime `<style>` is covered by the existing
+`style-src 'self' 'unsafe-inline'` and that the import-map hash is covered by
+`commonweb.ImportMapCSPHash`. Review the DOMPurify and markdown-it configs against
+`ARCHITECTURE.md` "Security model". Run the **DOMPurify `data:` spike**: confirm
+`data:image/png;base64,…` survives on `<img>`, `data:image/svg+xml,…` is stripped
+from `<img>`, and `data:` (e.g. `data:text/html,…`) is stripped from `<a href>`.
+
+## Client-side XSS-gate tests
+
+Set up the client XSS regression tests with **no `npm` install** — no
+`package.json` devDependencies, no `npm ci`. The DOM comes from the committed
+test-only `jsdom` bundle vendored under `web/ts/vendor/test/` (see "Vendor the
+third-party bundles"). Add a Node resolution shim (`--import`/`module.register`
+loader, or an `imports`/`exports` map) mapping `markdown-it`/`dompurify` to the
+**real `web/static/vendor/*.js` esbuild bundles** (not separate npm copies),
+mirroring the browser import map, and mapping `jsdom` to its committed vendored
+bundle. Write `node:test`
+tests for `util/markdown.ts` against a table of malicious inputs (`<script>`,
+`<img onerror=…>`, `[x](javascript:…)`, raw HTML blocks, `data:` URLs), asserting
+no script/event-handler/disallowed-scheme survives, that allow-listed embedded
+HTML (`<details>`, `<sub>`, `<div>`, safe `<a>`/`<img>`) survives, and a `linkify`
+case (bare `http://x.test` / `a@b.test` auto-link to anchors that survive with an
+allow-listed scheme). Include the `data:` per-tag scoping assertions and a
+**shared server/client parity vector** (input → expected survivors/strips,
+including `data:image/svg+xml` rejected by both gates), allowing divergence only
+where DOMPurify is the stricter side.
+
+## Wire tests into build.sh and go green
+
+Update `build.sh` so its full order is: `go generate` → `openapi-typescript` →
+`tsc` → `node --test` → `go test ./...` → `golangci-lint`. **No `esbuild`
+bundling and no `npm`/`npx`/`yarn`/`pnpm`/`bun` anywhere in `build.sh`** — the vendor
+bundles (browser and the test-only `jsdom` bundle) are pre-built committed
+artifacts, so `node --test` runs directly against the committed
+`web/static/vendor/*.js` and `web/ts/vendor/test/` bundles. The `node --test` step
+runs the client XSS-gate tests on every build (not a manual afterthought). Run
+`./build.sh` and resolve everything until it is green: TS compiled, both Go and
+Node tests passing, lint clean. (If a vendored library changed, re-run the
+out-of-band `web/ts/vendor/rebuild.sh` first and commit the regenerated bundles.)
+
+## Final cleanup
+
+Remove leftover `items` artifacts (template views `ItemForm.tsx`/`ItemList.tsx`,
+`item_repo.go`, any `item`-named code and tests) once their `note` equivalents are
+in place and tests pass. Confirm `go mod tidy` has run, the app builds and serves
+(`./go-web-template`), and the full flow works end to end. At this point
+`spec/SPEC.md` is fully captured by `REQUIREMENTS.md` + `ARCHITECTURE.md` + this
+file and can be removed.
