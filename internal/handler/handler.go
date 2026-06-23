@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strings"
 
 	"github.com/mikaelstaldal/go-web-template/internal/api"
 	"github.com/mikaelstaldal/go-web-template/internal/model"
@@ -14,73 +15,102 @@ import (
 )
 
 type Handler struct {
-	items *service.ItemService
+	notes *service.NoteService
 }
 
-func New(items *service.ItemService) *Handler {
-	return &Handler{items: items}
+func New(notes *service.NoteService) *Handler {
+	return &Handler{notes: notes}
 }
 
 var _ api.Handler = (*Handler)(nil)
 
-func toAPI(it model.Item) api.Item {
-	return api.Item{
-		ID:        it.ID,
-		Title:     it.Title,
-		Content:   it.Content,
-		CreatedAt: it.CreatedAt,
-		UpdatedAt: it.UpdatedAt,
+func toAPI(n model.Note) api.Note {
+	return api.Note{
+		Slug:      n.Slug,
+		Title:     n.Title,
+		Content:   n.Content,
+		CreatedAt: n.CreatedAt,
+		UpdatedAt: n.UpdatedAt,
 	}
 }
 
-func (h *Handler) ListItems(ctx context.Context, params api.ListItemsParams) (*api.ItemList, error) {
-	items, err := h.items.List(ctx, params.Q.Or(""), params.Limit.Or(50), params.Offset.Or(0))
-	if err != nil {
-		return nil, err
+func toAPISummary(n model.NoteSummary) api.NoteSummary {
+	return api.NoteSummary{
+		Slug:      n.Slug,
+		Title:     n.Title,
+		UpdatedAt: n.UpdatedAt,
+		Excerpt:   n.Excerpt,
 	}
-	out := make([]api.Item, len(items))
-	for i, it := range items {
-		out[i] = toAPI(it)
-	}
-	return &api.ItemList{Total: len(out), Items: out}, nil
 }
 
-func (h *Handler) GetItem(ctx context.Context, params api.GetItemParams) (*api.Item, error) {
-	it, err := h.items.Get(ctx, params.ID)
+// optPtr converts an ogen OptString to a *string: nil when absent (leave
+// unchanged), a pointer to the value when present.
+func optPtr(o api.OptString) *string {
+	if v, ok := o.Get(); ok {
+		return &v
+	}
+	return nil
+}
+
+func (h *Handler) ListNotes(ctx context.Context, params api.ListNotesParams) (*api.NoteList, error) {
+	notes, total, err := h.notes.List(ctx, params.Q.Or(""), params.Limit.Or(50), params.Offset.Or(0))
 	if err != nil {
 		return nil, err
 	}
-	out := toAPI(it)
+	out := make([]api.NoteSummary, len(notes))
+	for i, n := range notes {
+		out[i] = toAPISummary(n)
+	}
+	return &api.NoteList{Total: total, Notes: out}, nil
+}
+
+func (h *Handler) GetNote(ctx context.Context, params api.GetNoteParams) (*api.Note, error) {
+	n, err := h.notes.Get(ctx, params.Slug)
+	if err != nil {
+		return nil, err
+	}
+	out := toAPI(n)
 	return &out, nil
 }
 
-func (h *Handler) CreateItem(ctx context.Context, req *api.ItemRequest) (*api.Item, error) {
-	it, err := h.items.Create(ctx, req.Title, req.Content.Or(""))
+func (h *Handler) CreateNote(ctx context.Context, req *api.CreateNoteRequest) (*api.Note, error) {
+	n, err := h.notes.Create(ctx, req.Title, optPtr(req.Content), optPtr(req.Slug))
 	if err != nil {
 		return nil, err
 	}
-	out := toAPI(it)
+	out := toAPI(n)
 	return &out, nil
 }
 
-func (h *Handler) UpdateItem(ctx context.Context, req *api.ItemUpdate, params api.UpdateItemParams) (*api.Item, error) {
-	var title, content *string
-	if v, ok := req.Title.Get(); ok {
-		title = &v
-	}
-	if v, ok := req.Content.Get(); ok {
-		content = &v
-	}
-	it, err := h.items.Update(ctx, params.ID, title, content)
+func (h *Handler) UpdateNote(ctx context.Context, req *api.UpdateNoteRequest, params api.UpdateNoteParams) (*api.Note, error) {
+	n, err := h.notes.Update(ctx, params.Slug, optPtr(req.Title), optPtr(req.Content), optPtr(req.Slug))
 	if err != nil {
 		return nil, err
 	}
-	out := toAPI(it)
+	out := toAPI(n)
 	return &out, nil
 }
 
-func (h *Handler) DeleteItem(ctx context.Context, params api.DeleteItemParams) error {
-	return h.items.Delete(ctx, params.ID)
+func (h *Handler) DeleteNote(ctx context.Context, params api.DeleteNoteParams) error {
+	return h.notes.Delete(ctx, params.Slug)
+}
+
+// DownloadNote returns the note content as a raw text/markdown body with a
+// Content-Disposition attachment header. It reuses the service get-by-slug; an
+// unknown slug maps to the operation's typed 404 (*api.Error), keeping the JSON
+// error shape. No new business logic lives here.
+func (h *Handler) DownloadNote(ctx context.Context, params api.DownloadNoteParams) (api.DownloadNoteRes, error) {
+	n, err := h.notes.Get(ctx, params.Slug)
+	if err != nil {
+		if errors.Is(err, service.ErrNotFound) {
+			return &api.Error{Error: err.Error()}, nil
+		}
+		return nil, err
+	}
+	return &api.DownloadNoteOKHeaders{
+		ContentDisposition: `attachment; filename="` + n.Slug + `.md"`,
+		Response:           api.DownloadNoteOK{Data: strings.NewReader(n.Content)},
+	}, nil
 }
 
 // NewError maps any error returned by a handler method to an HTTP status code.
@@ -92,6 +122,8 @@ func (h *Handler) NewError(_ context.Context, err error) *api.ErrorStatusCode {
 		status = http.StatusNotFound
 	case errors.Is(err, service.ErrValidation):
 		status = http.StatusBadRequest
+	case errors.Is(err, service.ErrConflict):
+		status = http.StatusConflict
 	}
 	return &api.ErrorStatusCode{
 		StatusCode: status,

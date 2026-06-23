@@ -67,9 +67,9 @@ func run(addr string, port int, dataDir, publicURL, basicAuthFile, basicAuthReal
 	db.SetMaxIdleConns(conns)
 
 	// --- wiring: repository → service → handler ----------------------------
-	itemRepo := repository.NewItemRepository(db)
-	itemSvc := service.NewItemService(itemRepo)
-	h := handler.New(itemSvc)
+	noteRepo := repository.NewNoteRepository(db)
+	noteSvc := service.NewNoteService(noteRepo)
+	h := handler.New(noteSvc)
 
 	ogenServer, err := api.NewServer(h, api.WithPathPrefix("/api/v1"))
 	if err != nil {

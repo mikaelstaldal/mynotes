@@ -4,9 +4,9 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
-	"strconv"
 	"strings"
 	"testing"
 
@@ -28,7 +28,7 @@ func newServer(t *testing.T) *httptest.Server {
 	db.SetMaxOpenConns(1)
 	require.NoError(t, repository.InitSchema(db))
 
-	h := handler.New(service.NewItemService(repository.NewItemRepository(db)))
+	h := handler.New(service.NewNoteService(repository.NewNoteRepository(db)))
 	ogenServer, err := api.NewServer(h, api.WithPathPrefix("/api/v1"))
 	require.NoError(t, err)
 
@@ -40,62 +40,155 @@ func newServer(t *testing.T) *httptest.Server {
 	return srv
 }
 
-func TestCreateAndGetItem(t *testing.T) {
-	srv := newServer(t)
-
-	res, err := http.Post(srv.URL+"/api/v1/items", "application/json",
-		strings.NewReader(`{"title":"Buy milk","content":"<b>2%</b><script>alert(1)</script>"}`))
+// createNote POSTs a note and returns the decoded response, asserting 201.
+func createNote(t *testing.T, srv *httptest.Server, body string) api.Note {
+	t.Helper()
+	res, err := http.Post(srv.URL+"/api/v1/notes", "application/json", strings.NewReader(body))
 	require.NoError(t, err)
 	defer res.Body.Close()
 	require.Equal(t, http.StatusCreated, res.StatusCode)
-
-	var created api.Item
+	var created api.Note
 	require.NoError(t, json.NewDecoder(res.Body).Decode(&created))
+	return created
+}
+
+func TestCreateAndGetNote(t *testing.T) {
+	srv := newServer(t)
+
+	created := createNote(t, srv, `{"title":"Buy milk","content":"# Shopping\n\nmilk"}`)
 	assert.Equal(t, "Buy milk", created.Title)
-	assert.Equal(t, "<b>2%</b>", created.Content, "script tag should be sanitized out")
+	assert.Equal(t, "buy-milk", created.Slug, "slug should be derived from the title")
+	assert.Equal(t, "# Shopping\n\nmilk", created.Content, "content is stored verbatim")
 
-	res2, err := http.Get(srv.URL + "/api/v1/items")
+	res, err := http.Get(srv.URL + "/api/v1/notes/" + created.Slug)
 	require.NoError(t, err)
-	defer res2.Body.Close()
-	require.Equal(t, http.StatusOK, res2.StatusCode)
+	defer res.Body.Close()
+	require.Equal(t, http.StatusOK, res.StatusCode)
 
-	var list api.ItemList
-	require.NoError(t, json.NewDecoder(res2.Body).Decode(&list))
-	assert.Equal(t, 1, list.Total)
+	var got api.Note
+	require.NoError(t, json.NewDecoder(res.Body).Decode(&got))
+	assert.Equal(t, created.Slug, got.Slug)
+	assert.Equal(t, created.Content, got.Content)
 }
 
 func TestCreateValidationError(t *testing.T) {
 	srv := newServer(t)
-	res, err := http.Post(srv.URL+"/api/v1/items", "application/json",
+	res, err := http.Post(srv.URL+"/api/v1/notes", "application/json",
 		strings.NewReader(`{"title":"   "}`))
 	require.NoError(t, err)
 	defer res.Body.Close()
 	assert.Equal(t, http.StatusBadRequest, res.StatusCode)
 }
 
+func TestCreateExplicitSlugConflict(t *testing.T) {
+	srv := newServer(t)
+	createNote(t, srv, `{"title":"First","slug":"shared"}`)
+
+	res, err := http.Post(srv.URL+"/api/v1/notes", "application/json",
+		strings.NewReader(`{"title":"Second","slug":"shared"}`))
+	require.NoError(t, err)
+	defer res.Body.Close()
+	assert.Equal(t, http.StatusConflict, res.StatusCode)
+}
+
 func TestGetMissingReturns404(t *testing.T) {
 	srv := newServer(t)
-	res, err := http.Get(srv.URL + "/api/v1/items/424242")
+	res, err := http.Get(srv.URL + "/api/v1/notes/does-not-exist")
 	require.NoError(t, err)
 	defer res.Body.Close()
 	assert.Equal(t, http.StatusNotFound, res.StatusCode)
 }
 
-func TestDeleteItem(t *testing.T) {
+func TestUpdateNote(t *testing.T) {
 	srv := newServer(t)
+	created := createNote(t, srv, `{"title":"Draft","content":"old"}`)
 
-	post, err := http.Post(srv.URL+"/api/v1/items", "application/json",
-		strings.NewReader(`{"title":"temp"}`))
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodPatch,
+		srv.URL+"/api/v1/notes/"+created.Slug, strings.NewReader(`{"content":"new"}`))
 	require.NoError(t, err)
-	defer post.Body.Close()
-	var item api.Item
-	require.NoError(t, json.NewDecoder(post.Body).Decode(&item))
+	req.Header.Set("Content-Type", "application/json")
+	res, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer res.Body.Close()
+	require.Equal(t, http.StatusOK, res.StatusCode)
 
+	var updated api.Note
+	require.NoError(t, json.NewDecoder(res.Body).Decode(&updated))
+	assert.Equal(t, "new", updated.Content)
+	assert.Equal(t, "Draft", updated.Title, "title left unchanged when absent")
+}
+
+func TestDeleteNote(t *testing.T) {
+	srv := newServer(t)
+	created := createNote(t, srv, `{"title":"temp"}`)
+
+	// First delete removes the row → 204.
 	req, err := http.NewRequestWithContext(context.Background(), http.MethodDelete,
-		srv.URL+"/api/v1/items/"+strconv.FormatInt(item.ID, 10), nil)
+		srv.URL+"/api/v1/notes/"+created.Slug, nil)
 	require.NoError(t, err)
 	del, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
 	defer del.Body.Close()
 	assert.Equal(t, http.StatusNoContent, del.StatusCode)
+}
+
+func TestDeleteUnknownReturns404(t *testing.T) {
+	srv := newServer(t)
+	// DELETE is not idempotent here: an unknown slug is a 404, not a 204.
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodDelete,
+		srv.URL+"/api/v1/notes/never-existed", nil)
+	require.NoError(t, err)
+	res, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer res.Body.Close()
+	assert.Equal(t, http.StatusNotFound, res.StatusCode)
+}
+
+func TestDownloadNote(t *testing.T) {
+	srv := newServer(t)
+	created := createNote(t, srv, `{"title":"Notes","content":"# Heading\n\nbody"}`)
+
+	res, err := http.Get(srv.URL + "/api/v1/notes/" + created.Slug + "/download")
+	require.NoError(t, err)
+	defer res.Body.Close()
+	require.Equal(t, http.StatusOK, res.StatusCode)
+
+	assert.Equal(t, "text/markdown", res.Header.Get("Content-Type"))
+	assert.Equal(t, `attachment; filename="`+created.Slug+`.md"`,
+		res.Header.Get("Content-Disposition"))
+
+	body, err := io.ReadAll(res.Body)
+	require.NoError(t, err)
+	assert.Equal(t, "# Heading\n\nbody", string(body), "raw verbatim Markdown body")
+}
+
+func TestDownloadUnknownReturns404(t *testing.T) {
+	srv := newServer(t)
+	res, err := http.Get(srv.URL + "/api/v1/notes/missing/download")
+	require.NoError(t, err)
+	defer res.Body.Close()
+	require.Equal(t, http.StatusNotFound, res.StatusCode)
+	assert.Contains(t, res.Header.Get("Content-Type"), "application/json",
+		"download errors keep the JSON error shape")
+
+	var body api.Error
+	require.NoError(t, json.NewDecoder(res.Body).Decode(&body))
+	assert.NotEmpty(t, body.Error)
+}
+
+func TestListPastTheEndOffset(t *testing.T) {
+	srv := newServer(t)
+	createNote(t, srv, `{"title":"one"}`)
+	createNote(t, srv, `{"title":"two"}`)
+
+	res, err := http.Get(srv.URL + "/api/v1/notes?offset=10")
+	require.NoError(t, err)
+	defer res.Body.Close()
+	require.Equal(t, http.StatusOK, res.StatusCode)
+
+	var list api.NoteList
+	require.NoError(t, json.NewDecoder(res.Body).Decode(&list))
+	assert.Equal(t, 2, list.Total, "total reflects all matching notes, not the page")
+	assert.Empty(t, list.Notes, "a past-the-end page is an empty array, not null")
+	assert.NotNil(t, list.Notes)
 }
