@@ -1,5 +1,0 @@
-{
-  "verify": "./build.sh",
-  "max_verify_iterations": 5,
-  "verify_timeout": "10s"
-}

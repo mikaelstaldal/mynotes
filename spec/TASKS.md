@@ -1,14 +1,3 @@
-## Repository tests
-
-Write `_test.go` tests beside the package against in-memory SQLite
-(`file::memory:?cache=shared`, full schema migrated, `testify`). Cover:
-create/get-by-slug/update/delete; UNIQUE slug enforcement; FTS search returns
-expected matches and ranking order; trigger sync after update (a changed
-title/content is reflected in search); browse vs. search excerpt construction
-including the title-only-match fallback and empty-content cases.
-
-
-
 ## Implement NoteService with validation and slug logic
 
 Replace `internal/service/service.go` (item service) with a `NoteService`. Add a
