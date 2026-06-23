@@ -1,25 +1,25 @@
 openapi: 3.0.3
 info:
-  title: Go Web Template API
+  title: MyNotes API
   description: >
-    Example REST API for the go-web-template project. A single `items`
-    resource demonstrates the full stack: OpenAPI → ogen server stubs →
-    handler → service → repository → SQLite. Endpoints are served under the
-    `/api/v1` base path (applied via the server URL and ogen's path prefix).
-    Timestamps use RFC 3339 (UTC). Errors return `{"error": "message"}`.
+    REST API for the mynotes application. A `notes` resource demonstrates the
+    full stack: OpenAPI → ogen server stubs → handler → service → repository →
+    SQLite. Endpoints are served under the `/api/v1` base path (applied via the
+    server URL and ogen's path prefix). Timestamps use RFC 3339 (UTC). Errors
+    return `{"error": "message"}`.
   version: 1.0.0
 servers:
   - url: http://localhost:8080/api/v1
     description: Local development server
 
 paths:
-  /items:
+  /notes:
     get:
-      operationId: listItems
-      summary: List items
+      operationId: listNotes
+      summary: List notes
       description: >
-        Returns items ordered by creation time (newest first). When `q` is
-        supplied, results are restricted to items matching the full-text query.
+        Returns notes ordered by update time (newest first). When `q` is
+        supplied, results are restricted to notes matching the full-text query.
       parameters:
         - name: q
           in: query
@@ -45,78 +45,116 @@ paths:
             default: 0
       responses:
         "200":
-          description: A page of items.
+          description: A page of notes.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ItemList"
+                $ref: "#/components/schemas/NoteList"
         default:
           $ref: "#/components/responses/Error"
     post:
-      operationId: createItem
-      summary: Create an item
+      operationId: createNote
+      summary: Create a note
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/ItemRequest"
+              $ref: "#/components/schemas/CreateNoteRequest"
       responses:
         "201":
-          description: The created item.
+          description: The created note.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Item"
+                $ref: "#/components/schemas/Note"
         default:
           $ref: "#/components/responses/Error"
 
-  /items/{id}:
+  /notes/{slug}:
     parameters:
-      - name: id
+      - name: slug
         in: path
         required: true
         schema:
-          type: integer
-          format: int64
-          minimum: 1
+          type: string
+          maxLength: 100
+          pattern: "^[a-z0-9]+(?:-[a-z0-9]+)*$"
     get:
-      operationId: getItem
-      summary: Get an item by id
+      operationId: getNote
+      summary: Get a note by slug
       responses:
         "200":
-          description: The requested item.
+          description: The requested note.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Item"
+                $ref: "#/components/schemas/Note"
         default:
           $ref: "#/components/responses/Error"
     patch:
-      operationId: updateItem
-      summary: Update an item (partial)
+      operationId: updateNote
+      summary: Update a note (partial)
       description: Only the fields present in the request body are changed.
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/ItemUpdate"
+              $ref: "#/components/schemas/UpdateNoteRequest"
       responses:
         "200":
-          description: The updated item.
+          description: The updated note.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Item"
+                $ref: "#/components/schemas/Note"
         default:
           $ref: "#/components/responses/Error"
     delete:
-      operationId: deleteItem
-      summary: Delete an item
+      operationId: deleteNote
+      summary: Delete a note
       responses:
         "204":
-          description: Item deleted.
+          description: Note deleted.
+        default:
+          $ref: "#/components/responses/Error"
+
+  /notes/{slug}/download:
+    parameters:
+      - name: slug
+        in: path
+        required: true
+        schema:
+          type: string
+          maxLength: 100
+          pattern: "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+    get:
+      operationId: downloadNote
+      summary: Download a note as raw Markdown
+      description: >
+        Returns the note `content` as a raw Markdown body with a
+        `Content-Disposition` attachment header. Errors keep the JSON
+        `{"error": "message"}` shape.
+      responses:
+        "200":
+          description: The note content as raw Markdown.
+          headers:
+            Content-Disposition:
+              description: Attachment header carrying the download filename.
+              required: true
+              schema:
+                type: string
+          content:
+            text/markdown:
+              schema:
+                type: string
+        "404":
+          description: Note not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         default:
           $ref: "#/components/responses/Error"
 
@@ -130,18 +168,22 @@ components:
             $ref: "#/components/schemas/Error"
 
   schemas:
-    Item:
+    Note:
       type: object
-      required: [id, title, content, created_at, updated_at]
+      required: [slug, title, content, created_at, updated_at]
       properties:
-        id:
-          type: integer
-          format: int64
+        slug:
+          type: string
+          maxLength: 100
+          pattern: "^[a-z0-9]+(?:-[a-z0-9]+)*$"
         title:
           type: string
+          minLength: 1
+          maxLength: 200
         content:
           type: string
-          description: Sanitized HTML content.
+          maxLength: 1000000
+          description: Verbatim Markdown content.
         created_at:
           type: string
           format: date-time
@@ -149,19 +191,38 @@ components:
           type: string
           format: date-time
 
-    ItemList:
+    NoteSummary:
       type: object
-      required: [total, items]
+      required: [slug, title, updated_at, excerpt]
+      properties:
+        slug:
+          type: string
+          maxLength: 100
+          pattern: "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+        updated_at:
+          type: string
+          format: date-time
+        excerpt:
+          type: string
+          description: Short text excerpt; empty string when none, never absent.
+
+    NoteList:
+      type: object
+      required: [total, notes]
       properties:
         total:
           type: integer
-          description: Number of items returned in this page.
-        items:
+          description: Number of notes returned in this page.
+        notes:
           type: array
           items:
-            $ref: "#/components/schemas/Item"
+            $ref: "#/components/schemas/NoteSummary"
 
-    ItemRequest:
+    CreateNoteRequest:
       type: object
       required: [title]
       properties:
@@ -171,9 +232,14 @@ components:
           maxLength: 200
         content:
           type: string
-          maxLength: 100000
+          maxLength: 1000000
+          default: ""
+        slug:
+          type: string
+          maxLength: 100
+          pattern: "^[a-z0-9]+(?:-[a-z0-9]+)*$"
 
-    ItemUpdate:
+    UpdateNoteRequest:
       type: object
       properties:
         title:
@@ -182,7 +248,11 @@ components:
           maxLength: 200
         content:
           type: string
-          maxLength: 100000
+          maxLength: 1000000
+        slug:
+          type: string
+          maxLength: 100
+          pattern: "^[a-z0-9]+(?:-[a-z0-9]+)*$"
 
     Error:
       type: object
