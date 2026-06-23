@@ -280,8 +280,11 @@ func validateTitle(title string) error {
 	return nil
 }
 
-// validateContent checks verbatim Markdown content: valid UTF-8 and within
-// maxContentLen. Content is never trimmed or otherwise mutated.
+// validateContent checks verbatim Markdown content: valid UTF-8, within
+// maxContentLen, and structurally safe (no disallowed embedded HTML, no
+// link/image destination with a disallowed scheme, no excessive nesting, no
+// stray C0 control characters — see validateMarkdownStructure). Content is never
+// trimmed or otherwise mutated; this only accepts or rejects.
 func validateContent(content string) error {
 	if !utf8.ValidString(content) {
 		return validationError("content is not valid UTF-8")
@@ -289,7 +292,7 @@ func validateContent(content string) error {
 	if utf8.RuneCountInString(content) > maxContentLen {
 		return validationError("content is too long")
 	}
-	return nil
+	return validateMarkdownStructure(content)
 }
 
 // validateSlug checks an explicit (client-supplied) slug against the OpenAPI
