@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/mikaelstaldal/go-web-template/internal/model"
+	sqlitedrv "modernc.org/sqlite"
+	sqlite3 "modernc.org/sqlite/lib"
 )
 
 // NoteRepository is the storage gateway for notes. One repository struct per
@@ -63,12 +65,24 @@ func (r *NoteRepository) SlugExists(ctx context.Context, slug string, excludeID 
 	return exists, err
 }
 
-// Create inserts a row and returns the stored note.
+// isUniqueViolation reports whether err is a SQLite UNIQUE-constraint failure.
+// The notes table's only UNIQUE index is on slug, so this is always a slug
+// collision; callers translate it to ErrConflict.
+func isUniqueViolation(err error) bool {
+	var sqErr *sqlitedrv.Error
+	return errors.As(err, &sqErr) && sqErr.Code() == sqlite3.SQLITE_CONSTRAINT_UNIQUE
+}
+
+// Create inserts a row and returns the stored note. A duplicate slug surfaces as
+// ErrConflict (the UNIQUE constraint is the authority on slug uniqueness).
 func (r *NoteRepository) Create(ctx context.Context, slug, title, content string) (model.Note, error) {
 	now := time.Now().UTC().Format(rfc3339)
 	_, err := r.db.ExecContext(ctx, `
 		INSERT INTO notes (slug, title, content, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`,
 		slug, title, content, now, now)
+	if isUniqueViolation(err) {
+		return model.Note{}, ErrConflict
+	}
 	if err != nil {
 		return model.Note{}, err
 	}
@@ -101,8 +115,12 @@ func (r *NoteRepository) Update(ctx context.Context, slug string, title, content
 	}
 	args = append(args, existing.ID)
 
-	if _, err := r.db.ExecContext(ctx,
-		"UPDATE notes SET "+strings.Join(sets, ", ")+" WHERE id = ?", args...); err != nil {
+	_, err = r.db.ExecContext(ctx,
+		"UPDATE notes SET "+strings.Join(sets, ", ")+" WHERE id = ?", args...)
+	if isUniqueViolation(err) {
+		return model.Note{}, ErrConflict
+	}
+	if err != nil {
 		return model.Note{}, err
 	}
 

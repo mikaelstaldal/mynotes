@@ -8,4 +8,7 @@ import "errors"
 var (
 	// ErrNotFound is returned when a requested row does not exist.
 	ErrNotFound = errors.New("not found")
+	// ErrConflict is returned when a write violates the slug UNIQUE constraint
+	// (the DB is the authority on slug uniqueness). The service maps it to 409.
+	ErrConflict = errors.New("slug already exists")
 )

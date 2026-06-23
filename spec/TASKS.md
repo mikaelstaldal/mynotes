@@ -1,121 +1,3 @@
-## Implement NoteService with validation and slug logic
-
-Replace `internal/service/service.go` (item service) with a `NoteService`. Add a
-new sentinel `ErrConflict` (alongside `ErrNotFound`, `ErrValidation`).
-
-- **Validation:** `strings.TrimSpace` the title before validating (reject a
-  whitespace-only title as `ErrValidation`); reject a title containing **any** C0
-  control char (incl. tab/newline/CR). Validate slug pattern, content length, and
-  UTF-8. **Never trim `content`.** Delete the template's content-mutating
-  `sanitize.HTML(content)` calls on the create and update write paths — notes
-  store Markdown verbatim.
-- **Slug generation** (create, no slug supplied): derive from title — lowercase,
-  fold accents via `golang.org/x/text/unicode/norm` NFKD + drop combining marks,
-  drop remaining non-ASCII, collapse non-alphanumerics to `-`, trim, truncate to
-  100 and re-trim trailing `-`; empty result falls back to `note`.
-- **Collision resolution:** auto-generated slug appends `-2`, `-3`, … (re-trim
-  base per suffix length so base+suffix ≤ 100; never produce `foo--2`). The
-  service existence check is advisory/racy — the DB UNIQUE constraint is the
-  source of truth: on a UNIQUE violation for an auto-generated slug, re-run the
-  full suffix scan and retry the insert, **bounded at 5 attempts**, then 500. An
-  **explicit** slug collision is `ErrConflict`→409, never suffixed; a UNIQUE
-  violation on an explicit-slug create or a PATCH slug rename also maps to
-  `ErrConflict`→409 (not a raw 500).
-- **Create timestamps:** set `created_at = updated_at = now` (UTC RFC 3339, same
-  instant). Coalesce a nil/absent `content` to `""` in the service itself (don't
-  rely on ogen materializing the schema default). `created_at` is immutable.
-- **PATCH no-op detection (greenfield):** `GetBySlug` first, diff each *present*
-  field against the stored value (title compared post-`TrimSpace`, content
-  verbatim, slug-to-own-value is a no-op not a conflict). If nothing differs,
-  issue no SQL `UPDATE` and return the unchanged note; otherwise set `updated_at =
-  now` and write only the changed columns. All-fields-absent is rejected 400
-  before the diff.
-
-## Implement structural Markdown validation (§4.1 gate)
-
-In the service, add the write-time structural validation of `content`, run on
-create and on update when `content` is present, rejecting with `ErrValidation`→400.
-This adds a direct dependency on `github.com/yuin/goldmark` (parse + AST walk
-only, never render) and reuses `internal/sanitize`'s bluemonday. Parse with
-Goldmark wired via the **individual** extensions `extension.Table`,
-`extension.Strikethrough`, `extension.Linkify` (not the `extension.GFM` bundle, so
-task-lists stay off), and walk the AST rejecting:
-
-- **Embedded HTML outside the safe allow-list:** pull each `ast.KindRawHTML` /
-  `ast.KindHTMLBlock` fragment, run bluemonday over just that fragment, and
-  compare against a canonical re-serialization of the original fragment through
-  the same `golang.org/x/net/html` tokenizer (token-stream level). Any divergence
-  = reject the whole write. bluemonday output is used only for the decision, never
-  stored. Configure `internal/sanitize` to expose a **removal-only** policy: base
-  `bluemonday.UGCPolicy()` with every attribute injector disabled
-  (`RequireNoFollowOnLinks(false)`, the fully-qualified and no-referrer variants,
-  `AddTargetBlankToFullyQualifiedLinks(false)`,
-  `RequireCrossOriginAnonymous(false)`), `<a href>` keeping
-  `http`/`https`/`mailto`/relative, and `img@src` restricted via a `Matching`
-  regexp to `https`/relative/canonical-`data:`-raster only. The package may need a
-  small API addition to expose the policy and return the cleaned fragment.
-- **Disallowed schemes on Markdown-native destinations** (`ast.KindLink` /
-  `ast.KindAutoLink` / `ast.KindImage`): links allow `http`/`https`/`mailto`;
-  images allow only `https` + canonical `data:` raster
-  (`^data:image/(gif|png|jpeg|webp);`, trailing `;` required, excludes
-  `svg+xml`). No-scheme (root-/bare-relative) allowed; scheme-relative
-  (`//host/…`) rejected on both; any other explicit scheme rejected; scheme
-  comparison case-insensitive.
-- **Nesting deeper than 100 levels** (coarse DoS bound).
-- **C0 control characters in `content`** except tab/newline/CR — a flat byte scan
-  (independent of the Goldmark parse).
-
-See `ARCHITECTURE.md` "Markdown rendering & validation pipeline" for exact
-regexps and rationale. Run `go mod tidy` after adding imports (`norm` and
-`goldmark` become direct dependencies).
-
-## Service tests
-
-Cover: slug generation (accents, punctuation, empty-title→`note` fallback,
-truncation); collision resolution (`-2`, `-3`); slug-pattern validation;
-content-length and UTF-8 limits; both create and update paths. Structural Markdown
-validation: safe embedded HTML across the broad allow-list (`<details>`, `<sub>`,
-`<kbd>`, `<div>`, an aligned `<table>`, a plain `<a>`/`<img>`) **accepted**;
-unsafe HTML (`<script>`, `<img onerror=…>`, `javascript:`/`data:text/html` href,
-`<style>`, `<iframe>`, `<input>`) **rejected**; benign HTML bluemonday merely
-reformats (`<br>`, unquoted attrs) and a plain `<a href="https://…">` accepted
-(no false positive — the **removal-only round-trip spike** asserting these and a
-representative allow-listed slice pass unrejected); disallowed Markdown-native
-schemes rejected; `http`/`https`/`mailto` links and root-/bare-relative accepted,
-scheme-relative `//host/…` rejected on both; `https` images accepted but `http`
-image destination rejected (Markdown-native and embedded `<img>`); canonical
-`data:image/...;` accepted on images but rejected on links, parameter-less
-`data:image/png,…` rejected, `data:image/svg+xml` rejected on images; over-deep
-nesting rejected; content with a C0 control (sentinel `U+0002`/`U+0003` or NUL)
-rejected while tab/newline/CR accepted; title with **any** C0 control rejected;
-valid GFM and empty content accepted.
-
-
-
-## Implement the notes handler and error mapping
-
-Implement the generated `api.Handler` for notes in `internal/handler/`,
-replacing the item handler. The handler is a thin adapter over the service. Map
-sentinel errors in `NewError`: `ErrNotFound`→404, `ErrValidation`→400,
-`ErrConflict`→409. No `render` operation. Implement the download operation: return
-`content` as the raw `text/markdown` body and set `Content-Disposition:
-attachment; filename="<slug>.md"`, reusing the service get-by-slug (no new
-business logic). If the milestone-1 spike showed ogen cannot express the download,
-add the thin-route fallback at `/api/v1/notes/{slug}/download` wrapped in
-`handler.WithMiddleware` and reusing the shared JSON error encoder (404 on unknown
-slug). DELETE of an unknown slug returns 404 (not idempotent — 204 only when a row
-was deleted). A past-the-end `offset` returns 200 with an empty `notes` array and
-the true `total`.
-
-## Handler tests
-
-Test the full request/response cycle for each endpoint and the error→status
-mapping (400/404/409), against in-memory SQLite with the full schema migrated.
-Include the download endpoint (raw body, `Content-Disposition`, empty-content
-note) and the past-the-end-offset empty-page case.
-
-
-
 ## Vendor the third-party bundles (out-of-band, committed)
 
 Pre-build the third-party bundles **out-of-band** and **commit** them, exactly
@@ -201,7 +83,7 @@ in-app `/notes/<slug>` links). Add an `uponSanitizeAttribute` hook permitting
 `data:` **only** on `img@src` matching `^data:image/(gif|png|jpeg|webp);` and
 stripping `data:` everywhere else. This is the only place note-derived HTML is
 assigned to `innerHTML`; reuse it in both the read view and the editor preview.
-See `ARCHITECTURE.md` "Security model" for the full config.
+See `spec/ARCHITECTURE.md` "Security model" for the full config.
 
 ## Build the list/search view
 
@@ -311,7 +193,7 @@ under `default-src 'self'`). Keep `script-src 'self'` and `frame-ancestors
 'none'`; confirm CodeMirror's runtime `<style>` is covered by the existing
 `style-src 'self' 'unsafe-inline'` and that the import-map hash is covered by
 `commonweb.ImportMapCSPHash`. Review the DOMPurify and markdown-it configs against
-`ARCHITECTURE.md` "Security model". Run the **DOMPurify `data:` spike**: confirm
+`spec/ARCHITECTURE.md` "Security model". Run the **DOMPurify `data:` spike**: confirm
 `data:image/png;base64,…` survives on `<img>`, `data:image/svg+xml,…` is stripped
 from `<img>`, and `data:` (e.g. `data:text/html,…`) is stripped from `<a href>`.
 
@@ -354,5 +236,5 @@ Remove leftover `items` artifacts (template views `ItemForm.tsx`/`ItemList.tsx`,
 `item_repo.go`, any `item`-named code and tests) once their `note` equivalents are
 in place and tests pass. Confirm `go mod tidy` has run, the app builds and serves
 (`./go-web-template`), and the full flow works end to end. At this point
-`spec/SPEC.md` is fully captured by `REQUIREMENTS.md` + `ARCHITECTURE.md` + this
+`spec/SPEC.md` is fully captured by `REQUIREMENTS.md` + `spec/ARCHITECTURE.md` + this
 file and can be removed.
