@@ -51,6 +51,12 @@ var policy = newPolicy()
 func newPolicy() *bluemonday.Policy {
 	p := bluemonday.UGCPolicy()
 
+	// UGCPolicy's inline-semantic set omits <kbd> (it allows the neighbouring
+	// <samp>/<var>), but the project allow-list (§4.1) lists <kbd> alongside them.
+	// Add it so a keyboard-key fragment round-trips unchanged instead of being
+	// stripped and falsely rejected by the removal-only compare.
+	p.AllowElements("kbd")
+
 	// Removal-only: disable every attribute injector UGCPolicy enables by
 	// default, so the policy strips disallowed content but never augments allowed
 	// content. Any injected rel/target/crossorigin would make even safe HTML

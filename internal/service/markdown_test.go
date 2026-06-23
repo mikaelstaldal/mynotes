@@ -4,6 +4,8 @@ import (
 	"errors"
 	"strings"
 	"testing"
+
+	"github.com/mikaelstaldal/go-web-template/internal/sanitize"
 )
 
 func TestValidateMarkdownStructure_Accepts(t *testing.T) {
@@ -29,6 +31,11 @@ func TestValidateMarkdownStructure_Accepts(t *testing.T) {
 		"safe block html":       "<div>\n<p>hello</p>\n</div>",
 		"br void tag":           "line<br>break",
 		"sub sup mark":          "H<sub>2</sub>O E=mc<sup>2</sup> <mark>hi</mark>",
+		"kbd":                   "press <kbd>Ctrl</kbd> then <kbd>C</kbd>",
+		"abbr del ins":          "<abbr title=\"HyperText\">HTML</abbr> <del>old</del> <ins>new</ins>",
+		"figure figcaption":     "<figure><img src=\"/a.png\" alt=\"x\"><figcaption>cap</figcaption></figure>",
+		"details summary":       "<details><summary>more</summary>\n\nhidden body\n\n</details>",
+		"aligned table html":    "<table><thead><tr><th align=\"right\">n</th></tr></thead><tbody><tr><td align=\"right\">1</td></tr></tbody></table>",
 		"embedded https img":    "<img src=\"https://x.com/a.png\" alt=\"x\">",
 		"embedded relative img": "<img src=\"/a.png\">",
 		"embedded data img":     "<img src=\"data:image/gif;base64,R0lGOD==\">",
@@ -51,6 +58,7 @@ func TestValidateMarkdownStructure_Rejects(t *testing.T) {
 		"onerror handler":             "<img src=\"https://x/a.png\" onerror=\"alert(1)\">",
 		"javascript href html":        "<a href=\"javascript:alert(1)\">x</a>",
 		"iframe":                      "<iframe src=\"https://x\"></iframe>",
+		"input":                       "<input type=\"text\" value=\"x\">",
 		"style tag":                   "<style>body{}</style>",
 		"data svg embedded img":       "<img src=\"data:image/svg+xml;base64,PHN2Zz4=\">",
 		"http embedded img":           "<img src=\"http://example.com/a.png\">",
@@ -85,6 +93,60 @@ func TestValidateMarkdownStructure_Rejects(t *testing.T) {
 			}
 			if !errors.Is(err, ErrValidation) {
 				t.Fatalf("expected ErrValidation, got %v", err)
+			}
+		})
+	}
+}
+
+// TestRemovalOnlyRoundTripSpike is the milestone-3 guard (§4.1): benign HTML that
+// bluemonday *reformats* (quotes unquoted attrs, closes void tags) — and a
+// representative slice of the broad safe allow-list — must pass the gate
+// unrejected. The accept/reject decision compares bluemonday's output against a
+// canonical re-serialization of the original, so pure reformatting cancels and
+// only genuinely stripped/rewritten (unsafe) content trips a rejection. A missed
+// injector (or one a future bluemonday version adds) would make even safe HTML
+// diverge from its re-serialization and be falsely rejected; this test catches
+// that here rather than in production.
+func TestRemovalOnlyRoundTripSpike(t *testing.T) {
+	// reformatted: bluemonday's serialization differs byte-for-byte from the raw
+	// fragment (it adds quotes / closes the void tag), yet the gate must still
+	// accept it. The require below asserts the reformat actually happens, so the
+	// case stays meaningful — if it ever stopped diverging it would no longer
+	// exercise the canonicalization path.
+	reformatted := map[string]string{
+		"unquoted href attr": "<a href=https://x.com>x</a>",
+		"unquoted img attrs": "<img src=https://x.com/a.png alt=x>",
+	}
+	for name, raw := range reformatted {
+		t.Run("reformatted/"+name, func(t *testing.T) {
+			if sanitize.HTML(raw) == raw {
+				t.Fatalf("expected bluemonday to reformat %q, but it was unchanged — case no longer exercises the spike", raw)
+			}
+			if err := validateMarkdownStructure(raw); err != nil {
+				t.Fatalf("benign reformatted HTML falsely rejected: %v", err)
+			}
+		})
+	}
+
+	// allowListed: a representative slice of the broad safe allow-list (§4.1, §10),
+	// each of which must pass unrejected. (These mostly re-serialize identically;
+	// they guard the allow-list breadth rather than the reformat path.)
+	allowListed := []string{
+		"plain link <a href=\"https://x.com\">x</a>",
+		"<br>",
+		"<sub>2</sub> <sup>2</sup> <mark>hi</mark>",
+		"<kbd>Ctrl</kbd>",
+		"<abbr title=\"x\">y</abbr> <del>a</del> <ins>b</ins>",
+		"<details><summary>s</summary>\n\nbody\n\n</details>",
+		"<div><span>x</span></div>",
+		"<figure><figcaption>c</figcaption></figure>",
+		"<table><tbody><tr><td align=\"right\">1</td></tr></tbody></table>",
+		"<a href=\"https://x.com\">l</a> and <img src=\"https://x.com/a.png\" alt=\"x\">",
+	}
+	for _, raw := range allowListed {
+		t.Run("allowlisted/"+raw, func(t *testing.T) {
+			if err := validateMarkdownStructure(raw); err != nil {
+				t.Fatalf("allow-listed HTML falsely rejected: %v", err)
 			}
 		})
 	}
