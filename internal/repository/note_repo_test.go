@@ -109,6 +109,23 @@ func TestSlugRenameConflictWritesNothing(t *testing.T) {
 	assert.Equal(t, "second", unchanged.Slug)
 }
 
+func TestCreateDuplicateSlugRejected(t *testing.T) {
+	ctx := context.Background()
+	repo := NewNoteRepository(newTestDB(t))
+
+	_, err := repo.Create(ctx, "dup", "First", "a")
+	require.NoError(t, err)
+
+	// The UNIQUE constraint on slug is the authority: a second insert with the
+	// same slug must fail and leave the original row untouched.
+	_, err = repo.Create(ctx, "dup", "Second", "b")
+	require.Error(t, err)
+
+	got, err := repo.GetBySlug(ctx, "dup")
+	require.NoError(t, err)
+	assert.Equal(t, "First", got.Title, "original row not overwritten by the rejected insert")
+}
+
 func TestSlugExists(t *testing.T) {
 	ctx := context.Background()
 	repo := NewNoteRepository(newTestDB(t))
@@ -207,6 +224,66 @@ func TestSearchMatchesAndSnippet(t *testing.T) {
 	assert.Contains(t, hits[0].Excerpt, "\x02", "start sentinel present")
 	assert.Contains(t, hits[0].Excerpt, "\x03", "end sentinel present")
 	assert.NotContains(t, hits[0].Excerpt, "<")
+}
+
+func TestSearchRankingOrder(t *testing.T) {
+	ctx := context.Background()
+	repo := NewNoteRepository(newTestDB(t))
+
+	// "strong" matches the term in its title and repeatedly in short content;
+	// "weak" mentions it once buried in a long body. bm25 (notes_fts.rank)
+	// must rank the dense, short document above the sparse, long one.
+	_, err := repo.Create(ctx, "weak", "Other",
+		"i once saw an apple in passing among many other padding words here to "+
+			"lengthen this document considerably so its bm25 score is lower")
+	require.NoError(t, err)
+	_, err = repo.Create(ctx, "strong", "Apple", "apple apple apple")
+	require.NoError(t, err)
+
+	hits, total, err := repo.List(ctx, "apple", 50, 0)
+	require.NoError(t, err)
+	assert.Equal(t, 2, total)
+	require.Len(t, hits, 2)
+	assert.Equal(t, []string{"strong", "weak"},
+		[]string{hits[0].Slug, hits[1].Slug}, "denser match ranks first")
+}
+
+func TestSearchTriggerSyncOnTitleUpdate(t *testing.T) {
+	ctx := context.Background()
+	repo := NewNoteRepository(newTestDB(t))
+
+	_, err := repo.Create(ctx, "note", "Aardvark", "body text")
+	require.NoError(t, err)
+
+	_, err = repo.Update(ctx, "note", ptr("Zeppelin"), nil, nil)
+	require.NoError(t, err)
+
+	// The AFTER UPDATE trigger must reindex the title column too: the old title
+	// is gone from the index and the new one is searchable.
+	gone, _, err := repo.List(ctx, "Aardvark", 50, 0)
+	require.NoError(t, err)
+	assert.Empty(t, gone, "old title no longer indexed")
+
+	found, _, err := repo.List(ctx, "Zeppelin", 50, 0)
+	require.NoError(t, err)
+	require.Len(t, found, 1)
+	assert.Equal(t, "note", found[0].Slug)
+}
+
+func TestSearchEmptyContentMatchHasEmptyExcerpt(t *testing.T) {
+	ctx := context.Background()
+	repo := NewNoteRepository(newTestDB(t))
+
+	// Title match with no content: the snippet carries no sentinel, and the
+	// plain-prefix fallback over empty content yields an empty excerpt.
+	_, err := repo.Create(ctx, "pineapple", "Pineapple", "")
+	require.NoError(t, err)
+
+	hits, _, err := repo.List(ctx, "Pineapple", 50, 0)
+	require.NoError(t, err)
+	require.Len(t, hits, 1)
+	assert.NotContains(t, hits[0].Excerpt, "\x02", "no content sentinel for a title-only match")
+	assert.Equal(t, "", hits[0].Excerpt, "empty content -> empty excerpt")
 }
 
 func TestSearchTitleOnlyMatchFallsBackToPrefix(t *testing.T) {
