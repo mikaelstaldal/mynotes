@@ -13,7 +13,15 @@ OpenAPI, and an embedded Preact + TypeScript frontend. Replace the example
 ./go-web-template -port 3000 -data /tmp/app  # custom port and data directory
 ```
 
-`go`, `ogen`, `tsc`, `openapi-typescript`, and `golangci-lint` must be on `$PATH`.
+`go`, `ogen`, `tsc`, `openapi-typescript`, `node`, and `golangci-lint` must be on
+`$PATH`. `node` runs the `node --test` client-side XSS-gate tests invoked from
+`build.sh`.
+
+`build.sh` must **never** invoke `npm`/`npx`/`yarn`/`pnpm`/`bun` — a deliberate
+supply-chain constraint: no package-manager install runs as part of the build or
+CI. `esbuild` and `npm` are required only by the separate, manually-run
+vendor-rebuild script (see "Vendor the third-party bundles" below); they are
+out-of-band — documented there, not in this list.
 
 The database is created automatically on first start under `<data>/app.sqlite`.
 
@@ -87,8 +95,15 @@ go test ./internal/handler/ -run TestCreateAndGetItem
 
 ## Security guidelines
 
-- **Sanitize on every write path** (create *and* update, interactive *and*
-  imported) using `sanitize.HTML`. An import or API client is never trusted.
+- **Guard every write path** (create *and* update, interactive *and* imported).
+  An import or API client is never trusted. The guard differs by field:
+  - **Most fields** — sanitize with `sanitize.HTML` (mutate-on-write).
+  - **Note `content`** — **validate-and-reject, not sanitize-and-store.** Note
+    `content` is stored verbatim Markdown; its embedded HTML is *validated*
+    (never mutated) by bluemonday on write — a write carrying disallowed HTML is
+    rejected, not silently rewritten. `internal/sanitize` is retained and reused
+    as this embedded-HTML validator (not removed). DOMPurify is the
+    authoritative render-time gate on the frontend.
 - **Validate URL schemes** (allow only `http`, `https`, `mailto`) wherever URLs
   are stored or rendered.
 - **HTTP hardening:** keep the global `http.MaxBytesHandler` body limit, and both
