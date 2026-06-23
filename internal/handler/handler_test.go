@@ -176,6 +176,48 @@ func TestDownloadUnknownReturns404(t *testing.T) {
 	assert.NotEmpty(t, body.Error)
 }
 
+func TestDownloadEmptyContentNote(t *testing.T) {
+	srv := newServer(t)
+	// content is absent → service coalesces it to "". The download is still a
+	// well-formed 200 with the attachment header and an empty raw body.
+	created := createNote(t, srv, `{"title":"Empty"}`)
+	require.Empty(t, created.Content)
+
+	res, err := http.Get(srv.URL + "/api/v1/notes/" + created.Slug + "/download")
+	require.NoError(t, err)
+	defer res.Body.Close()
+	require.Equal(t, http.StatusOK, res.StatusCode)
+
+	assert.Equal(t, "text/markdown", res.Header.Get("Content-Type"))
+	assert.Equal(t, `attachment; filename="`+created.Slug+`.md"`,
+		res.Header.Get("Content-Disposition"))
+
+	body, err := io.ReadAll(res.Body)
+	require.NoError(t, err)
+	assert.Empty(t, body, "empty-content note downloads as an empty body")
+}
+
+func TestListReturnsSummaries(t *testing.T) {
+	srv := newServer(t)
+	createNote(t, srv, `{"title":"First","content":"alpha body"}`)
+	createNote(t, srv, `{"title":"Second","content":"beta body"}`)
+
+	res, err := http.Get(srv.URL + "/api/v1/notes")
+	require.NoError(t, err)
+	defer res.Body.Close()
+	require.Equal(t, http.StatusOK, res.StatusCode)
+
+	var list api.NoteList
+	require.NoError(t, json.NewDecoder(res.Body).Decode(&list))
+	assert.Equal(t, 2, list.Total)
+	require.Len(t, list.Notes, 2)
+	// Ordered newest-first: the second note created sorts ahead of the first.
+	assert.Equal(t, "second", list.Notes[0].Slug)
+	assert.Equal(t, "Second", list.Notes[0].Title)
+	assert.Equal(t, "beta body", list.Notes[0].Excerpt, "short content is the verbatim excerpt")
+	assert.Equal(t, "first", list.Notes[1].Slug)
+}
+
 func TestListPastTheEndOffset(t *testing.T) {
 	srv := newServer(t)
 	createNote(t, srv, `{"title":"one"}`)
