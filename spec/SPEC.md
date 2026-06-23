@@ -529,6 +529,17 @@ Error body remains `{"error": "message"}`. Timestamps are RFC 3339 UTC.
 
 There is no render endpoint — Markdown is rendered in the browser (§4).
 
+**Response bodies for mutations.** `POST /notes` (`201`) and `PATCH
+/notes/{slug}` (`200`) both return the **full `Note` JSON object** (the schema
+below), exactly as the template's `CreateItem`/`UpdateItem` return `*api.Item`.
+This is load-bearing, not merely conventional: the editor's post-save navigation
+and dirty-snapshot reset (§6) read the **final** `slug` from this body — which on
+create may have been auto-generated or collision-suffixed, and on a `PATCH`
+rename is the new slug (§3.1). A bare `201`/`Location`-only response (no body)
+would break that flow. `GET /notes/{slug}` likewise returns the full `Note`;
+`DELETE` returns `204` with no body; `/download` returns the raw Markdown body
+(see below).
+
 The `{slug}` **path parameter** carries the slug `pattern`/`maxLength` constraint
 (§3.1) on **every** `/notes/{slug}*` route, including `/download`. A path that
 violates the pattern is rejected by ogen's request validation (a `400`) before
@@ -676,7 +687,13 @@ UpdateNoteRequest (all optional; absent = leave unchanged):
     explicit JSON `null` is **not** a recognized value and is rejected by ogen
     request validation as `400` before the handler runs. Only "field absent"
     vs. "field present with a valid value" matters to the service — there is no
-    null-clears semantic (to clear `content`, send `content: ""`).
+    null-clears semantic (to clear `content`, send `content: ""`). **This
+    `null`-rejection applies to the optional fields of `CreateNoteRequest`
+    (`content`, `slug`) too**, for the same reason: they are non-nullable ogen
+    `Opt*` wrappers, so a `content: null` (or `slug: null`) on create is an ogen
+    `400`, never coalesced to `""`/auto-generation — that coalescing is for the
+    **absent** (Opt-unset) case only (§9). The rule is a property of how every
+    optional request field is generated, not specific to update.
   - A present `content: ""` clears the body (empty content is valid, per the
     create constraints); only an absent field leaves it unchanged.
   - A PATCH that **actually changes** at least one field sets `updated_at = now`
@@ -791,7 +808,13 @@ is one field for both cases:
   an **out-of-range value is rejected by ogen request validation as `400`**
   (consistent with the malformed-slug `400` above) — the handler never clamps.
   The frontend must therefore keep its computed `limit`/`offset` within range
-  (clamp before sending) rather than relying on server-side clamping. An in-range
+  (clamp before sending) rather than relying on server-side clamping. **For
+  `offset` this clamp is the lower bound only** (`offset >= 0`): since no
+  `maximum` is declared, there is no upper value to clamp against, and the
+  "Load more" flow only ever advances `offset` by a positive multiple of `limit`
+  from `0`, so in practice it never violates even the lower bound — the clamp is
+  a defensive floor, not an active constraint. `limit` is clamped to its full
+  `1..200` range. An in-range
   `offset` **at or beyond `total`** is **not** an error: it returns `200` with an
   empty `notes` array and the true `total` (the natural SQLite `LIMIT/OFFSET`
   result for a past-the-end page), so a client that over-pages (e.g. because
@@ -923,7 +946,10 @@ works without server changes. Replace the hash router with a path router.
       lines skipped, truncated to 200 chars with a trailing `…` if longer). If
       the content has no usable heading, fall back to the **filename with its
       extension stripped** (e.g. `meeting-notes.md → "meeting-notes"`), itself
-      trimmed and truncated to the `maxLength: 200` title limit. If that too is
+      trimmed and truncated to the `maxLength: 200` title limit **the same way as
+      the heading rule** — i.e. truncated to 200 runes with a trailing `…`
+      (counted within the 200) when longer, so an over-long filename never
+      produces a `400` for a title the user never typed. If that too is
       empty (e.g. a file named only `.md`), fall back to a non-empty default such
       as `"Untitled"`, so the mandatory `title` is always present.
     - **Slug** is **not** sent; the server auto-generates it from the title and
@@ -965,7 +991,11 @@ works without server changes. Replace the hash router with a path router.
     signal on the `GET /notes/{slug}` path (e.g. the same `NotFoundError` it
     already throws on `404`), rather than the generic error `Toast` it raises for
     other non-OK statuses. The one extra round-trip for a malformed slug is
-    acceptable.
+    acceptable. Because the **edit view** (`/notes/{slug}/edit`) loads the note
+    through this **same** `GET /notes/{slug}`, the mapping applies to it
+    identically: a malformed-slug deep link to the editor also renders the
+    not-found view (it is the *initial* fetch, distinct from the stale-`404`-on-
+    save case of §6, which Toasts and navigates to the list).
   - **Download Markdown** saves the note's raw source as `<slug>.md`. Preferred
     implementation: navigate/link to `GET /api/v1/notes/{slug}/download` (note the
     `/api/v1` base — a bare `/notes/...` link would hit the SPA fallback and return
@@ -1052,6 +1082,16 @@ works without server changes. Replace the hash router with a path router.
   - Save (create/update) and Cancel. Unsaved-changes guard covering **both**
     intercepted in-app (pushState) navigations and real browser unload/reload
     (`beforeunload`).
+    - **Cancel navigates context-aware, computed from the route (not browser
+      history).** From `/notes/{slug}/edit` it returns to that note's **read
+      view** `/notes/{slug}`; from `/new` it returns to the **list** `/` (there
+      is no note to show yet). It does **not** use `history.back()`, so a fresh
+      deep-link into the editor still cancels to a sensible destination rather
+      than leaving the SPA. Cancel is an in-app `pushState` navigation, so it is
+      subject to the unsaved-changes guard above: if the editor is dirty the user
+      is prompted first, and only on confirmation does the navigation proceed.
+      (Post-save navigation is separate — §6 "Post-save navigation" — and always
+      goes to the read view built from the response slug.)
     - **"Dirty" is a value comparison against the last-saved snapshot**, not a
       keystroke counter. The editor holds a snapshot of the **last-saved** `(title,
       content, slug)` and is dirty whenever the current `(title, content, slug)`
