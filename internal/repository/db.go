@@ -34,35 +34,41 @@ func CreateDataDir(dbPath string) error {
 }
 
 var schemaV1 = []string{
-	`CREATE TABLE IF NOT EXISTS items (
+	`CREATE TABLE IF NOT EXISTS notes (
 		id         INTEGER PRIMARY KEY AUTOINCREMENT,
+		slug       TEXT NOT NULL UNIQUE,
 		title      TEXT NOT NULL,
 		content    TEXT NOT NULL DEFAULT '',
 		created_at TEXT NOT NULL,
 		updated_at TEXT NOT NULL
 	)`,
 
-	`CREATE INDEX IF NOT EXISTS idx_items_created_at ON items(created_at DESC)`,
+	// Composite index carries the id tie-break so the browse ordering
+	// (updated_at DESC, id DESC) is served without a sort step.
+	`CREATE INDEX IF NOT EXISTS idx_notes_updated_at ON notes(updated_at DESC, id DESC)`,
 
-	// Full-text index kept in sync with `items` via triggers. content='items'
+	// Full-text index kept in sync with `notes` via triggers. content='notes'
 	// makes it an external-content table (no duplicated row storage).
-	`CREATE VIRTUAL TABLE IF NOT EXISTS items_fts USING fts5(
+	`CREATE VIRTUAL TABLE IF NOT EXISTS notes_fts USING fts5(
 		title,
 		content,
-		content='items',
+		content='notes',
 		content_rowid='id'
 	)`,
 
-	`CREATE TRIGGER IF NOT EXISTS items_fts_insert AFTER INSERT ON items BEGIN
-		INSERT INTO items_fts(rowid, title, content) VALUES (new.id, new.title, new.content);
+	`CREATE TRIGGER IF NOT EXISTS notes_fts_insert AFTER INSERT ON notes BEGIN
+		INSERT INTO notes_fts(rowid, title, content) VALUES (new.id, new.title, new.content);
 	END`,
 
-	`CREATE TRIGGER IF NOT EXISTS items_fts_delete AFTER DELETE ON items BEGIN
-		INSERT INTO items_fts(items_fts, rowid, title, content) VALUES ('delete', old.id, old.title, old.content);
+	// External-content tables require the 'delete' bookkeeping command on
+	// delete/update; a plain DELETE/INSERT mirror corrupts the index.
+	`CREATE TRIGGER IF NOT EXISTS notes_fts_delete AFTER DELETE ON notes BEGIN
+		INSERT INTO notes_fts(notes_fts, rowid, title, content) VALUES ('delete', old.id, old.title, old.content);
 	END`,
 
-	`CREATE TRIGGER IF NOT EXISTS items_fts_update AFTER UPDATE OF title, content ON items BEGIN
-		INSERT INTO items_fts(items_fts, rowid, title, content) VALUES ('delete', old.id, old.title, old.content);
-		INSERT INTO items_fts(rowid, title, content) VALUES (new.id, new.title, new.content);
+	// Unscoped (AFTER UPDATE ON notes), per ARCHITECTURE.md.
+	`CREATE TRIGGER IF NOT EXISTS notes_fts_update AFTER UPDATE ON notes BEGIN
+		INSERT INTO notes_fts(notes_fts, rowid, title, content) VALUES ('delete', old.id, old.title, old.content);
+		INSERT INTO notes_fts(rowid, title, content) VALUES (new.id, new.title, new.content);
 	END`,
 }

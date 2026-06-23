@@ -1,8 +1,0 @@
-{
-  "verify": "./build.sh",
-  "max_verify_iterations": 5,
-  "verify_timeout": "10s",
-  "review_skill": "task-review",
-  "max_review_iterations": 1,
-  "review_timeout": "5m"
-}
