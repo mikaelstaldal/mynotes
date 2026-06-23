@@ -9,9 +9,9 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/mikaelstaldal/go-web-template/internal/api"
-	"github.com/mikaelstaldal/go-web-template/internal/model"
-	"github.com/mikaelstaldal/go-web-template/internal/service"
+	"github.com/mikaelstaldal/mynotes/internal/api"
+	"github.com/mikaelstaldal/mynotes/internal/model"
+	"github.com/mikaelstaldal/mynotes/internal/service"
 )
 
 type Handler struct {

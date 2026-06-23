@@ -7,7 +7,7 @@ export interface AppConfig {
   pageSize: number;
 }
 
-const STORAGE_KEY = 'go-web-template-settings';
+const STORAGE_KEY = 'mynotes-settings';
 
 const DEFAULTS: AppConfig = {
   theme: 'light',

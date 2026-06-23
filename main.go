@@ -20,11 +20,11 @@ import (
 	"github.com/mikaelstaldal/go-server-common/csrf"
 	"github.com/mikaelstaldal/go-server-common/httputil"
 	commonweb "github.com/mikaelstaldal/go-server-common/web"
-	"github.com/mikaelstaldal/go-web-template/internal/api"
-	"github.com/mikaelstaldal/go-web-template/internal/handler"
-	"github.com/mikaelstaldal/go-web-template/internal/repository"
-	"github.com/mikaelstaldal/go-web-template/internal/service"
-	"github.com/mikaelstaldal/go-web-template/web"
+	"github.com/mikaelstaldal/mynotes/internal/api"
+	"github.com/mikaelstaldal/mynotes/internal/handler"
+	"github.com/mikaelstaldal/mynotes/internal/repository"
+	"github.com/mikaelstaldal/mynotes/internal/service"
+	"github.com/mikaelstaldal/mynotes/web"
 )
 
 const databaseName = "app.sqlite"
@@ -39,7 +39,7 @@ func main() {
 	dataDir := flag.String("data", "data", "data directory")
 	publicURL := flag.String("public-url", "", "public-facing base URL for CSRF validation, e.g. https://example.com (defaults to http://<addr>:<port>)")
 	basicAuthFile := flag.String("basic-auth-file", "", "enable HTTP basic auth using this htpasswd file (bcrypt only)")
-	basicAuthRealm := flag.String("basic-auth-realm", "go-web-template", "realm for HTTP basic auth")
+	basicAuthRealm := flag.String("basic-auth-realm", "MyNotes", "realm for HTTP basic auth")
 	flag.Parse()
 
 	if *port < 1 || *port > 65535 {

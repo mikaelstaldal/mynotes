@@ -1,11 +1,8 @@
-# go-web-template
+# MyNotes
 
-A template for small, self-hosted web applications. It captures the common
-architecture of a Go backend with SQLite storage, a REST API defined in OpenAPI,
-and an embedded Preact + TypeScript frontend — all shipped as a single binary.
-
-The repository implements one example resource (`items`) end to end. Replace it
-with your own domain.
+A small, self-hosted note-taking web application. Go backend with SQLite storage,
+a REST API defined in OpenAPI, and an embedded Preact + TypeScript frontend —
+all shipped as a single binary.
 
 ## Stack
 
@@ -28,7 +25,7 @@ Prerequisites on `$PATH`: `go`, `ogen`, `tsc`, `openapi-typescript`,
 
 ```bash
 ./build.sh            # generate code, compile TS, build, test, lint
-./go-web-template     # http://127.0.0.1:8080
+./mynotes             # http://127.0.0.1:8080
 ```
 
 The SQLite database is created automatically at `data/app.sqlite` on first run.
@@ -61,14 +58,6 @@ internal/
 web/ts/             # TypeScript frontend sources
 web/static/         # embedded assets (HTML/CSS/vendored preact/compiled JS)
 ```
-
-## Using this as a template
-
-1. Rename the module in `go.mod` and the binary name in `build.sh` / `.gitignore`.
-2. Replace the `items` resource in `openapi.yaml` with your own paths and schemas.
-3. Update the layers to match: `model`, `repository` (schema + migrations),
-   `service`, `handler`, and the frontend `api/client.ts` + views.
-4. Run `./build.sh`.
 
 ## License
 

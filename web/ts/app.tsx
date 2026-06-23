@@ -19,12 +19,12 @@ function App() {
   return (
     <>
       <header class="app-header">
-        <a class="brand" href="#/">go-web-template</a>
+        <a class="brand" href="#/">MyNotes</a>
       </header>
       <main>
         {route.type === 'list' && <ItemList />}
         {route.type === 'new' && <ItemForm />}
-        {route.type === 'edit' && <ItemForm id={route.id} />}
+        {route.type === 'edit' && <ItemForm slug={route.slug} />}
       </main>
       <Toast />
     </>

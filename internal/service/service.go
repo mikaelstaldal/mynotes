@@ -17,8 +17,8 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"github.com/mikaelstaldal/go-web-template/internal/model"
-	"github.com/mikaelstaldal/go-web-template/internal/repository"
+	"github.com/mikaelstaldal/mynotes/internal/model"
+	"github.com/mikaelstaldal/mynotes/internal/repository"
 	"golang.org/x/text/unicode/norm"
 )
 

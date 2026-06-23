@@ -6,10 +6,11 @@
 import { showNetworkErrorToast } from '../util/toast.js';
 import type { components } from './types.js';
 
-export type Item = components['schemas']['Item'];
-export type ItemList = components['schemas']['ItemList'];
-export type ItemRequest = components['schemas']['ItemRequest'];
-export type ItemUpdate = components['schemas']['ItemUpdate'];
+export type Note = components['schemas']['Note'];
+export type NoteSummary = components['schemas']['NoteSummary'];
+export type NoteList = components['schemas']['NoteList'];
+export type CreateNoteRequest = components['schemas']['CreateNoteRequest'];
+export type UpdateNoteRequest = components['schemas']['UpdateNoteRequest'];
 
 const BASE = 'api/v1';
 
@@ -62,26 +63,26 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
 }
 
 export const api = {
-  items: {
+  notes: {
     list: (opts: { q?: string; limit?: number; offset?: number } = {}) => {
       const p = new URLSearchParams();
       if (opts.q) p.set('q', opts.q);
       if (opts.limit != null) p.set('limit', String(opts.limit));
       if (opts.offset != null) p.set('offset', String(opts.offset));
       const qs = p.toString();
-      return request<ItemList>('GET', `/items${qs ? `?${qs}` : ''}`);
+      return request<NoteList>('GET', `/notes${qs ? `?${qs}` : ''}`);
     },
 
-    get: (id: number) =>
-      request<Item>('GET', `/items/${id}`),
+    get: (slug: string) =>
+      request<Note>('GET', `/notes/${slug}`),
 
-    create: (body: ItemRequest) =>
-      request<Item>('POST', '/items', body),
+    create: (body: CreateNoteRequest) =>
+      request<Note>('POST', '/notes', body),
 
-    update: (id: number, body: ItemUpdate) =>
-      request<Item>('PATCH', `/items/${id}`, body),
+    update: (slug: string, body: UpdateNoteRequest) =>
+      request<Note>('PATCH', `/notes/${slug}`, body),
 
-    delete: (id: number) =>
-      request<void>('DELETE', `/items/${id}`),
+    delete: (slug: string) =>
+      request<void>('DELETE', `/notes/${slug}`),
   },
 };

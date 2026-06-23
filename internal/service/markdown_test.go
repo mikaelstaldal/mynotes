@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mikaelstaldal/go-web-template/internal/sanitize"
+	"github.com/mikaelstaldal/mynotes/internal/sanitize"
 )
 
 func TestValidateMarkdownStructure_Accepts(t *testing.T) {

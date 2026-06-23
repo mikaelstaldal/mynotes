@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/mikaelstaldal/go-web-template/internal/repository"
+	"github.com/mikaelstaldal/mynotes/internal/repository"
 
 	_ "modernc.org/sqlite"
 )

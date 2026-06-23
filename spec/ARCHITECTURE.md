@@ -1,6 +1,6 @@
 # MyNotes — Architecture
 
-MyNotes is built on the `go-web-template`: a layered Go backend, SQLite storage,
+MyNotes uses a layered Go backend, SQLite storage,
 an OpenAPI-defined REST API with generated server stubs, and an embedded Preact +
 TypeScript frontend. The deployed artifact is a single Go binary plus one SQLite
 file. The template's single `items` resource is **replaced** by a `notes`

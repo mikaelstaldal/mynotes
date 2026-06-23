@@ -13,10 +13,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/mikaelstaldal/go-web-template/internal/api"
-	"github.com/mikaelstaldal/go-web-template/internal/handler"
-	"github.com/mikaelstaldal/go-web-template/internal/repository"
-	"github.com/mikaelstaldal/go-web-template/internal/service"
+	"github.com/mikaelstaldal/mynotes/internal/api"
+	"github.com/mikaelstaldal/mynotes/internal/handler"
+	"github.com/mikaelstaldal/mynotes/internal/repository"
+	"github.com/mikaelstaldal/mynotes/internal/service"
 )
 
 // newServer wires the full handler → service → repository stack against an

@@ -4,12 +4,12 @@ import { navigate } from '../router.js';
 import { showToast } from '../util/toast.js';
 
 interface Props {
-  // undefined → creating a new item; a number → editing an existing one.
-  id?: number;
+  // undefined → creating a new note; a string → editing an existing one by slug.
+  slug?: string;
 }
 
-export function ItemForm({ id }: Props) {
-  const editing = id !== undefined;
+export function ItemForm({ slug }: Props) {
+  const editing = slug !== undefined;
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
   const [loading, setLoading] = useState(editing);
@@ -20,13 +20,13 @@ export function ItemForm({ id }: Props) {
     let cancelled = false;
     (async () => {
       try {
-        const item = await api.items.get(id);
+        const note = await api.notes.get(slug);
         if (cancelled) return;
-        setTitle(item.title);
-        setContent(item.content);
+        setTitle(note.title);
+        setContent(note.content);
       } catch (e) {
         if (e instanceof NotFoundError) {
-          showToast('Item not found');
+          showToast('Note not found');
           navigate('#/');
         } else {
           showToast(`Failed to load: ${(e as Error).message}`);
@@ -36,16 +36,16 @@ export function ItemForm({ id }: Props) {
       }
     })();
     return () => { cancelled = true; };
-  }, [id, editing]);
+  }, [slug, editing]);
 
   async function handleSubmit(e: Event) {
     e.preventDefault();
     setSaving(true);
     try {
       if (editing) {
-        await api.items.update(id, { title, content });
+        await api.notes.update(slug, { title, content });
       } else {
-        await api.items.create({ title, content });
+        await api.notes.create({ title, content });
       }
       navigate('#/');
     } catch (e) {
@@ -59,7 +59,7 @@ export function ItemForm({ id }: Props) {
 
   return (
     <form class="item-form" onSubmit={handleSubmit}>
-      <h2>{editing ? 'Edit item' : 'New item'}</h2>
+      <h2>{editing ? 'Edit note' : 'New note'}</h2>
       <label>
         Title
         <input
@@ -71,7 +71,7 @@ export function ItemForm({ id }: Props) {
         />
       </label>
       <label>
-        Content (HTML)
+        Content (Markdown)
         <textarea
           rows={6}
           value={content}

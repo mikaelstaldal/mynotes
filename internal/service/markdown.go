@@ -5,7 +5,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/mikaelstaldal/go-web-template/internal/sanitize"
+	"github.com/mikaelstaldal/mynotes/internal/sanitize"
 	"github.com/yuin/goldmark"
 	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/extension"

@@ -42,7 +42,7 @@ implement them.
 
 ## 2. Relationship to the template
 
-MyNotes is built on the existing `go-web-template`. The single `items` resource
+MyNotes is built on the existing codebase. The single `items` resource
 is **replaced** by a `notes` resource. The layered architecture is unchanged:
 
 ```

@@ -5,16 +5,15 @@
 export type Route =
   | { type: 'list' }
   | { type: 'new' }
-  | { type: 'edit'; id: number };
+  | { type: 'edit'; slug: string };
 
 function parseRoute(hash: string): Route {
   const raw = hash.startsWith('#') ? hash.slice(1) : hash;
   const parts = raw.split('/').filter(Boolean);
 
   if (parts[0] === 'new') return { type: 'new' };
-  if (parts[0] === 'items' && parts[1]) {
-    const id = Number(parts[1]);
-    if (Number.isInteger(id) && id > 0) return { type: 'edit', id };
+  if (parts[0] === 'notes' && parts[1]) {
+    return { type: 'edit', slug: parts[1] };
   }
   return { type: 'list' };
 }

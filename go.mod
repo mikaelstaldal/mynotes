@@ -1,4 +1,4 @@
-module github.com/mikaelstaldal/go-web-template
+module github.com/mikaelstaldal/mynotes
 
 go 1.26.4
 

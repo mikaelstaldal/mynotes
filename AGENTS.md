@@ -9,8 +9,8 @@ OpenAPI, and an embedded Preact + TypeScript frontend. Replace the example
 
 ```bash
 ./build.sh                                   # generate code, compile TS, build binary, test, lint
-./go-web-template                            # serves on 127.0.0.1:8080
-./go-web-template -port 3000 -data /tmp/app  # custom port and data directory
+./mynotes                            # serves on 127.0.0.1:8080
+./mynotes -port 3000 -data /tmp/app  # custom port and data directory
 ```
 
 `go`, `ogen`, `tsc`, `openapi-typescript`, `node`, and `golangci-lint` must be on

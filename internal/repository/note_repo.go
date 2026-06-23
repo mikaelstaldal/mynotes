@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mikaelstaldal/go-web-template/internal/model"
+	"github.com/mikaelstaldal/mynotes/internal/model"
 	sqlitedrv "modernc.org/sqlite"
 	sqlite3 "modernc.org/sqlite/lib"
 )
