@@ -27,7 +27,7 @@ export function ItemForm({ slug }: Props) {
       } catch (e) {
         if (e instanceof NotFoundError) {
           showToast('Note not found');
-          navigate('#/');
+          navigate('/');
         } else {
           showToast(`Failed to load: ${(e as Error).message}`);
         }
@@ -44,10 +44,11 @@ export function ItemForm({ slug }: Props) {
     try {
       if (editing) {
         await api.notes.update(slug, { title, content });
+        navigate(`/notes/${slug}`);
       } else {
-        await api.notes.create({ title, content });
+        const note = await api.notes.create({ title, content });
+        navigate(`/notes/${note.slug}`);
       }
-      navigate('#/');
     } catch (e) {
       showToast(`Failed to save: ${(e as Error).message}`);
     } finally {
@@ -79,7 +80,7 @@ export function ItemForm({ slug }: Props) {
         />
       </label>
       <div class="form-actions">
-        <button type="button" onClick={() => navigate('#/')}>Cancel</button>
+        <button type="button" onClick={() => navigate(editing ? `/notes/${slug}` : '/')}>Cancel</button>
         <button type="submit" class="primary" disabled={saving}>
           {saving ? 'Saving…' : 'Save'}
         </button>

@@ -169,6 +169,6 @@ out-of-band `web/ts/vendor/rebuild.sh` first and commit the regenerated bundles.
 Remove leftover `items` artifacts (template views `ItemForm.tsx`/`ItemList.tsx`,
 `item_repo.go`, any `item`-named code and tests) once their `note` equivalents are
 in place and tests pass. Confirm `go mod tidy` has run, the app builds and serves
-(`./mynotes`), and the full flow works end to end. At this point
-`spec/SPEC.md` is fully captured by `REQUIREMENTS.md` + `spec/ARCHITECTURE.md` + this
+(`./mynotes`), and the full flow works end to end. Update agent coding instructions in `AGENTS.md`.
+At this point `spec/SPEC.md` is fully captured by `spec/REQUIREMENTS.md` + `spec/ARCHITECTURE.md` + this
 file and can be removed.

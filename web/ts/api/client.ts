@@ -45,14 +45,14 @@ async function fetchWithRetry(url: string, init: RequestInit): Promise<Response>
   }
 }
 
-async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
+async function request<T>(method: string, path: string, body?: unknown, notFoundOn: number[] = []): Promise<T> {
   const init: RequestInit = { method, headers: { 'Content-Type': 'application/json' } };
   if (body !== undefined) init.body = JSON.stringify(body);
 
   const res = await fetchWithRetry(BASE + path, init);
 
   if (res.status === 401) { window.location.reload(); throw new Error('Unauthorized'); }
-  if (res.status === 404) throw new NotFoundError();
+  if (res.status === 404 || notFoundOn.includes(res.status)) throw new NotFoundError();
   if (res.status === 204) return undefined as T;
 
   const data = await res.json() as unknown;
@@ -74,7 +74,7 @@ export const api = {
     },
 
     get: (slug: string) =>
-      request<Note>('GET', `/notes/${slug}`),
+      request<Note>('GET', `/notes/${slug}`, undefined, [400]),
 
     create: (body: CreateNoteRequest) =>
       request<Note>('POST', '/notes', body),

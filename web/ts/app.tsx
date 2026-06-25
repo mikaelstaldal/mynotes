@@ -4,6 +4,7 @@ import { currentRoute, onRouteChange, type Route } from './router.js';
 import { getConfig } from './util/config.js';
 import { ItemList } from './views/ItemList.js';
 import { ItemForm } from './views/ItemForm.js';
+import { NoteView } from './views/NoteView.js';
 import { Toast } from './components/Toast.js';
 
 function App() {
@@ -19,11 +20,12 @@ function App() {
   return (
     <>
       <header class="app-header">
-        <a class="brand" href="#/">MyNotes</a>
+        <a class="brand" href="/">MyNotes</a>
       </header>
       <main>
         {route.type === 'list' && <ItemList />}
         {route.type === 'new' && <ItemForm />}
+        {route.type === 'view' && <NoteView slug={route.slug} />}
         {route.type === 'edit' && <ItemForm slug={route.slug} />}
       </main>
       <Toast />

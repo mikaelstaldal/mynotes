@@ -40,7 +40,7 @@ export function ItemList() {
           value={query}
           onInput={e => setQuery((e.target as HTMLInputElement).value)}
         />
-        <button class="primary" onClick={() => navigate('#/new')}>New note</button>
+        <button class="primary" onClick={() => navigate('/new')}>New note</button>
       </div>
 
       {loading ? (
@@ -51,7 +51,7 @@ export function ItemList() {
         <ul>
           {notes.map(n => (
             <li key={n.slug}>
-              <button class="link" onClick={() => navigate(`#/notes/${n.slug}`)}>{n.title}</button>
+              <a href={`/notes/${n.slug}`}>{n.title}</a>
               <span class="muted">{new Date(n.updated_at).toLocaleString()}</span>
               <button class="danger" onClick={() => handleDelete(n.slug)}>Delete</button>
             </li>
