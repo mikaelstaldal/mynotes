@@ -19,9 +19,10 @@ OpenAPI, and an embedded Preact + TypeScript frontend. Replace the example
 
 `build.sh` must **never** invoke `npm`/`npx`/`yarn`/`pnpm`/`bun` — a deliberate
 supply-chain constraint: no package-manager install runs as part of the build or
-CI. `esbuild` and `npm` are required only by the separate, manually-run
-vendor-rebuild script (see "Vendor the third-party bundles" below); they are
-out-of-band — documented there, not in this list.
+CI. `esbuild` and `npm` are required only by `web/ts/vendor/rebuild.sh`, a
+separate, manually-run maintainer script that pre-builds the vendored
+CodeMirror/markdown-it/DOMPurify bundles (and the test-only jsdom bundle) and
+commits the result; it is out-of-band, not invoked by `build.sh` or CI.
 
 The database is created automatically on first start under `<data>/app.sqlite`.
 
@@ -43,7 +44,9 @@ internal/
 web/
   embed.go               # //go:embed of web/static
   ts/                    # TypeScript sources (compiled to web/static by tsc)
-  static/                # embedded assets: index.html, app.css, vendored preact, compiled JS
+    vendor/rebuild.sh    # maintainer-only: rebuilds the vendored bundles below
+  static/                # embedded assets: index.html, app.css, vendored
+                          # preact/CodeMirror/markdown-it/DOMPurify, compiled JS
 ```
 
 Request flow: `handler → service → repository → SQLite`. The handler is a thin

@@ -1,45 +1,3 @@
-## Vendor the third-party bundles (out-of-band, committed)
-
-Pre-build the third-party bundles **out-of-band** and **commit** them, exactly
-like the existing vendored Preact files — `build.sh` consumes the committed
-artifacts and never rebuilds them, so `build.sh` needs neither `npm` nor
-`esbuild`. The bundling lives in a separate maintainer script (e.g.
-`web/ts/vendor/rebuild.sh`, not invoked by `build.sh` or CI) that a human runs
-only when updating a vendored library; that script is the single place `npm` (to
-fetch the upstream sources into a throwaway, `.gitignore`d `node_modules`) and
-`esbuild` (to bundle them) are used. Keeping the package-manager install manual,
-audited, and outside the automated build is the supply-chain mitigation. Pin
-upstream versions and run `npm ci --ignore-scripts` (no lifecycle scripts) in
-that script.
-
-Produce each vendor library as a self-contained ESM file under
-`web/static/vendor/`, committed like the existing vendored Preact files:
-
-- `vendor/codemirror.js` — re-export a **fixed minimal symbol surface**: from
-  `@codemirror/view` `EditorView` (with `updateListener`, `dispatch`,
-  `lineWrapping`) + `keymap`; from `@codemirror/state` `EditorState`,
-  `EditorSelection`; from `@codemirror/commands` `defaultKeymap`, `history`,
-  `historyKeymap`; from `@codemirror/language` `syntaxHighlighting`,
-  `defaultHighlightStyle`; from `@codemirror/lang-markdown` `markdown`. Exclude
-  search, line numbers/gutters, placeholder, bracket matching, and `EditorView.theme`.
-- `vendor/markdown-it.js` — the Markdown renderer.
-- `vendor/dompurify.js` — the sanitizer.
-
-The same rebuild script also produces a committed, **test-only** `jsdom` bundle
-under `web/ts/vendor/test/` (esbuild `--platform=node --format=esm`) so the
-`node --test` XSS-gate tests get a DOM without any `npm ci` at build time (see
-"Client-side XSS-gate tests"). It is never shipped to the browser and not added
-to the import map. If `jsdom` proves un-bundleable by esbuild, the fallback is to
-commit its pinned install tree under `web/ts/vendor/test/node_modules/` (vendored,
-no install-time scripts) rather than reintroduce `npm ci` into `build.sh`.
-
-Add one import-map entry per browser bundle in `web/static/index.html` (alongside
-the preact entries): `"codemirror"`, `"markdown-it"`, `"dompurify"` →
-`./vendor/*.js`. Note `build.sh` requires `node` (for `node --test`) but **not**
-`esbuild` or `npm`; `esbuild`/`npm` belong to the out-of-band rebuild script
-only — update `CLAUDE.md` Build & Run accordingly. The import-map CSP hash adapts
-automatically via `commonweb.ImportMapCSPHash` — no manual hash update.
-
 ## Add TypeScript type resolution for the bundles
 
 `tsc` resolves bare specifiers separately from the runtime import map. Add `paths`
@@ -50,8 +8,6 @@ pointing at `.d.ts` declarations committed under `web/ts/vendor/…`: upstream
 `exclude: ["vendor"]` so the declarations aren't compiled as sources. Because
 `noEmitOnError: true`, missing types are a hard `tsc` failure — this is not
 optional.
-
-
 
 ## Build the path router and notes API client
 
@@ -220,12 +176,16 @@ where DOMPurify is the stricter side.
 ## Wire tests into build.sh and go green
 
 Update `build.sh` so its full order is: `go generate` → `openapi-typescript` →
-`tsc` → `node --test` → `go test ./...` → `golangci-lint`. **No `esbuild`
-bundling and no `npm`/`npx`/`yarn`/`pnpm`/`bun` anywhere in `build.sh`** — the vendor
-bundles (browser and the test-only `jsdom` bundle) are pre-built committed
-artifacts, so `node --test` runs directly against the committed
-`web/static/vendor/*.js` and `web/ts/vendor/test/` bundles. The `node --test` step
-runs the client XSS-gate tests on every build (not a manual afterthought). Run
+`tsc` → `web/ts/vendor/test/unpack.sh` → `node --test` → `go test ./...` →
+`golangci-lint`. **No `esbuild` bundling and no `npm`/`npx`/`yarn`/`pnpm`/`bun`
+anywhere in `build.sh`** — the vendor bundles (browser and the test-only `jsdom`
+artifact) are pre-built committed artifacts, so `node --test` runs directly
+against the committed `web/static/vendor/*.js` and `web/ts/vendor/test/` bundles.
+jsdom is un-bundleable, so its install tree is committed as the deterministic
+`web/ts/vendor/test/jsdom-node_modules.tar.gz`; `unpack.sh` (tar only, no npm)
+extracts it to `web/ts/vendor/test/node_modules/` — idempotent, so it's a no-op
+on warm trees. The `node --test` step runs the client XSS-gate tests on every
+build (not a manual afterthought). Run
 `./build.sh` and resolve everything until it is green: TS compiled, both Go and
 Node tests passing, lint clean. (If a vendored library changed, re-run the
 out-of-band `web/ts/vendor/rebuild.sh` first and commit the regenerated bundles.)

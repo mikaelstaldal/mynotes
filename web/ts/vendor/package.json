@@ -1,0 +1,14 @@
+{
+  "name": "mynotes-vendor-rebuild",
+  "private": true,
+  "description": "Throwaway manifest for web/ts/vendor/rebuild.sh — not used at runtime.",
+  "dependencies": {
+    "@codemirror/view": "6.43.3",
+    "@codemirror/state": "6.7.0",
+    "@codemirror/commands": "6.10.4",
+    "@codemirror/language": "6.12.4",
+    "@codemirror/lang-markdown": "6.5.0",
+    "markdown-it": "14.2.0",
+    "dompurify": "3.4.11"
+  }
+}
