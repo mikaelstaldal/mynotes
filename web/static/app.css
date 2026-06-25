@@ -26,6 +26,9 @@ body {
   background: var(--bg);
   color: var(--fg);
   line-height: 1.5;
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
 }
 
 .app-header {
@@ -43,6 +46,15 @@ main {
   max-width: 720px;
   margin: 0 auto;
   padding: 1.5rem;
+  flex: 1;
+}
+
+main.editor-main {
+  max-width: none;
+  padding: 0.5rem 1rem;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
 .toolbar {
@@ -220,3 +232,129 @@ mark { background: #fef08a; color: var(--fg); border-radius: 2px; padding: 0 1px
 
 .toast-btns { display: flex; gap: 0.3rem; }
 .toast-item button { background: transparent; border: none; color: inherit; padding: 0.1rem 0.4rem; }
+
+/* ── Editor (ItemForm) ─────────────────────────────────────────── */
+
+.editor-page {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+/* Toolbar: layout toggles + dirty dot + cancel/save */
+.editor-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+.layout-btns { display: flex; }
+.layout-btns button { border-radius: 0; }
+.layout-btns button:first-child { border-radius: 6px 0 0 6px; }
+.layout-btns button:last-child  { border-radius: 0 6px 6px 0; }
+.layout-btns button + button    { border-left: none; }
+.layout-btns button.active      { background: var(--primary); color: #fff; border-color: var(--primary); }
+
+.dirty-dot { color: var(--primary); font-size: 0.7rem; line-height: 1; }
+.toolbar-spacer { flex: 1; }
+
+/* Meta bar: title + slug on one row */
+.editor-meta {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+
+.meta-title {
+  flex: 1;
+  min-width: 180px;
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.meta-title input { flex: 1; min-width: 0; }
+
+.meta-slug {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.meta-slug input { width: 200px; }
+.meta-label-text { font-weight: 500; }
+
+.slug-preview {
+  font-family: ui-monospace, 'Cascadia Code', monospace;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+.slug-warning { font-size: 0.8rem; color: var(--danger); font-weight: normal; }
+
+/* Split / editor / preview layout */
+.editor-layout {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  gap: 0.75rem;
+}
+
+.editor-pane {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.preview-pane {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+/* Hide the non-active pane (element stays in DOM so CM isn't destroyed) */
+.editor-layout--preview .editor-pane  { display: none; }
+.editor-layout--editor  .preview-pane { display: none; }
+
+/* CodeMirror overrides */
+.cm-editor {
+  height: 100%;
+  background: var(--bg);
+  color: var(--fg);
+}
+.cm-editor.cm-focused { outline: none; }
+
+.cm-scroller {
+  overflow: auto;
+  height: 100%;
+  font-family: ui-monospace, 'Cascadia Code', 'Fira Code', 'JetBrains Mono', monospace;
+  font-size: 0.9rem;
+  line-height: 1.6;
+}
+
+.cm-content {
+  padding: 0.75rem 1rem;
+  min-height: 100%;
+  caret-color: var(--fg);
+}
+
+/* Subtle cursor line highlight */
+.cm-activeLine { background: transparent; }
+
+/* Gutter (if any) picks up theme colors */
+.cm-gutters {
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  color: var(--muted);
+}
