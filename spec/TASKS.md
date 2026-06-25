@@ -1,29 +1,3 @@
-## Add TypeScript type resolution for the bundles
-
-`tsc` resolves bare specifiers separately from the runtime import map. Add `paths`
-entries in `web/ts/tsconfig.json` for `codemirror`, `markdown-it`, `dompurify`
-pointing at `.d.ts` declarations committed under `web/ts/vendor/…`: upstream
-`@types/markdown-it` and `@types/dompurify`, and a **hand-authored** shim for
-`codemirror` declaring exactly the bundle's re-export surface (above). Keep
-`exclude: ["vendor"]` so the declarations aren't compiled as sources. Because
-`noEmitOnError: true`, missing types are a hard `tsc` failure — this is not
-optional.
-
-## Build the path router and notes API client
-
-Replace the hash router with a History-API path router in `web/ts`. Routes: `/`
-(list+search), `/new` (new editor), `/notes/{slug}` (read view),
-`/notes/{slug}/edit` (existing editor). The `/notes/` prefix isolates note URLs
-from app routes. Internal navigation uses `history.pushState`; intercept link
-clicks **only** for in-app routes — the `/api/v1/notes/{slug}/download` link and
-external/absolute URLs do real browser navigations.
-
-Add a `notes` client in `web/ts/api/client.ts` mirroring the existing `items`
-client (no `render` call). All requests go through `api` (no direct `fetch` from
-components). Map a `400` slug-pattern rejection on `GET /notes/{slug}` to the same
-not-found signal the client throws on `404` (so malformed-slug deep links render
-the not-found view).
-
 ## Build the shared render+sanitize helper
 
 Create `web/ts/util/markdown.ts` — the single shared helper that owns the

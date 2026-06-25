@@ -13,7 +13,10 @@
     "paths": {
       "preact": ["./vendor/preact/src/index.d.ts"],
       "preact/hooks": ["./vendor/preact/hooks/src/index.d.ts"],
-      "preact/jsx-runtime": ["./vendor/preact/jsx-runtime/src/index.d.ts"]
+      "preact/jsx-runtime": ["./vendor/preact/jsx-runtime/src/index.d.ts"],
+      "codemirror": ["./vendor/codemirror.d.ts"],
+      "markdown-it": ["./vendor/node_modules/@types/markdown-it/index.d.mts"],
+      "dompurify": ["./vendor/node_modules/dompurify/dist/purify.es.d.mts"]
     },
     "lib": ["ES2020", "DOM", "DOM.Iterable"]
   },
