@@ -22,7 +22,16 @@ export function currentRoute(): Route {
   return parseRoute(window.location.pathname);
 }
 
+// A navigation guard returns true to allow the navigation, false to block it.
+type NavigationGuard = () => boolean;
+let guard: NavigationGuard | null = null;
+
+export function setNavigationGuard(fn: NavigationGuard | null): void {
+  guard = fn;
+}
+
 export function navigate(path: string): void {
+  if (guard && !guard()) return;
   history.pushState(null, '', path);
   // pushState alone does not fire popstate; dispatch one so listeners update.
   window.dispatchEvent(new PopStateEvent('popstate', { state: null }));

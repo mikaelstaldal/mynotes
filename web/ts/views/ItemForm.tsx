@@ -6,7 +6,7 @@ import {
   markdown, EditorSelection,
 } from 'codemirror';
 import { api, NotFoundError, type CreateNoteRequest, type UpdateNoteRequest } from '../api/client.js';
-import { navigate } from '../router.js';
+import { navigate, setNavigationGuard } from '../router.js';
 import { showToast } from '../util/toast.js';
 import { renderNote } from '../util/markdown.js';
 import { titleFromContent } from '../util/title.js';
@@ -40,20 +40,55 @@ export function ItemForm({ slug }: Props) {
   const editorContainerRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   const titleTouchedRef = useRef(false);    // true once user manually edits title
-  const initialContentRef = useRef('');     // content at last save/load; dirty baseline
+  // Snapshot of (title, content, slug) at last successful save or load — dirty baseline.
+  const snapshotRef = useRef<{ title: string; content: string; slug: string | undefined }>({
+    title: '', content: '', slug: undefined,
+  });
+  // Synchronous mirror of `dirty` state for the navigation guard closure.
+  const dirtyRef = useRef(false);
   const originalSlugRef = useRef('');       // slug at load time (edit mode)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Register a navigation guard while this form is mounted so in-app link clicks
+  // and the Cancel button ask for confirmation when there are unsaved changes.
+  useEffect(() => {
+    setNavigationGuard(() => {
+      if (!dirtyRef.current) return true;
+      return confirm('You have unsaved changes. Leave anyway?');
+    });
+    return () => setNavigationGuard(null);
+  }, []);
+
+  // Prevent browser refresh/tab-close when dirty.
+  useEffect(() => {
+    if (!dirty) return;
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [dirty]);
 
   // Kept current every render so the CM updateListener never captures stale state.
   const handleDocChangeRef = useRef<(doc: string) => void>(() => {});
   handleDocChangeRef.current = (doc: string) => {
-    setDirty(doc !== initialContentRef.current);
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => setPreviewHtml(renderNote(doc)), 300);
+    // Resolve the title that will be in effect after this change (auto-sync or manual).
+    let currentTitle = title;
     if (!titleTouchedRef.current) {
       const extracted = titleFromContent(doc);
-      if (extracted !== null) setTitle(extracted);
+      if (extracted !== null) {
+        setTitle(extracted);
+        currentTitle = extracted;
+      }
     }
+    const currentSlug = editing ? slugField : (slugOverrideActive ? slugOverride : undefined);
+    const snap = snapshotRef.current;
+    const d = currentTitle !== snap.title || doc !== snap.content || currentSlug !== snap.slug;
+    setDirty(d);
+    dirtyRef.current = d;
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => setPreviewHtml(renderNote(doc)), 300);
   };
 
   // Load note for edit mode.
@@ -68,7 +103,7 @@ export function ItemForm({ slug }: Props) {
         setTitle(note.title);
         setSlugField(note.slug);
         originalSlugRef.current = note.slug;
-        initialContentRef.current = note.content;
+        snapshotRef.current = { title: note.title, content: note.content, slug: note.slug };
         titleTouchedRef.current = true; // suppress auto-sync in edit mode
         setPreviewHtml(renderNote(note.content));
       } catch (e) {
@@ -89,7 +124,7 @@ export function ItemForm({ slug }: Props) {
     if (!editorContainerRef.current) return;
 
     const view = new EditorView({
-      doc: initialContentRef.current,
+      doc: snapshotRef.current.content,
       extensions: [
         history(),
         keymap.of([...defaultKeymap, ...historyKeymap]),
@@ -137,17 +172,27 @@ export function ItemForm({ slug }: Props) {
         const body: UpdateNoteRequest = { title, content };
         if (slugField !== originalSlugRef.current) body.slug = slugField;
         const note = await api.notes.update(slug, body);
-        initialContentRef.current = content;
+        snapshotRef.current = { title, content, slug: note.slug };
+        dirtyRef.current = false;
         setDirty(false);
         navigate(`/notes/${note.slug}`);
       } else {
         const body: CreateNoteRequest = { title, content };
         if (slugOverrideActive && slugOverride) body.slug = slugOverride;
         const note = await api.notes.create(body);
+        dirtyRef.current = false;
+        setDirty(false);
         navigate(`/notes/${note.slug}`);
       }
     } catch (e) {
-      showToast(`Failed to save: ${(e as Error).message}`);
+      if (e instanceof NotFoundError) {
+        showToast('This note no longer exists');
+        dirtyRef.current = false;
+        setDirty(false);
+        navigate('/');
+      } else {
+        showToast((e as Error).message);
+      }
     } finally {
       setSaving(false);
     }
@@ -195,8 +240,13 @@ export function ItemForm({ slug }: Props) {
             required
             maxLength={200}
             onInput={(e) => {
+              const v = (e.target as HTMLInputElement).value;
               titleTouchedRef.current = true;
-              setTitle((e.target as HTMLInputElement).value);
+              setTitle(v);
+              const c = viewRef.current?.state.doc.toString() ?? '';
+              const s = editing ? slugField : (slugOverrideActive ? slugOverride : undefined);
+              const d = v !== snapshotRef.current.title || c !== snapshotRef.current.content || s !== snapshotRef.current.slug;
+              setDirty(d); dirtyRef.current = d;
             }}
           />
         </label>
@@ -209,7 +259,13 @@ export function ItemForm({ slug }: Props) {
               value={slugField}
               maxLength={100}
               pattern="^[a-z0-9]+(?:-[a-z0-9]+)*$"
-              onInput={(e) => setSlugField((e.target as HTMLInputElement).value)}
+              onInput={(e) => {
+                const v = (e.target as HTMLInputElement).value;
+                setSlugField(v);
+                const c = viewRef.current?.state.doc.toString() ?? '';
+                const d = title !== snapshotRef.current.title || c !== snapshotRef.current.content || v !== snapshotRef.current.slug;
+                setDirty(d); dirtyRef.current = d;
+              }}
             />
             {slugChanged && <span class="slug-warning">URL will change</span>}
           </label>
@@ -223,7 +279,13 @@ export function ItemForm({ slug }: Props) {
                 maxLength={100}
                 pattern="^[a-z0-9]+(?:-[a-z0-9]+)*$"
                 placeholder={slugPreviewVal}
-                onInput={(e) => setSlugOverride((e.target as HTMLInputElement).value)}
+                onInput={(e) => {
+                  const v = (e.target as HTMLInputElement).value;
+                  setSlugOverride(v);
+                  const c = viewRef.current?.state.doc.toString() ?? '';
+                  const d = title !== snapshotRef.current.title || c !== snapshotRef.current.content || v !== snapshotRef.current.slug;
+                  setDirty(d); dirtyRef.current = d;
+                }}
               />
             ) : (
               <>
@@ -231,7 +293,13 @@ export function ItemForm({ slug }: Props) {
                 <button
                   type="button"
                   class="link"
-                  onClick={() => { setSlugOverride(slugPreviewVal); setSlugOverrideActive(true); }}
+                  onClick={() => {
+                    setSlugOverride(slugPreviewVal);
+                    setSlugOverrideActive(true);
+                    const c = viewRef.current?.state.doc.toString() ?? '';
+                    const d = title !== snapshotRef.current.title || c !== snapshotRef.current.content || slugPreviewVal !== snapshotRef.current.slug;
+                    setDirty(d); dirtyRef.current = d;
+                  }}
                 >Override</button>
               </>
             )}
