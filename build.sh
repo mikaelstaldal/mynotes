@@ -24,9 +24,12 @@ go generate ./...
 # 4. Build the single binary (frontend is embedded via web/embed.go).
 go build -tags netgo -o "$OUTPUT_DIR/mynotes" .
 
-# 5. Run frontend XSS-gate tests (node --test; jsdom bundle must be unpacked).
+# 5. Run frontend XSS-gate and markdown render tests (node --test; jsdom bundle
+#    must be unpacked).  The --import preloader registers resolve hooks that map
+#    'markdown-it' and 'dompurify' bare specifiers to the committed vendor bundles
+#    so compiled frontend modules can be imported without an npm install.
 web/ts/vendor/test/unpack.sh
-node --test web/ts/xss-gate.test.mjs
+node --import ./web/ts/test-preload.mjs --test web/ts/xss-gate.test.mjs web/ts/markdown.test.mjs
 
 # 6. Test and lint.
 go test ./...
