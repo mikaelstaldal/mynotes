@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'preact/hooks';
 import { api, type NoteSummary } from '../api/client.js';
 import { navigate } from '../router.js';
 import { showToast } from '../util/toast.js';
+import { titleFromContent, titleFromFilename } from '../util/title.js';
 
 const LIMIT = 50;
 const MAX_Q_RUNES = 200;
@@ -93,10 +94,14 @@ export function ItemList() {
     const file = (e.target as HTMLInputElement).files?.[0];
     if (!file) return;
     const text = await file.text();
-    const h1 = /^#\s+(.+)$/m.exec(text);
-    const title = h1
-      ? h1[1].trim()
-      : file.name.replace(/\.md$/i, '').replace(/[-_]+/g, ' ');
+
+    if ([...text].length > 1_000_000) {
+      showToast('File too large: must be at most 1,000,000 characters.');
+      if (uploadRef.current) uploadRef.current.value = '';
+      return;
+    }
+
+    const title = titleFromContent(text) ?? titleFromFilename(file.name);
     try {
       const note = await api.notes.create({ title, content: text });
       navigate(`/notes/${note.slug}`);
@@ -123,7 +128,7 @@ export function ItemList() {
         <input
           ref={uploadRef}
           type="file"
-          accept=".md,text/markdown"
+          accept=".md,.markdown,text/markdown,text/plain"
           style="display:none"
           onChange={handleUpload}
         />
