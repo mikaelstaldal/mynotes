@@ -24,6 +24,10 @@ go generate ./...
 # 4. Build the single binary (frontend is embedded via web/embed.go).
 go build -tags netgo -o "$OUTPUT_DIR/mynotes" .
 
-# 5. Test and lint.
+# 5. Run frontend XSS-gate tests (node --test; jsdom bundle must be unpacked).
+web/ts/vendor/test/unpack.sh
+node --test web/ts/xss-gate.test.mjs
+
+# 6. Test and lint.
 go test ./...
 golangci-lint run ./...
