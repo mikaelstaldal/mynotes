@@ -1,34 +1,3 @@
-## Build the shared render+sanitize helper
-
-Create `web/ts/util/markdown.ts` — the single shared helper that owns the
-markdown-it → DOMPurify pipeline. markdown-it runs with `html: true`, `linkify`
-on, GFM tables/strikethrough/autolinks, `maxNesting: 100`. DOMPurify is configured
-with the broad safe-HTML allow-list matching the server bluemonday profile
-(exclude `script`/`style`/`iframe`/object/embed/form-controls/raw-media and all
-`on*` handlers; allow the prose/table/inline/disclosure/figure/`a`/`img` set and
-the listed attributes). Set `ALLOWED_URI_REGEXP =
-/^(?:(?:https?|mailto):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i` (three-scheme
-allow-list **plus** DOMPurify's relative-URL alternation — load-bearing for
-in-app `/notes/<slug>` links). Add an `uponSanitizeAttribute` hook permitting
-`data:` **only** on `img@src` matching `^data:image/(gif|png|jpeg|webp);` and
-stripping `data:` everywhere else. This is the only place note-derived HTML is
-assigned to `innerHTML`; reuse it in both the read view and the editor preview.
-See `spec/ARCHITECTURE.md` "Security model" for the full config.
-
-## Build the list/search view
-
-Build the `/` view: a debounced search box driving `q`, results showing title,
-updated time, excerpt, and search highlights (escape the whole excerpt string,
-then convert `U+0002`/`U+0003` sentinel pairs to `<mark>…</mark>`). Empty and
-loading states. A "Load more" button: fetch the first page (limit 50, offset 0),
-advance `offset` by the number of rows **received from the server** (not the
-displayed count), append new rows de-duplicated by slug (`shown.has(r.slug)`),
-show the button while `loaded < total` and hide it when an empty page returns or
-all rows are loaded; show `total` informationally. Reset accumulated rows and
-offset on query change. Clamp `limit`/`offset` to range before sending. Cap the
-outgoing `q` to 200 **runes** (code points, e.g. `[...q].slice(0,200)`, not the
-`maxlength` attribute). "New note" and "Upload Markdown" actions.
-
 ## Implement Upload Markdown (create from file)
 
 Add the Upload Markdown action to the list view: a file picker
