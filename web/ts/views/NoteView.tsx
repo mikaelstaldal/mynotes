@@ -1,11 +1,8 @@
 import { useState, useEffect, useMemo } from 'preact/hooks';
-import MarkdownIt from 'markdown-it';
-import DOMPurify from 'dompurify';
 import { api, NotFoundError, type Note } from '../api/client.js';
 import { navigate } from '../router.js';
 import { showToast } from '../util/toast.js';
-
-const md = new MarkdownIt({ html: true });
+import { renderNote } from '../util/markdown.js';
 
 interface Props {
   slug: string;
@@ -15,6 +12,7 @@ export function NoteView({ slug }: Props) {
   const [note, setNote] = useState<Note | null>(null);
   const [notFound, setNotFound] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -40,10 +38,34 @@ export function NoteView({ slug }: Props) {
     return () => { cancelled = true; };
   }, [slug]);
 
+  useEffect(() => {
+    if (!note) return;
+    const prev = document.title;
+    document.title = note.title;
+    return () => { document.title = prev; };
+  }, [note]);
+
   const renderedContent = useMemo(() => {
     if (!note) return '';
-    return DOMPurify.sanitize(md.render(note.content));
+    return renderNote(note.content);
   }, [note]);
+
+  async function handleDelete() {
+    if (!note) return;
+    setDeleting(true);
+    try {
+      await api.notes.delete(note.slug);
+      navigate('/');
+    } catch (e) {
+      if (e instanceof NotFoundError) {
+        showToast('Note was already deleted');
+        navigate('/');
+      } else {
+        showToast(`Failed to delete: ${(e as Error).message}`);
+        setDeleting(false);
+      }
+    }
+  }
 
   if (loading) return <p class="muted">Loading…</p>;
 
@@ -62,10 +84,12 @@ export function NoteView({ slug }: Props) {
     <div class="note-view">
       <div class="toolbar">
         <a href="/">Back</a>
-        <a href={`/api/v1/notes/${note.slug}/download`}>Download</a>
-        <button class="primary" onClick={() => navigate(`/notes/${note.slug}/edit`)}>Edit</button>
+        <a href={`/api/v1/notes/${note.slug}/download`}>Download Markdown</a>
+        <button onClick={() => navigate(`/notes/${note.slug}/edit`)}>Edit</button>
+        <button class="danger" onClick={handleDelete} disabled={deleting}>
+          {deleting ? 'Deleting…' : 'Delete'}
+        </button>
       </div>
-      <h2>{note.title}</h2>
       <div class="note-content" dangerouslySetInnerHTML={{ __html: renderedContent }} />
     </div>
   );
