@@ -3,7 +3,7 @@ import {
   EditorView, keymap,
   defaultKeymap, history, historyKeymap,
   syntaxHighlighting, defaultHighlightStyle,
-  markdown,
+  markdown, EditorSelection,
 } from 'codemirror';
 import { api, NotFoundError, type CreateNoteRequest, type UpdateNoteRequest } from '../api/client.js';
 import { navigate } from '../router.js';
@@ -11,6 +11,11 @@ import { showToast } from '../util/toast.js';
 import { renderNote } from '../util/markdown.js';
 import { titleFromContent } from '../util/title.js';
 import { slugFromTitle } from '../util/slug.js';
+import { LinkPicker } from '../components/LinkPicker.js';
+
+function escapeLinkText(s: string): string {
+  return s.replace(/[\\[\]]/g, '\\$&');
+}
 
 type Layout = 'split' | 'editor' | 'preview';
 
@@ -30,6 +35,7 @@ export function ItemForm({ slug }: Props) {
   const [dirty, setDirty] = useState(false);
   const [layout, setLayout] = useState<Layout>('split');
   const [previewHtml, setPreviewHtml] = useState('');
+  const [pickerOpen, setPickerOpen] = useState(false);
 
   const editorContainerRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
@@ -147,6 +153,19 @@ export function ItemForm({ slug }: Props) {
     }
   }
 
+  function insertLink(noteSlug: string, noteTitle: string) {
+    setPickerOpen(false);
+    const view = viewRef.current;
+    if (!view) return;
+    const { from } = view.state.selection.main;
+    const text = `[${escapeLinkText(noteTitle)}](/notes/${noteSlug})`;
+    view.dispatch({
+      changes: { from, insert: text },
+      selection: EditorSelection.cursor(from + text.length),
+    });
+    view.focus();
+  }
+
   if (loading) return <p class="muted">Loading…</p>;
 
   const slugPreviewVal = slugFromTitle(title);
@@ -162,6 +181,7 @@ export function ItemForm({ slug }: Props) {
         </div>
         {dirty && <span class="dirty-dot" title="Unsaved changes">●</span>}
         <span class="toolbar-spacer" />
+        <button type="button" onClick={() => setPickerOpen(true)}>Link</button>
         <button type="button" onClick={() => navigate(editing ? `/notes/${slug}` : '/')}>Cancel</button>
         <button type="submit" class="primary" disabled={saving}>{saving ? 'Saving…' : 'Save'}</button>
       </div>
@@ -223,6 +243,14 @@ export function ItemForm({ slug }: Props) {
         <div class="editor-pane" ref={editorContainerRef} />
         <div class="preview-pane note-content" dangerouslySetInnerHTML={{ __html: previewHtml }} />
       </div>
+
+      {pickerOpen && (
+        <LinkPicker
+          currentSlug={slug}
+          onSelect={insertLink}
+          onClose={() => setPickerOpen(false)}
+        />
+      )}
     </form>
   );
 }

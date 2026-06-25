@@ -358,3 +358,61 @@ mark { background: #fef08a; color: var(--fg); border-radius: 2px; padding: 0 1px
   border-right: 1px solid var(--border);
   color: var(--muted);
 }
+
+/* ── Link picker modal ─────────────────────────────────────────── */
+
+.link-picker-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 15vh;
+  z-index: 500;
+}
+
+.link-picker {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+  width: min(480px, 90vw);
+  max-height: 60vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.link-picker-input {
+  border: none;
+  border-bottom: 1px solid var(--border);
+  border-radius: 8px 8px 0 0;
+  padding: 0.75rem 1rem;
+  font-size: 1rem;
+  width: 100%;
+}
+
+.link-picker-list {
+  overflow-y: auto;
+  flex: 1;
+}
+
+.link-picker-list li { border-bottom: 1px solid var(--border); }
+.link-picker-list li:last-child { border-bottom: none; }
+
+.link-picker-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  border-radius: 0;
+  padding: 0.6rem 1rem;
+  cursor: pointer;
+  color: var(--fg);
+}
+
+.link-picker-item:hover { background: var(--surface); }
+
+.link-picker-empty { margin: 1rem; }
