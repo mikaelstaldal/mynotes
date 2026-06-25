@@ -83,14 +83,27 @@ button:disabled { opacity: 0.6; cursor: default; }
 ul { list-style: none; padding: 0; margin: 0; }
 
 .item-list li {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  padding: 0.6rem 0;
   border-bottom: 1px solid var(--border);
 }
 
-.item-list li .link { flex: 1; text-align: left; font-size: 1rem; }
+.note-row {
+  display: grid;
+  grid-template-areas: "title date" "excerpt excerpt";
+  grid-template-columns: 1fr auto;
+  align-items: baseline;
+  gap: 0.15rem 0.75rem;
+  padding: 0.6rem 0;
+}
+
+.note-row .link { grid-area: title; font-size: 1rem; }
+.note-row .note-date { grid-area: date; font-size: 0.8rem; white-space: nowrap; }
+.note-row .note-excerpt { grid-area: excerpt; margin: 0; font-size: 0.875rem; line-height: 1.4; }
+
+mark { background: #fef08a; color: var(--fg); border-radius: 2px; padding: 0 1px; }
+:root[data-theme="dark"] mark { background: #713f12; }
+
+.result-count { margin: 0 0 0.5rem; font-size: 0.875rem; }
+.load-more { margin-top: 1rem; }
 
 .item-form { display: flex; flex-direction: column; gap: 1rem; }
 .item-form label { display: flex; flex-direction: column; gap: 0.3rem; font-weight: 500; }
