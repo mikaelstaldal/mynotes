@@ -3,11 +3,9 @@
 MyNotes uses a layered Go backend, SQLite storage,
 an OpenAPI-defined REST API with generated server stubs, and an embedded Preact +
 TypeScript frontend. The deployed artifact is a single Go binary plus one SQLite
-file. The template's single `items` resource is **replaced** by a `notes`
-resource.
+file.
 
-This document records the design decisions. Functional behavior is in
-`REQUIREMENTS.md`; the build plan is in `TASKS.md`.
+This document records the design decisions. Functional behavior is in `REQUIREMENTS.md`.
 
 ## Layering
 
@@ -25,27 +23,26 @@ handler → service → repository → SQLite
 - `internal/repository/` — SQLite storage; schema + FTS triggers + migrations in
   `db.go`.
 - `internal/model/` — shared `Note` domain type.
-- `internal/sanitize/` — bluemonday; **retained**, repurposed as the write-time
-  embedded-HTML *validator* (accept/reject), not a content mutator.
+- `internal/sanitize/` — bluemonday; the write-time embedded-HTML *validator* (accept/reject).
 - `web/` — embedded Preact frontend (`embed.go` `//go:embed` of `web/static`).
 
 Request flow: handler (thin adapter) → service (rules) → repository → SQLite.
 
-## The decisive change vs. the template: client-side Markdown
+## Decisions
 
 Notes are stored as Markdown source. The server stores, searches, validates, and
 returns the source but **never produces or serves HTML**. All Markdown→HTML
 conversion and sanitization happens in the browser. This moves the XSS trust
 boundary into the client.
 
-| Concern        | Template (`items`)           | MyNotes (`notes`)                                  |
-| -------------- | ---------------------------- | -------------------------------------------------- |
-| Body           | Sanitized HTML stored as-is  | Markdown source stored verbatim; rendered in browser |
-| Editing        | `<textarea>`                 | CodeMirror 6 Markdown editor                       |
-| Rendering      | Server returns HTML          | Client-side (markdown-it → DOMPurify)              |
-| URL key        | Integer `id`                 | `slug` (stable, human-readable)                    |
-| Search         | FTS5 title + content         | FTS5 title + Markdown body, with snippets          |
-| Frontend route | Hash routes                  | Path routes via History API                        |
+| Concern        | Decision                                             |
+|----------------|------------------------------------------------------|
+| Body           | Markdown source stored verbatim; rendered in browser |
+| Editing        | CodeMirror 6 Markdown editor                         |
+| Rendering      | Client-side (markdown-it → DOMPurify)                |
+| URL key        | `slug` (stable, human-readable)                      |
+| Search         | FTS5 title + Markdown body, with snippets            |
+| Frontend route | Path routes via History API                          |
 
 There is no `content_html` field and no server render endpoint.
 
@@ -114,14 +111,14 @@ Search query rules:
 Base path `/api/v1`, defined in `openapi.yaml`. Error body `{ "error": "message" }`.
 Timestamps RFC 3339 UTC.
 
-| Method & path                | Purpose                                              |
-| ---------------------------- | ---------------------------------------------------- |
-| `GET /notes`                 | List/search. Query `q`, `limit`, `offset`.           |
-| `POST /notes`                | Create. Body: `title`, `content`, optional `slug`.   |
-| `GET /notes/{slug}`          | Fetch one note.                                      |
-| `PATCH /notes/{slug}`        | Partial update (`title`, `content`, `slug`).         |
-| `DELETE /notes/{slug}`       | Delete.                                              |
-| `GET /notes/{slug}/download` | Raw Markdown download (`text/markdown`).             |
+| Method & path                | Purpose                                            |
+|------------------------------|----------------------------------------------------|
+| `GET /notes`                 | List/search. Query `q`, `limit`, `offset`.         |
+| `POST /notes`                | Create. Body: `title`, `content`, optional `slug`. |
+| `GET /notes/{slug}`          | Fetch one note.                                    |
+| `PATCH /notes/{slug}`        | Partial update (`title`, `content`, `slug`).       |
+| `DELETE /notes/{slug}`       | Delete.                                            |
+| `GET /notes/{slug}/download` | Raw Markdown download (`text/markdown`).           |
 
 Schema notes:
 - `POST` (201) and `PATCH` (200) both return the **full `Note`** — the editor's
@@ -213,8 +210,7 @@ wrinkle. A shared test vector pins them (milestone 7).
 
 The check is **service-layer** (structural, not expressible as ogen
 `pattern`/`maxLength`); length and UTF-8 remain ogen/service checks. It only
-accepts or rejects — content is stored byte-for-byte verbatim. The template's
-content-mutating `sanitize.HTML(content)` calls on the write paths are **deleted**.
+accepts or rejects — content is stored byte-for-byte verbatim.
 
 ## Security model
 
@@ -251,8 +247,7 @@ middleware, optional Basic Auth, GET side-effect free.
   only to in-app routes; the download link and external/absolute URLs do real
   navigations.
 - All API calls go through `api` in `web/ts/api/client.ts` (no direct `fetch`).
-  Add a `notes` client mirroring `items` (no `render` call). `client.ts` maps a
-  `400` slug-pattern rejection on `GET /notes/{slug}` to the same not-found signal
+  `client.ts` maps a `400` slug-pattern rejection on `GET /notes/{slug}` to the same not-found signal
   as a `404`.
 - Shared `web/ts/util/markdown.ts` render+sanitize helper.
 - Client-side rune-counting (code points, not UTF-16) for every "character"
@@ -313,13 +308,3 @@ Tests:
   Node resolution shim mirroring the import map. Tests live under `web/ts` and run
   with only `node` on `$PATH`. Shared server/client parity vector for `data:` and
   HTML allow-list verdicts.
-
-## Governing instructions
-
-`CLAUDE.md`'s "sanitize on every write path using `sanitize.HTML`" must be amended
-(milestone 0): for notes-`content` the rule is **validate-and-reject, not
-sanitize-and-store** (content stored verbatim; bluemonday validates fragments;
-DOMPurify is the authoritative render gate). Also add `node` to the Build & Run
-tool list, and document that `build.sh` must not invoke `npm`/`npx`/`yarn`/`pnpm`/`bun`
-(supply-chain constraint); `esbuild`/`npm` are tools of the out-of-band
-vendor-rebuild script only.

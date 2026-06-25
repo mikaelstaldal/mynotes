@@ -28,17 +28,17 @@ Prerequisites on `$PATH`: `go`, `ogen`, `tsc`, `openapi-typescript`,
 ./mynotes             # http://127.0.0.1:8080
 ```
 
-The SQLite database is created automatically at `data/app.sqlite` on first run.
+The SQLite database is created automatically at `data/mynotes.sqlite` on first run.
 
 ### Useful flags
 
-| Flag | Default | Purpose |
-|------|---------|---------|
-| `-addr` | `127.0.0.1` | bind address |
-| `-port` | `8080` | HTTP listen port |
-| `-data` | `data` | data directory (holds the SQLite file) |
-| `-public-url` | — | public base URL for CSRF validation behind a proxy; an `https://` URL also enables `Strict-Transport-Security` |
-| `-basic-auth-file` | — | htpasswd file (bcrypt) to enable HTTP basic auth |
+| Flag               | Default     | Purpose                                                                                                        |
+|--------------------|-------------|----------------------------------------------------------------------------------------------------------------|
+| `-addr`            | `127.0.0.1` | bind address                                                                                                   |
+| `-port`            | `8080`      | HTTP listen port                                                                                               |
+| `-data`            | `data`      | data directory (holds the SQLite file)                                                                         |
+| `-public-url`      | —           | public base URL for CSRF validation behind a proxy; an `https://` URL also enables `Strict-Transport-Security` |
+| `-basic-auth-file` | —           | htpasswd file (bcrypt) to enable HTTP basic auth                                                               |
 
 ## Layout
 

@@ -1,9 +1,8 @@
 # AI coding agent instructions
 
-Guidance for AI coding agents working in this repository. This is a **template**
-for web applications with a Go backend, SQLite storage, a REST API defined in
-OpenAPI, and an embedded Preact + TypeScript frontend. Replace the example
-`items` resource with your own domain.
+Guidance for AI coding agents working in this repository. This is a personal
+note manager (MyNotes) with a Go backend, SQLite storage, a REST API defined in
+OpenAPI, and an embedded Preact + TypeScript frontend.
 
 ## Build & Run
 
@@ -24,7 +23,7 @@ separate, manually-run maintainer script that pre-builds the vendored
 CodeMirror/markdown-it/DOMPurify bundles (and the test-only jsdom bundle) and
 commits the result; it is out-of-band, not invoked by `build.sh` or CI.
 
-The database is created automatically on first start under `<data>/app.sqlite`.
+The database is created automatically on first start under `<data>/mynotes.sqlite`.
 
 ## Architecture
 
@@ -93,7 +92,7 @@ files alongside the package under test.
 
 ```bash
 go test ./...
-go test ./internal/handler/ -run TestCreateAndGetItem
+go test ./internal/handler/ -run TestCreateAndGetNote
 ```
 
 ## Security guidelines

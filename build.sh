@@ -6,6 +6,14 @@
 # artifacts; jsdom is unpacked from jsdom-node_modules.tar.gz via tar only.
 set -euo pipefail
 
+OUTPUT_DIR="."
+while getopts "o:" opt; do
+  case $opt in
+    o) OUTPUT_DIR="$OPTARG" ;;
+    \?) echo "Invalid option: -$OPTARG" >&2; exit 1 ;;
+  esac
+done
+
 # 1. Generate the Go ogen server stubs (internal/api/).
 go generate ./...
 
@@ -21,8 +29,11 @@ web/ts/vendor/test/unpack.sh
 # 5. Run frontend XSS-gate and markdown render tests.
 node --import ./web/ts/test-preload.mjs --test web/ts/xss-gate.test.mjs web/ts/markdown.test.mjs
 
-# 6. Run Go tests.
+# 6. Build the single binary (frontend is embedded via web/embed.go).
+go build -tags netgo -o "$OUTPUT_DIR/mynotes" .
+
+# 7. Run Go tests.
 go test ./...
 
-# 7. Lint.
+# 8. Lint.
 golangci-lint run ./...

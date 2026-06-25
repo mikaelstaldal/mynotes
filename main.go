@@ -27,7 +27,7 @@ import (
 	"github.com/mikaelstaldal/mynotes/web"
 )
 
-const databaseName = "app.sqlite"
+const databaseName = "mynotes.sqlite"
 
 // maxRequestBody caps every request body. Raise it for endpoints that accept
 // uploads, but keep a global ceiling to blunt memory-exhaustion attacks.

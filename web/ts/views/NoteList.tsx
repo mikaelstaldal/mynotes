@@ -29,7 +29,7 @@ function capRunes(s: string, max: number): string {
   return [...s].slice(0, max).join('');
 }
 
-export function ItemList() {
+export function NoteList() {
   const [inputQuery, setInputQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
   const [rows, setRows] = useState<NoteSummary[]>([]);

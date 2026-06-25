@@ -23,7 +23,7 @@ interface Props {
   slug?: string;
 }
 
-export function ItemForm({ slug }: Props) {
+export function NoteEditor({ slug }: Props) {
   const editing = slug !== undefined;
 
   const [title, setTitle] = useState('');
