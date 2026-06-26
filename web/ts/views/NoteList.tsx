@@ -130,9 +130,9 @@ export function NoteList({ activeSlug, listKey, onMutate }: Props) {
           value={inputQuery}
           onInput={e => setInputQuery((e.target as HTMLInputElement).value)}
         />
-        <button title="Reload list" onClick={() => onMutate?.()}>↺</button>
-        <button class="primary" onClick={() => navigate('/new')}>New note</button>
-        <button onClick={() => uploadRef.current?.click()}>Upload Markdown</button>
+        <button class="btn-icon" title="Reload list" aria-label="Reload list" onClick={() => onMutate?.()}>↺</button>
+        <button class="primary btn-icon" title="New note" aria-label="New note" onClick={() => navigate('/new')}>+</button>
+        <button class="btn-icon" title="Upload Markdown" aria-label="Upload Markdown" onClick={() => uploadRef.current?.click()}>⬆</button>
         <input
           ref={uploadRef}
           type="file"

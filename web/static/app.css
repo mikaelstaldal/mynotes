@@ -133,6 +133,40 @@ button.danger { color: var(--danger); }
 button.link { background: none; border: none; color: var(--primary); padding: 0; cursor: pointer; }
 button:disabled { opacity: 0.6; cursor: default; }
 
+/* Compact ghost icon buttons — follows mycal action-icon convention */
+button.btn-icon,
+a.btn-icon {
+    padding: 4px 8px;
+    font-size: 0.9rem;
+    line-height: 1.4;
+    background: none;
+    color: var(--muted);
+}
+a.btn-icon {
+    display: inline-block;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    text-decoration: none;
+    cursor: pointer;
+}
+button.btn-icon:not(.active):hover:not(:disabled),
+a.btn-icon:hover {
+    background: var(--surface);
+    color: var(--fg);
+}
+button.primary.btn-icon {
+    background: var(--primary);
+    color: #fff;
+}
+button.danger.btn-icon {
+    color: var(--danger);
+    border-color: var(--danger);
+}
+button.danger.btn-icon:hover:not(:disabled) {
+    background: rgb(220 38 38 / 0.08);
+    color: var(--danger);
+}
+
 .muted { color: var(--muted); }
 
 ul { list-style: none; padding: 0; margin: 0; }

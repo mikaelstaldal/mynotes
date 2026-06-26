@@ -223,15 +223,16 @@ export function NoteEditor({ slug, onSave }: Props) {
     <form class="editor-page" onSubmit={handleSubmit}>
       <div class="editor-toolbar">
         <div class="layout-btns">
-          <button type="button" class={layout === 'editor' ? 'active' : ''} onClick={() => setLayout('editor')}>Editor</button>
-          <button type="button" class={layout === 'split' ? 'active' : ''} onClick={() => setLayout('split')}>Split</button>
-          <button type="button" class={layout === 'preview' ? 'active' : ''} onClick={() => setLayout('preview')}>Preview</button>
+          <button type="button" class={layout === 'editor' ? 'active btn-icon' : 'btn-icon'} title="Editor" aria-label="Editor" onClick={() => setLayout('editor')}>✎</button>
+          <button type="button" class={layout === 'split' ? 'active btn-icon' : 'btn-icon'} title="Split" aria-label="Split" onClick={() => setLayout('split')}>⊞</button>
+          <button type="button" class={layout === 'preview' ? 'active btn-icon' : 'btn-icon'} title="Preview" aria-label="Preview" onClick={() => setLayout('preview')}>◉</button>
         </div>
         {dirty && <span class="dirty-dot" title="Unsaved changes">●</span>}
         <span class="toolbar-spacer" />
-        <button type="button" onClick={() => setPickerOpen(true)}>Link</button>
-        <button type="button" onClick={() => navigate(editing ? `/notes/${slug}` : '/')}>Cancel</button>
-        <button type="submit" class="primary" disabled={saving}>{saving ? 'Saving…' : 'Save'}</button>
+        <button type="button" class="btn-icon" title="Link" aria-label="Link" onClick={() => setPickerOpen(true)}>⛓</button>
+        <button type="button" class="btn-icon" title="Cancel" aria-label="Cancel" onClick={() => navigate(editing ? `/notes/${slug}` : '/')}>✕</button>
+        <button type="submit" class="primary btn-icon" disabled={saving}
+          title={saving ? 'Saving…' : 'Save'} aria-label={saving ? 'Saving…' : 'Save'}>✓</button>
       </div>
 
       <div class="editor-meta">
