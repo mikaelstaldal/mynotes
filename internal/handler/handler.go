@@ -6,6 +6,7 @@ package handler
 import (
 	"context"
 	"errors"
+	"log"
 	"net/http"
 	"strings"
 
@@ -116,17 +117,15 @@ func (h *Handler) DownloadNote(ctx context.Context, params api.DownloadNoteParam
 // NewError maps any error returned by a handler method to an HTTP status code.
 // ogen calls this for non-nil errors that are not already an *ErrorStatusCode.
 func (h *Handler) NewError(_ context.Context, err error) *api.ErrorStatusCode {
-	status := http.StatusInternalServerError
 	switch {
 	case errors.Is(err, service.ErrNotFound):
-		status = http.StatusNotFound
+		return &api.ErrorStatusCode{StatusCode: http.StatusNotFound, Response: api.Error{Error: err.Error()}}
 	case errors.Is(err, service.ErrValidation):
-		status = http.StatusBadRequest
+		return &api.ErrorStatusCode{StatusCode: http.StatusBadRequest, Response: api.Error{Error: err.Error()}}
 	case errors.Is(err, service.ErrConflict):
-		status = http.StatusConflict
-	}
-	return &api.ErrorStatusCode{
-		StatusCode: status,
-		Response:   api.Error{Error: err.Error()},
+		return &api.ErrorStatusCode{StatusCode: http.StatusConflict, Response: api.Error{Error: err.Error()}}
+	default:
+		log.Printf("internal error: %v", err)
+		return &api.ErrorStatusCode{StatusCode: http.StatusInternalServerError, Response: api.Error{Error: "internal server error"}}
 	}
 }
