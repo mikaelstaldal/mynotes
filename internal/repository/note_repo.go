@@ -73,13 +73,19 @@ func isUniqueViolation(err error) bool {
 	return errors.As(err, &sqErr) && sqErr.Code() == sqlite3.SQLITE_CONSTRAINT_UNIQUE
 }
 
-// Create inserts a row and returns the stored note. A duplicate slug surfaces as
-// ErrConflict (the UNIQUE constraint is the authority on slug uniqueness).
+// Create inserts a row with created_at/updated_at set to now and returns the
+// stored note. A duplicate slug surfaces as ErrConflict.
 func (r *NoteRepository) Create(ctx context.Context, slug, title, content string) (model.Note, error) {
-	now := time.Now().UTC().Format(rfc3339)
+	return r.CreateWithTime(ctx, slug, title, content, time.Now().UTC())
+}
+
+// CreateWithTime is like Create but uses createdAt for both created_at and
+// updated_at, allowing import paths to preserve original authorship dates.
+func (r *NoteRepository) CreateWithTime(ctx context.Context, slug, title, content string, createdAt time.Time) (model.Note, error) {
+	ts := createdAt.UTC().Format(rfc3339)
 	_, err := r.db.ExecContext(ctx, `
 		INSERT INTO notes (slug, title, content, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`,
-		slug, title, content, now, now)
+		slug, title, content, ts, ts)
 	if isUniqueViolation(err) {
 		return model.Note{}, ErrConflict
 	}

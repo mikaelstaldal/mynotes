@@ -14,6 +14,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 	"unicode"
 	"unicode/utf8"
 
@@ -94,6 +95,12 @@ func (s *NoteService) Get(ctx context.Context, slug string) (model.Note, error) 
 // verbatim and a collision is ErrConflict (never suffixed). created_at and
 // updated_at are set to the same instant by the repository.
 func (s *NoteService) Create(ctx context.Context, title string, content, slug *string) (model.Note, error) {
+	return s.createNote(ctx, title, content, slug, time.Time{})
+}
+
+// createNote is the internal implementation shared by Create and the import
+// paths. createdAt zero means "use the current time".
+func (s *NoteService) createNote(ctx context.Context, title string, content, slug *string, createdAt time.Time) (model.Note, error) {
 	title = strings.TrimSpace(title)
 	if err := validateTitle(title); err != nil {
 		return model.Note{}, err
@@ -107,13 +114,18 @@ func (s *NoteService) Create(ctx context.Context, title string, content, slug *s
 		return model.Note{}, err
 	}
 
+	ts := createdAt
+	if ts.IsZero() {
+		ts = time.Now().UTC()
+	}
+
 	// Explicit slug: validate and insert as-is. A collision is a 409, never
 	// resolved with a suffix.
 	if slug != nil {
 		if err := validateSlug(*slug); err != nil {
 			return model.Note{}, err
 		}
-		return s.repo.Create(ctx, *slug, title, body)
+		return s.repo.CreateWithTime(ctx, *slug, title, body, ts)
 	}
 
 	// Auto-generated slug: scan for a free suffix, insert, and on a racy UNIQUE
@@ -124,7 +136,7 @@ func (s *NoteService) Create(ctx context.Context, title string, content, slug *s
 		if err != nil {
 			return model.Note{}, err
 		}
-		note, err := s.repo.Create(ctx, candidate, title, body)
+		note, err := s.repo.CreateWithTime(ctx, candidate, title, body, ts)
 		if errors.Is(err, ErrConflict) {
 			continue
 		}
@@ -219,6 +231,31 @@ func (s *NoteService) ImportHTML(ctx context.Context, htmlContent string) (model
 
 	content := result.Content
 	return s.Create(ctx, title, &content, nil)
+}
+
+// ImportMarkdown stores Markdown content directly as a note. Title priority:
+// (1) frontmatter `title` field (YAML/TOML/JSON), (2) first ATX heading in
+// the content after stripping frontmatter. An empty title is a validation
+// error (400 Bad Request). The frontmatter `date` field sets created_at when
+// present (otherwise current time). The frontmatter `slug` field is used
+// verbatim when present (otherwise derived from the title).
+func (s *NoteService) ImportMarkdown(ctx context.Context, markdownContent string) (model.Note, error) {
+	fm, content := parseFrontmatter(markdownContent)
+
+	title := fm.Title
+	if title == "" {
+		title = firstATXHeading(content)
+	}
+	if runes := []rune(title); len(runes) > maxTitleLen {
+		title = string(runes[:maxTitleLen-1]) + "…"
+	}
+
+	var slugPtr *string
+	if fm.Slug != "" {
+		slugPtr = &fm.Slug
+	}
+
+	return s.createNote(ctx, title, &content, slugPtr, fm.Date)
 }
 
 // firstATXHeading scans Markdown content for the first ATX heading line,

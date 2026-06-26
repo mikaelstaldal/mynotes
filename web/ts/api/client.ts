@@ -102,6 +102,9 @@ export const api = {
       request<void>('DELETE', `/notes/${slug}`),
 
     importHtml: (html: string): Promise<Note> =>
-      requestRaw<Note>('POST', '/import-html', html, 'text/html'),
+      requestRaw<Note>('POST', '/import', html, 'text/html'),
+
+    importMarkdown: (markdown: string): Promise<Note> =>
+      requestRaw<Note>('POST', '/import', markdown, 'text/markdown'),
   },
 };

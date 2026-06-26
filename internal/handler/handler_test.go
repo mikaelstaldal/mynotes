@@ -235,13 +235,13 @@ func TestListPastTheEndOffset(t *testing.T) {
 	assert.NotNil(t, list.Notes)
 }
 
-// importHTML posts HTML to the import endpoint and returns the response.
-func importHTML(t *testing.T, srv *httptest.Server, htmlBody string) *http.Response {
+// importContent posts to /import with the given body and Content-Type.
+func importContent(t *testing.T, srv *httptest.Server, body, contentType string) *http.Response {
 	t.Helper()
 	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost,
-		srv.URL+"/api/v1/import-html", strings.NewReader(htmlBody))
+		srv.URL+"/api/v1/import", strings.NewReader(body))
 	require.NoError(t, err)
-	req.Header.Set("Content-Type", "text/html")
+	req.Header.Set("Content-Type", contentType)
 	res, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
 	return res
@@ -250,7 +250,7 @@ func importHTML(t *testing.T, srv *httptest.Server, htmlBody string) *http.Respo
 func TestImportHtmlTitleFromTitleElement(t *testing.T) {
 	srv := newServer(t)
 	htmlDoc := `<html><head><title>My Imported Note</title></head><body><h1>Heading</h1><p>Content here.</p></body></html>`
-	res := importHTML(t, srv, htmlDoc)
+	res := importContent(t, srv, htmlDoc, "text/html")
 	defer res.Body.Close()
 	require.Equal(t, http.StatusCreated, res.StatusCode)
 	var note api.Note
@@ -263,7 +263,7 @@ func TestImportHtmlTitleFromTitleElement(t *testing.T) {
 func TestImportHtmlTitleFromFirstHeading(t *testing.T) {
 	srv := newServer(t)
 	htmlDoc := `<body><h2>Article Title</h2><p>Body text.</p></body>`
-	res := importHTML(t, srv, htmlDoc)
+	res := importContent(t, srv, htmlDoc, "text/html")
 	defer res.Body.Close()
 	require.Equal(t, http.StatusCreated, res.StatusCode)
 	var note api.Note
@@ -275,7 +275,7 @@ func TestImportHtmlNoTitleRejected(t *testing.T) {
 	srv := newServer(t)
 	// No <title>, no headings — empty title fails service validateTitle.
 	htmlDoc := `<body><p>Just a paragraph with no title or heading.</p></body>`
-	res := importHTML(t, srv, htmlDoc)
+	res := importContent(t, srv, htmlDoc, "text/html")
 	defer res.Body.Close()
 	assert.Equal(t, http.StatusBadRequest, res.StatusCode)
 	var errBody struct {
@@ -290,15 +290,15 @@ func TestImportHtmlDisallowedSchemeRejected(t *testing.T) {
 	// Markdown structure validator.
 	srv := newServer(t)
 	htmlDoc := `<body><h1>Title</h1><a href="javascript:alert(1)">bad</a></body>`
-	res := importHTML(t, srv, htmlDoc)
+	res := importContent(t, srv, htmlDoc, "text/html")
 	defer res.Body.Close()
 	assert.Equal(t, http.StatusBadRequest, res.StatusCode)
 }
 
-func TestImportHtmlWrongContentTypeRejected(t *testing.T) {
+func TestImportWrongContentTypeRejected(t *testing.T) {
 	srv := newServer(t)
 	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost,
-		srv.URL+"/api/v1/import-html", strings.NewReader("<p>text</p>"))
+		srv.URL+"/api/v1/import", strings.NewReader("<p>text</p>"))
 	require.NoError(t, err)
 	req.Header.Set("Content-Type", "application/json")
 	res, err := http.DefaultClient.Do(req)
@@ -311,7 +311,7 @@ func TestImportHtmlWrongContentTypeRejected(t *testing.T) {
 func TestImportHtmlScriptStripped(t *testing.T) {
 	srv := newServer(t)
 	htmlDoc := `<body><h1>Safe Note</h1><script>alert("xss")</script><p>Content.</p></body>`
-	res := importHTML(t, srv, htmlDoc)
+	res := importContent(t, srv, htmlDoc, "text/html")
 	defer res.Body.Close()
 	require.Equal(t, http.StatusCreated, res.StatusCode)
 	var note api.Note
@@ -321,18 +321,27 @@ func TestImportHtmlScriptStripped(t *testing.T) {
 	assert.Contains(t, note.Content, "Content.")
 }
 
-func TestImportHtmlSlugNotReserved(t *testing.T) {
-	// With the endpoint at /import-html (outside /notes/), notes with slug
-	// "import-html" are fully reachable via GET/PATCH/DELETE /notes/import-html.
+func TestImportMarkdownTitleFromHeading(t *testing.T) {
 	srv := newServer(t)
-	created := createNote(t, srv, `{"title":"Import HTML","slug":"import-html"}`)
-	assert.Equal(t, "import-html", created.Slug)
-
-	res, err := http.Get(srv.URL + "/api/v1/notes/import-html")
-	require.NoError(t, err)
+	md := "# My Markdown Note\n\nSome content here.\n"
+	res := importContent(t, srv, md, "text/markdown")
 	defer res.Body.Close()
-	require.Equal(t, http.StatusOK, res.StatusCode)
-	var fetched api.Note
-	require.NoError(t, json.NewDecoder(res.Body).Decode(&fetched))
-	assert.Equal(t, "Import HTML", fetched.Title)
+	require.Equal(t, http.StatusCreated, res.StatusCode)
+	var note api.Note
+	require.NoError(t, json.NewDecoder(res.Body).Decode(&note))
+	assert.Equal(t, "My Markdown Note", note.Title)
+	assert.Contains(t, note.Content, "Some content here.")
+}
+
+func TestImportMarkdownNoTitleRejected(t *testing.T) {
+	srv := newServer(t)
+	md := "Just a paragraph with no heading.\n"
+	res := importContent(t, srv, md, "text/markdown")
+	defer res.Body.Close()
+	assert.Equal(t, http.StatusBadRequest, res.StatusCode)
+	var errBody struct {
+		Error string `json:"error"`
+	}
+	require.NoError(t, json.NewDecoder(res.Body).Decode(&errBody))
+	assert.NotEmpty(t, errBody.Error)
 }

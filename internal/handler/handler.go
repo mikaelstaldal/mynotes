@@ -97,12 +97,23 @@ func (h *Handler) DeleteNote(ctx context.Context, params api.DeleteNoteParams) e
 	return h.notes.Delete(ctx, params.Slug)
 }
 
-func (h *Handler) ImportHtml(ctx context.Context, req api.ImportHtmlReq) (*api.Note, error) {
-	data, err := io.ReadAll(req.Data)
-	if err != nil {
-		return nil, err
+func (h *Handler) ImportNote(ctx context.Context, req api.ImportNoteReq) (*api.Note, error) {
+	var n model.Note
+	var err error
+	switch r := req.(type) {
+	case *api.ImportNoteReqTextHTML:
+		data, readErr := io.ReadAll(r.Data)
+		if readErr != nil {
+			return nil, readErr
+		}
+		n, err = h.notes.ImportHTML(ctx, string(data))
+	case *api.ImportNoteReqTextMarkdown:
+		data, readErr := io.ReadAll(r.Data)
+		if readErr != nil {
+			return nil, readErr
+		}
+		n, err = h.notes.ImportMarkdown(ctx, string(data))
 	}
-	n, err := h.notes.ImportHTML(ctx, string(data))
 	if err != nil {
 		return nil, err
 	}

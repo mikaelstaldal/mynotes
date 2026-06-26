@@ -2,7 +2,6 @@ import { useState, useEffect, useCallback, useRef } from 'preact/hooks';
 import { api, type NoteSummary } from '../api/client.js';
 import { navigate } from '../router.js';
 import { showToast } from '../util/toast.js';
-import { titleFromContent, titleFromFilename } from '../util/title.js';
 
 const LIMIT = 50;
 const MAX_Q_RUNES = 200;
@@ -113,8 +112,7 @@ export function NoteList({ activeSlug, listKey, onMutate }: Props) {
       if (isHtml) {
         note = await api.notes.importHtml(text);
       } else {
-        const title = titleFromContent(text) ?? titleFromFilename(file.name);
-        note = await api.notes.create({ title, content: text });
+        note = await api.notes.importMarkdown(text);
       }
       onMutate?.();
       navigate(`/notes/${note.slug}`);
