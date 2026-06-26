@@ -107,9 +107,15 @@ export function NoteList({ activeSlug, listKey, onMutate }: Props) {
       return;
     }
 
-    const title = titleFromContent(text) ?? titleFromFilename(file.name);
+    const isHtml = /\.html?$/i.test(file.name) || file.type === 'text/html';
     try {
-      const note = await api.notes.create({ title, content: text });
+      let note;
+      if (isHtml) {
+        note = await api.notes.importHtml(text);
+      } else {
+        const title = titleFromContent(text) ?? titleFromFilename(file.name);
+        note = await api.notes.create({ title, content: text });
+      }
       onMutate?.();
       navigate(`/notes/${note.slug}`);
     } catch (err) {
@@ -132,11 +138,11 @@ export function NoteList({ activeSlug, listKey, onMutate }: Props) {
         />
         <button class="btn-icon" title="Reload list" aria-label="Reload list" onClick={() => onMutate?.()}>↺</button>
         <button class="primary btn-icon" title="New note" aria-label="New note" onClick={() => navigate('/new')}>+</button>
-        <button class="btn-icon" title="Upload Markdown" aria-label="Upload Markdown" onClick={() => uploadRef.current?.click()}>⬆</button>
+        <button class="btn-icon" title="Upload note (Markdown or HTML)" aria-label="Upload note" onClick={() => uploadRef.current?.click()}>⬆</button>
         <input
           ref={uploadRef}
           type="file"
-          accept=".md,.markdown,text/markdown,text/plain"
+          accept=".md,.markdown,text/markdown,text/plain,.html,.htm,text/html"
           style="display:none"
           onChange={handleUpload}
         />

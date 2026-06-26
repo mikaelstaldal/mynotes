@@ -45,6 +45,22 @@ async function fetchWithRetry(url: string, init: RequestInit): Promise<Response>
   }
 }
 
+async function requestRaw<T>(
+  method: string,
+  path: string,
+  body: string,
+  contentType: string,
+): Promise<T> {
+  const init: RequestInit = { method, headers: { 'Content-Type': contentType }, body };
+  const res = await fetchWithRetry(BASE + path, init);
+  if (res.status === 401) { window.location.reload(); throw new Error('Unauthorized'); }
+  if (res.status === 404) throw new NotFoundError();
+  if (res.status === 204) return undefined as T;
+  const data = await res.json() as unknown;
+  if (!res.ok) throw new Error((data as { error?: string }).error ?? res.statusText);
+  return data as T;
+}
+
 async function request<T>(method: string, path: string, body?: unknown, notFoundOn: number[] = []): Promise<T> {
   const init: RequestInit = { method, headers: { 'Content-Type': 'application/json' } };
   if (body !== undefined) init.body = JSON.stringify(body);
@@ -84,5 +100,8 @@ export const api = {
 
     delete: (slug: string) =>
       request<void>('DELETE', `/notes/${slug}`),
+
+    importHtml: (html: string): Promise<Note> =>
+      requestRaw<Note>('POST', '/import-html', html, 'text/html'),
   },
 };

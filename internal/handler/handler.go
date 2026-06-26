@@ -6,6 +6,7 @@ package handler
 import (
 	"context"
 	"errors"
+	"io"
 	"log"
 	"net/http"
 	"strings"
@@ -94,6 +95,19 @@ func (h *Handler) UpdateNote(ctx context.Context, req *api.UpdateNoteRequest, pa
 
 func (h *Handler) DeleteNote(ctx context.Context, params api.DeleteNoteParams) error {
 	return h.notes.Delete(ctx, params.Slug)
+}
+
+func (h *Handler) ImportHtml(ctx context.Context, req api.ImportHtmlReq) (*api.Note, error) {
+	data, err := io.ReadAll(req.Data)
+	if err != nil {
+		return nil, err
+	}
+	n, err := h.notes.ImportHTML(ctx, string(data))
+	if err != nil {
+		return nil, err
+	}
+	out := toAPI(n)
+	return &out, nil
 }
 
 // DownloadNote returns the note content as a raw text/markdown body with a

@@ -17,6 +17,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/mikaelstaldal/mynotes/internal/htmlmd"
 	"github.com/mikaelstaldal/mynotes/internal/model"
 	"github.com/mikaelstaldal/mynotes/internal/repository"
 	"golang.org/x/text/unicode/norm"
@@ -193,6 +194,68 @@ func (s *NoteService) Update(ctx context.Context, slug string, title, content, n
 // Delete removes the note addressed by slug, or returns ErrNotFound.
 func (s *NoteService) Delete(ctx context.Context, slug string) error {
 	return s.repo.Delete(ctx, slug)
+}
+
+// atxHeadingRe matches an ATX heading line and captures the heading text.
+var atxHeadingRe = regexp.MustCompile(`^#{1,6}[ \t]+(.+?)(?:[ \t]+#+[ \t]*)?$`)
+
+// ImportHTML converts an HTML document to Markdown and creates a note.
+// Title priority: (1) <title> element, (2) first h1–h6 in the body,
+// (3) first ATX heading in the produced Markdown, (4) empty string, which
+// validateTitle rejects as "title is required" → 400 Bad Request.
+func (s *NoteService) ImportHTML(ctx context.Context, htmlContent string) (model.Note, error) {
+	result, err := htmlmd.Convert(htmlContent)
+	if err != nil {
+		return model.Note{}, validationError("invalid HTML: " + err.Error())
+	}
+
+	title := result.Title
+	if title == "" {
+		title = firstATXHeading(result.Content)
+	}
+	if runes := []rune(title); len(runes) > maxTitleLen {
+		title = string(runes[:maxTitleLen-1]) + "…"
+	}
+
+	content := result.Content
+	return s.Create(ctx, title, &content, nil)
+}
+
+// firstATXHeading scans Markdown content for the first ATX heading line,
+// skipping fenced code blocks. Mirrors the TypeScript titleFromContent logic.
+func firstATXHeading(content string) string {
+	var fenceChar byte
+	fenceLen := 0
+	for line := range strings.SplitSeq(content, "\n") {
+		if fenceLen == 0 {
+			b := []byte(line)
+			if len(b) >= 3 && (b[0] == '`' || b[0] == '~') {
+				n := 0
+				for n < len(b) && b[n] == b[0] {
+					n++
+				}
+				if n >= 3 {
+					fenceChar = b[0]
+					fenceLen = n
+					continue
+				}
+			}
+			if m := atxHeadingRe.FindStringSubmatch(line); m != nil {
+				return strings.TrimSpace(m[1])
+			}
+		} else {
+			b := []byte(line)
+			n := 0
+			for n < len(b) && b[n] == fenceChar {
+				n++
+			}
+			if n >= fenceLen && strings.TrimSpace(string(b[n:])) == "" {
+				fenceLen = 0
+				fenceChar = 0
+			}
+		}
+	}
+	return ""
 }
 
 // uniqueSlug returns base if free, otherwise base-2, base-3, … picking the first

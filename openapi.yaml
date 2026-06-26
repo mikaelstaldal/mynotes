@@ -120,6 +120,31 @@ paths:
         default:
           $ref: "#/components/responses/Error"
 
+  /import-html:
+    post:
+      operationId: importHtml
+      summary: Import an HTML document as a note
+      description: >
+        Converts an HTML document to Markdown and saves it as a note.
+        The title is taken from the <title> element, falling back to the
+        first heading in the document. The produced Markdown is subject to
+        the same validation as regular note creation.
+      requestBody:
+        required: true
+        content:
+          text/html:
+            schema:
+              type: string
+      responses:
+        "201":
+          description: The created note.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Note"
+        default:
+          $ref: "#/components/responses/Error"
+
   /notes/{slug}/download:
     parameters:
       - name: slug

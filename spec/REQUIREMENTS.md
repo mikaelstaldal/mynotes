@@ -101,8 +101,19 @@ The API manages notes keyed by slug. Operations:
 - **Delete a note** by slug — deleting an unknown note is a not-found error
   (delete is not idempotent).
 - **Download** a note's raw Markdown as a `.md` file (filename derived from slug).
+- **Import HTML** — `POST /import-html` accepts a `text/html` request body
+  and converts it to Markdown server-side. The title is taken from the HTML
+  `<title>` element; if absent, the plain text of the first `h1`–`h6` element is
+  used; if that is also absent, the first ATX heading in the produced Markdown is
+  used. Tags with Markdown equivalents (headings, emphasis, links, images, lists,
+  tables, code, blockquote, etc.) are converted to Markdown syntax; tags allowed by
+  the sanitization policy but with no Markdown equivalent are kept as raw HTML;
+  other tags have their tags stripped while preserving text content; `<script>`,
+  `<style>`, and similar non-content elements are removed entirely. The produced
+  Markdown is subject to the same validation as regular note creation (401 on auth
+  failure, 400 on invalid content, 409 on slug conflict).
 
-Errors use the shape `{ "error": "message" }`. Status codes: 201 create; 200
+Errors use the shape `{ "error": "message" }`. Status codes: 201 create/import; 200
 get/update/list/download; 204 delete; 400 validation/malformed input; 404 not
 found; 409 conflict on an explicit/renamed slug.
 
@@ -119,12 +130,14 @@ Routes: no-note-selected (`/`), new-note editor (`/new`), read view of a note
   updated time, and excerpt with highlights when searching. Empty and loading
   states. A "Load more" button pages through results (accumulating and
   de-duplicating rows by slug); resets on query change. Shows the total count.
-  "New note" and "Upload Markdown" actions. The currently open note is
+  "New note" and "Upload note" actions. The currently open note is
   highlighted in the list.
-- **Upload Markdown:** pick a single `.md`/`.markdown`/text file, read it as
-  UTF-8, derive the title (first heading, else filename without extension, else
-  "Untitled"), and create a note from its text. Oversized or non-UTF-8 files are
-  rejected with a clear message before/from the server.
+- **Upload Markdown or HTML:** pick a single `.md`/`.markdown`/text or
+  `.html`/`.htm` file. For Markdown files, the title is derived client-side (first
+  heading, else filename without extension, else "Untitled") and the note is created
+  via `POST /notes`. For HTML files, the raw HTML is sent to `POST /notes/import-html`
+  and the server performs the conversion and title extraction. Oversized files are
+  rejected before/from the server with a clear message.
 - **Read view (main panel):** renders the note's Markdown safely into a styled
   container. The stored title is used as the browser tab title (not duplicated as
   a body heading). "Edit", "Delete", and "Download Markdown" actions. A 404 (or a
