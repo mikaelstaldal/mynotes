@@ -85,7 +85,8 @@ export function NoteView({ slug, onDelete }: Props) {
   return (
     <div class="note-view">
       <div class="toolbar">
-        <a class="btn-icon" href={`/api/v1/notes/${note.slug}/download`} title="Download Markdown" aria-label="Download Markdown">⬇</a>
+        <a class="btn-icon" href={`/api/v1/notes/${note.slug}/download-markdown`} title="Download Markdown" aria-label="Download Markdown">⬇</a>
+        <a class="btn-icon" href={`/api/v1/notes/${note.slug}/download-html`} title="Download HTML" aria-label="Download HTML">&#x1F5CE;</a>
         <button class="btn-icon" title="Edit" aria-label="Edit" onClick={() => navigate(`/notes/${note.slug}/edit`)}>✎</button>
         <button class="danger btn-icon" onClick={handleDelete} disabled={deleting}
           title={deleting ? 'Deleting…' : 'Delete'} aria-label={deleting ? 'Deleting…' : 'Delete'}>

@@ -69,8 +69,9 @@ identity exists but is never exposed as the URL key.
 
 ## Markdown handling
 
-- Content is stored as Markdown source verbatim; it is never converted to or
-  served as HTML by the server. All rendering happens in the browser.
+- Content is stored as Markdown source verbatim; rendering for the read view
+  happens in the browser. The server converts Markdown to HTML only for the
+  download-html endpoint.
 - Supported syntax: CommonMark plus GFM tables, strikethrough, and autolinks;
   bare URLs/emails auto-link; images render. Task lists are not supported in v1.
 - Both the read view and the editor's live preview render the same way and must
@@ -100,7 +101,8 @@ The API manages notes keyed by slug. Operations:
   error.
 - **Delete a note** by slug — deleting an unknown note is a not-found error
   (delete is not idempotent).
-- **Download** a note's raw Markdown as a `.md` file (filename derived from slug).
+- **Download Markdown** — `GET /notes/{slug}/download-markdown` returns the raw Markdown as a `.md` file (filename derived from slug).
+- **Download HTML** — `GET /notes/{slug}/download-html` converts the note to HTML on the server and returns a complete HTML document as a `.html` file.
 - **Import HTML** — `POST /import-html` accepts a `text/html` request body
   and converts it to Markdown server-side. The title is taken from the HTML
   `<title>` element; if absent, the plain text of the first `h1`–`h6` element is
@@ -140,7 +142,8 @@ Routes: no-note-selected (`/`), new-note editor (`/new`), read view of a note
   rejected before/from the server with a clear message.
 - **Read view (main panel):** renders the note's Markdown safely into a styled
   container. The stored title is used as the browser tab title (not duplicated as
-  a body heading). "Edit", "Delete", and "Download Markdown" actions. A 404 (or a
+  a body heading). "Edit", "Delete", "Download Markdown", and "Download HTML"
+  actions. A 404 (or a
   malformed-slug deep link) shows a not-found message.
 - **Editor (main panel, new/edit):** title input (with auto-derive-from-heading
   until edited); slug field (suggested for new notes, editable-with-warning when

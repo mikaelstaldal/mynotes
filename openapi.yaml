@@ -150,7 +150,7 @@ paths:
         default:
           $ref: "#/components/responses/Error"
 
-  /notes/{slug}/download:
+  /notes/{slug}/download-markdown:
     parameters:
       - name: slug
         in: path
@@ -160,7 +160,7 @@ paths:
           maxLength: 100
           pattern: "^[a-z0-9]+(?:-[a-z0-9]+)*$"
     get:
-      operationId: downloadNote
+      operationId: downloadNoteMarkdown
       summary: Download a note as raw Markdown
       description: >
         Returns the note `content` as a raw Markdown body with a
@@ -177,6 +177,54 @@ paths:
                 type: string
           content:
             text/markdown:
+              schema:
+                type: string
+        "404":
+          description: Note not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /notes/{slug}/download-html:
+    parameters:
+      - name: slug
+        in: path
+        required: true
+        schema:
+          type: string
+          maxLength: 100
+          pattern: "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+    get:
+      operationId: downloadNoteHtml
+      summary: Download a note as HTML
+      description: >
+        Converts the note `content` from Markdown to HTML on the server and
+        returns a complete HTML document with a `Content-Disposition` attachment
+        header. Errors keep the JSON `{"error": "message"}` shape.
+      responses:
+        "200":
+          description: The note rendered as a complete HTML document.
+          headers:
+            Content-Disposition:
+              description: Attachment header carrying the download filename.
+              required: true
+              schema:
+                type: string
+            X-Content-Type-Options:
+              description: Prevents MIME sniffing.
+              required: true
+              schema:
+                type: string
+            Content-Security-Policy:
+              description: Sandboxes the document so scripts cannot execute.
+              required: true
+              schema:
+                type: string
+          content:
+            text/html:
               schema:
                 type: string
         "404":

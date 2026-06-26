@@ -144,11 +144,11 @@ func TestDeleteUnknownReturns404(t *testing.T) {
 	assert.Equal(t, http.StatusNotFound, res.StatusCode)
 }
 
-func TestDownloadNote(t *testing.T) {
+func TestDownloadNoteMarkdown(t *testing.T) {
 	srv := newServer(t)
 	created := createNote(t, srv, `{"title":"Notes","content":"# Heading\n\nbody"}`)
 
-	res, err := http.Get(srv.URL + "/api/v1/notes/" + created.Slug + "/download")
+	res, err := http.Get(srv.URL + "/api/v1/notes/" + created.Slug + "/download-markdown")
 	require.NoError(t, err)
 	defer res.Body.Close()
 	require.Equal(t, http.StatusOK, res.StatusCode)
@@ -162,9 +162,9 @@ func TestDownloadNote(t *testing.T) {
 	assert.Equal(t, "# Heading\n\nbody", string(body), "raw verbatim Markdown body")
 }
 
-func TestDownloadUnknownReturns404(t *testing.T) {
+func TestDownloadMarkdownUnknownReturns404(t *testing.T) {
 	srv := newServer(t)
-	res, err := http.Get(srv.URL + "/api/v1/notes/missing/download")
+	res, err := http.Get(srv.URL + "/api/v1/notes/missing/download-markdown")
 	require.NoError(t, err)
 	defer res.Body.Close()
 	require.Equal(t, http.StatusNotFound, res.StatusCode)
@@ -176,14 +176,14 @@ func TestDownloadUnknownReturns404(t *testing.T) {
 	assert.NotEmpty(t, body.Error)
 }
 
-func TestDownloadEmptyContentNote(t *testing.T) {
+func TestDownloadMarkdownEmptyContentNote(t *testing.T) {
 	srv := newServer(t)
 	// content is absent → service coalesces it to "". The download is still a
 	// well-formed 200 with the attachment header and an empty raw body.
 	created := createNote(t, srv, `{"title":"Empty"}`)
 	require.Empty(t, created.Content)
 
-	res, err := http.Get(srv.URL + "/api/v1/notes/" + created.Slug + "/download")
+	res, err := http.Get(srv.URL + "/api/v1/notes/" + created.Slug + "/download-markdown")
 	require.NoError(t, err)
 	defer res.Body.Close()
 	require.Equal(t, http.StatusOK, res.StatusCode)
@@ -195,6 +195,44 @@ func TestDownloadEmptyContentNote(t *testing.T) {
 	body, err := io.ReadAll(res.Body)
 	require.NoError(t, err)
 	assert.Empty(t, body, "empty-content note downloads as an empty body")
+}
+
+func TestDownloadNoteHtml(t *testing.T) {
+	srv := newServer(t)
+	created := createNote(t, srv, `{"title":"My Note","content":"# Heading\n\nbody"}`)
+
+	res, err := http.Get(srv.URL + "/api/v1/notes/" + created.Slug + "/download-html")
+	require.NoError(t, err)
+	defer res.Body.Close()
+	require.Equal(t, http.StatusOK, res.StatusCode)
+
+	assert.Contains(t, res.Header.Get("Content-Type"), "text/html")
+	assert.Equal(t, `attachment; filename="`+created.Slug+`.html"`,
+		res.Header.Get("Content-Disposition"))
+	assert.Equal(t, "nosniff", res.Header.Get("X-Content-Type-Options"))
+	assert.Equal(t, "sandbox", res.Header.Get("Content-Security-Policy"))
+
+	body, err := io.ReadAll(res.Body)
+	require.NoError(t, err)
+	bodyStr := string(body)
+	assert.Contains(t, bodyStr, "<!DOCTYPE html>")
+	assert.Contains(t, bodyStr, "<title>My Note</title>")
+	assert.Contains(t, bodyStr, "<h1>Heading</h1>")
+	assert.Contains(t, bodyStr, "<p>body</p>")
+}
+
+func TestDownloadHtmlUnknownReturns404(t *testing.T) {
+	srv := newServer(t)
+	res, err := http.Get(srv.URL + "/api/v1/notes/missing/download-html")
+	require.NoError(t, err)
+	defer res.Body.Close()
+	require.Equal(t, http.StatusNotFound, res.StatusCode)
+	assert.Contains(t, res.Header.Get("Content-Type"), "application/json",
+		"download-html errors keep the JSON error shape")
+
+	var body api.Error
+	require.NoError(t, json.NewDecoder(res.Body).Decode(&body))
+	assert.NotEmpty(t, body.Error)
 }
 
 func TestListReturnsSummaries(t *testing.T) {

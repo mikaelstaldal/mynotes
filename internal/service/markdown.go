@@ -1,6 +1,9 @@
 package service
 
 import (
+	"bytes"
+	"fmt"
+	"html/template"
 	"io"
 	"regexp"
 	"strings"
@@ -9,6 +12,7 @@ import (
 	"github.com/yuin/goldmark"
 	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/extension"
+	gmhtml "github.com/yuin/goldmark/renderer/html"
 	gmtext "github.com/yuin/goldmark/text"
 	"golang.org/x/net/html"
 )
@@ -32,6 +36,50 @@ var markdownParser = goldmark.New(
 		extension.Linkify,
 	),
 ).Parser()
+
+// markdownRenderer converts Markdown to an HTML body fragment. WithUnsafe allows
+// raw HTML blocks stored in notes — content was already validated at write time.
+var markdownRenderer = goldmark.New(
+	goldmark.WithExtensions(
+		extension.Table,
+		extension.Strikethrough,
+		extension.Linkify,
+	),
+	goldmark.WithRendererOptions(
+		gmhtml.WithUnsafe(),
+	),
+)
+
+var htmlDocTemplate = template.Must(template.New("doc").Parse(`<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><title>{{.Title}}</title></head>
+<body>
+{{.Body}}</body>
+</html>
+`))
+
+// RenderToHTML converts Markdown content to a complete HTML document with the
+// given title. The rendered HTML fragment is sanitized with the same bluemonday
+// policy used at write time before being embedded in the document, providing
+// defense-in-depth against any divergence between validation and render output.
+func RenderToHTML(title, content string) (string, error) {
+	var body bytes.Buffer
+	if err := markdownRenderer.Convert([]byte(content), &body); err != nil {
+		return "", fmt.Errorf("render markdown: %w", err)
+	}
+	safe := sanitize.HTML(body.String())
+	var doc bytes.Buffer
+	if err := htmlDocTemplate.Execute(&doc, struct {
+		Title string
+		Body  template.HTML
+	}{
+		Title: title,
+		Body:  template.HTML(safe), //nolint:gosec // sanitized by bluemonday immediately above
+	}); err != nil {
+		return "", fmt.Errorf("render html template: %w", err)
+	}
+	return doc.String(), nil
+}
 
 // schemePattern matches a leading RFC 3986 URI scheme ("scheme:"). A
 // destination with no match carries no scheme and is treated as relative.

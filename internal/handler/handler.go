@@ -121,11 +121,10 @@ func (h *Handler) ImportNote(ctx context.Context, req api.ImportNoteReq) (*api.N
 	return &out, nil
 }
 
-// DownloadNote returns the note content as a raw text/markdown body with a
-// Content-Disposition attachment header. It reuses the service get-by-slug; an
-// unknown slug maps to the operation's typed 404 (*api.Error), keeping the JSON
-// error shape. No new business logic lives here.
-func (h *Handler) DownloadNote(ctx context.Context, params api.DownloadNoteParams) (api.DownloadNoteRes, error) {
+// DownloadNoteMarkdown returns the note content as a raw text/markdown body with a
+// Content-Disposition attachment header. An unknown slug maps to the operation's
+// typed 404 (*api.Error), keeping the JSON error shape.
+func (h *Handler) DownloadNoteMarkdown(ctx context.Context, params api.DownloadNoteMarkdownParams) (api.DownloadNoteMarkdownRes, error) {
 	n, err := h.notes.Get(ctx, params.Slug)
 	if err != nil {
 		if errors.Is(err, service.ErrNotFound) {
@@ -133,9 +132,32 @@ func (h *Handler) DownloadNote(ctx context.Context, params api.DownloadNoteParam
 		}
 		return nil, err
 	}
-	return &api.DownloadNoteOKHeaders{
+	return &api.DownloadNoteMarkdownOKHeaders{
 		ContentDisposition: `attachment; filename="` + n.Slug + `.md"`,
-		Response:           api.DownloadNoteOK{Data: strings.NewReader(n.Content)},
+		Response:           api.DownloadNoteMarkdownOK{Data: strings.NewReader(n.Content)},
+	}, nil
+}
+
+// DownloadNoteHtml converts the note content from Markdown to HTML on the server
+// and returns a complete HTML document with a Content-Disposition attachment header.
+// An unknown slug maps to the operation's typed 404 (*api.Error).
+func (h *Handler) DownloadNoteHtml(ctx context.Context, params api.DownloadNoteHtmlParams) (api.DownloadNoteHtmlRes, error) {
+	n, err := h.notes.Get(ctx, params.Slug)
+	if err != nil {
+		if errors.Is(err, service.ErrNotFound) {
+			return &api.Error{Error: err.Error()}, nil
+		}
+		return nil, err
+	}
+	htmlDoc, err := service.RenderToHTML(n.Title, n.Content)
+	if err != nil {
+		return nil, err
+	}
+	return &api.DownloadNoteHtmlOKHeaders{
+		ContentDisposition:    `attachment; filename="` + n.Slug + `.html"`,
+		XContentTypeOptions:   "nosniff",
+		ContentSecurityPolicy: "sandbox",
+		Response:              api.DownloadNoteHtmlOK{Data: strings.NewReader(htmlDoc)},
 	}, nil
 }
 
