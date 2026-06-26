@@ -4,6 +4,10 @@ Guidance for AI coding agents working in this repository. This is a personal
 note manager (MyNotes) with a Go backend, SQLite storage, a REST API defined in
 OpenAPI, and an embedded Preact + TypeScript frontend.
 
+## Specification
+
+Keep spec/REQUIREMENTS.md updated when new features are added.
+
 ## Build & Run
 
 ```bash
