@@ -2,14 +2,22 @@
 // does not match a real static file, so deep links and the back button work
 // without any server-side route enumeration.
 
+import { base } from './basepath.js';
+
 export type Route =
   | { type: 'list' }
   | { type: 'new' }
   | { type: 'view'; slug: string }
   | { type: 'edit'; slug: string };
 
+// Strip the deployment base prefix so parseRoute always sees a root-relative path.
+function stripBase(pathname: string): string {
+  if (!base) return pathname;
+  return pathname.startsWith(base) ? pathname.slice(base.length) || '/' : pathname;
+}
+
 function parseRoute(pathname: string): Route {
-  const parts = pathname.split('/').filter(Boolean);
+  const parts = stripBase(pathname).split('/').filter(Boolean);
   if (parts[0] === 'new') return { type: 'new' };
   if (parts[0] === 'notes' && parts[1]) {
     if (parts[2] === 'edit') return { type: 'edit', slug: parts[1] };
@@ -30,19 +38,22 @@ export function setNavigationGuard(fn: NavigationGuard | null): void {
   guard = fn;
 }
 
+// path is always a root-relative SPA path (e.g. '/notes/slug'). navigate
+// prepends the deployment base so pushState produces the full URL path.
 export function navigate(path: string): void {
   if (guard && !guard()) return;
-  history.pushState(null, '', path);
+  history.pushState(null, '', base + path);
   // pushState alone does not fire popstate; dispatch one so listeners update.
   window.dispatchEvent(new PopStateEvent('popstate', { state: null }));
 }
 
 // Returns true for paths that the SPA owns. API and external URLs are excluded
-// so that <a href="/api/v1/..."> and absolute URLs get real browser navigations.
+// so that download links and absolute URLs get real browser navigations.
 function isInAppPath(href: string): boolean {
   if (href.startsWith('http://') || href.startsWith('https://') || href.startsWith('//')) return false;
-  if (href.startsWith('/api/')) return false;
-  return true;
+  // Strip the base prefix before checking for the /api/ segment.
+  const local = base && href.startsWith(base) ? href.slice(base.length) : href;
+  return !local.startsWith('/api/');
 }
 
 export function onRouteChange(cb: (route: Route) => void): () => void {

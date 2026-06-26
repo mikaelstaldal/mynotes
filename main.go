@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"flag"
@@ -8,6 +9,7 @@ import (
 	"io/fs"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -81,6 +83,11 @@ func run(addr string, port int, dataDir, publicURL, basicAuthFile, basicAuthReal
 	if err != nil {
 		return fmt.Errorf("read index.html: %w", err)
 	}
+	if bp := basePathFromPublicURL(publicURL); bp != "/" {
+		indexHTML = bytes.ReplaceAll(indexHTML,
+			[]byte(`<base href="/">`),
+			[]byte(`<base href="`+bp+`">`))
+	}
 	importMapHash, err := commonweb.ImportMapCSPHash(web.Static)
 	if err != nil {
 		return fmt.Errorf("compute importmap CSP hash: %w", err)
@@ -148,6 +155,24 @@ func run(addr string, port int, dataDir, publicURL, basicAuthFile, basicAuthReal
 		return fmt.Errorf("server: %w", err)
 	}
 	return nil
+}
+
+// basePathFromPublicURL extracts the URL path component and returns it with a
+// trailing slash, e.g. "https://example.com/mynotes" → "/mynotes/". Returns
+// "/" when the public URL is empty or has no meaningful path component.
+func basePathFromPublicURL(publicURL string) string {
+	if publicURL == "" {
+		return "/"
+	}
+	u, err := url.Parse(publicURL)
+	if err != nil || u.Path == "" || u.Path == "/" {
+		return "/"
+	}
+	p := u.Path
+	if !strings.HasSuffix(p, "/") {
+		p += "/"
+	}
+	return p
 }
 
 // staticHandler serves embedded static files, falling back to index.html for

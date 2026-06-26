@@ -5,6 +5,7 @@
 
 import { showNetworkErrorToast } from '../util/toast.js';
 import type { components } from './types.js';
+import { base } from '../basepath.js';
 
 export type Note = components['schemas']['Note'];
 export type NoteSummary = components['schemas']['NoteSummary'];
@@ -12,7 +13,7 @@ export type NoteList = components['schemas']['NoteList'];
 export type CreateNoteRequest = components['schemas']['CreateNoteRequest'];
 export type UpdateNoteRequest = components['schemas']['UpdateNoteRequest'];
 
-const BASE = '/api/v1';
+const BASE = base + '/api/v1';
 
 export class NotFoundError extends Error {
   constructor() { super('Not found'); this.name = 'NotFoundError'; }

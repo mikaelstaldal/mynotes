@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'preact/hooks';
 import { api, type NoteSummary } from '../api/client.js';
 import { navigate } from '../router.js';
+import { base } from '../basepath.js';
 import { showToast } from '../util/toast.js';
 
 const LIMIT = 50;
@@ -159,7 +160,7 @@ export function NoteList({ activeSlug, listKey, onMutate }: Props) {
           {rows.map(n => (
             <li key={n.slug}>
               <div class={`note-row${n.slug === activeSlug ? ' note-row--active' : ''}`}>
-                <a class="link" href={`/notes/${n.slug}`}>{n.title}</a>
+                <a class="link" href={`${base}/notes/${n.slug}`}>{n.title}</a>
                 <time class="muted note-date" dateTime={n.updated_at}>
                   {new Date(n.updated_at).toLocaleString()}
                 </time>
