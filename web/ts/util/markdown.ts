@@ -47,6 +47,17 @@ DOMPurify.setConfig({
   FORCE_BODY: true,
 });
 
+// Open external links in a new tab; keep internal links in the same tab.
+DOMPurify.addHook('afterSanitizeAttributes', (node) => {
+  if (node.tagName === 'A') {
+    const href = node.getAttribute('href') ?? '';
+    if (/^https?:\/\//i.test(href)) {
+      node.setAttribute('target', '_blank');
+      node.setAttribute('rel', 'noopener noreferrer');
+    }
+  }
+});
+
 // Allow data: only on img@src with the canonical raster MIME set; strip it everywhere else.
 DOMPurify.addHook('uponSanitizeAttribute', (node, data) => {
   if (data.attrName === 'src' && node.tagName === 'IMG' && DATA_IMAGE_RE.test(data.attrValue)) {
