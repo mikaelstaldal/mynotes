@@ -21,9 +21,10 @@ type Layout = 'split' | 'editor' | 'preview';
 
 interface Props {
   slug?: string;
+  onSave?: () => void;
 }
 
-export function NoteEditor({ slug }: Props) {
+export function NoteEditor({ slug, onSave }: Props) {
   const editing = slug !== undefined;
 
   const [title, setTitle] = useState('');
@@ -175,6 +176,7 @@ export function NoteEditor({ slug }: Props) {
         snapshotRef.current = { title, content, slug: note.slug };
         dirtyRef.current = false;
         setDirty(false);
+        onSave?.();
         navigate(`/notes/${note.slug}`);
       } else {
         const body: CreateNoteRequest = { title, content };
@@ -182,6 +184,7 @@ export function NoteEditor({ slug }: Props) {
         const note = await api.notes.create(body);
         dirtyRef.current = false;
         setDirty(false);
+        onSave?.();
         navigate(`/notes/${note.slug}`);
       }
     } catch (e) {

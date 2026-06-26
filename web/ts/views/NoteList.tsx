@@ -29,7 +29,13 @@ function capRunes(s: string, max: number): string {
   return [...s].slice(0, max).join('');
 }
 
-export function NoteList() {
+interface Props {
+  activeSlug?: string;
+  listKey?: number;
+  onMutate?: () => void;
+}
+
+export function NoteList({ activeSlug, listKey, onMutate }: Props) {
   const [inputQuery, setInputQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
   const [rows, setRows] = useState<NoteSummary[]>([]);
@@ -79,7 +85,7 @@ export function NoteList() {
     }
   }, []);
 
-  // Reset accumulated rows and offset whenever the debounced query changes.
+  // Reset accumulated rows and offset whenever the debounced query or listKey changes.
   useEffect(() => {
     const gen = ++genRef.current;
     shownRef.current = new Set();
@@ -88,7 +94,7 @@ export function NoteList() {
     setTotal(null);
     setExhausted(false);
     void loadPage(debouncedQuery, 0, gen);
-  }, [debouncedQuery, loadPage]);
+  }, [debouncedQuery, loadPage, listKey]);
 
   async function handleUpload(e: Event) {
     const file = (e.target as HTMLInputElement).files?.[0];
@@ -104,6 +110,7 @@ export function NoteList() {
     const title = titleFromContent(text) ?? titleFromFilename(file.name);
     try {
       const note = await api.notes.create({ title, content: text });
+      onMutate?.();
       navigate(`/notes/${note.slug}`);
     } catch (err) {
       showToast(`Upload failed: ${(err as Error).message}`);
@@ -123,6 +130,7 @@ export function NoteList() {
           value={inputQuery}
           onInput={e => setInputQuery((e.target as HTMLInputElement).value)}
         />
+        <button title="Reload list" onClick={() => onMutate?.()}>↺</button>
         <button class="primary" onClick={() => navigate('/new')}>New note</button>
         <button onClick={() => uploadRef.current?.click()}>Upload Markdown</button>
         <input
@@ -146,7 +154,7 @@ export function NoteList() {
         <ul>
           {rows.map(n => (
             <li key={n.slug}>
-              <div class="note-row">
+              <div class={`note-row${n.slug === activeSlug ? ' note-row--active' : ''}`}>
                 <a class="link" href={`/notes/${n.slug}`}>{n.title}</a>
                 <time class="muted note-date" dateTime={n.updated_at}>
                   {new Date(n.updated_at).toLocaleString()}

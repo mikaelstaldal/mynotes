@@ -1,5 +1,5 @@
 import { render } from 'preact';
-import { useState, useEffect } from 'preact/hooks';
+import { useState, useEffect, useCallback } from 'preact/hooks';
 import { currentRoute, onRouteChange, type Route } from './router.js';
 import { getConfig } from './util/config.js';
 import { NoteList } from './views/NoteList.js';
@@ -9,6 +9,7 @@ import { Toast } from './components/Toast.js';
 
 function App() {
   const [route, setRoute] = useState<Route>(currentRoute());
+  const [listKey, setListKey] = useState(0);
 
   useEffect(() => onRouteChange(setRoute), []);
 
@@ -17,17 +18,26 @@ function App() {
     document.documentElement.dataset.theme = getConfig().theme;
   }, []);
 
+  const refreshList = useCallback(() => setListKey(k => k + 1), []);
+
+  const activeSlug = (route.type === 'view' || route.type === 'edit') ? route.slug : undefined;
+
   return (
     <>
       <header class="app-header">
         <a class="brand" href="/">MyNotes</a>
       </header>
-      <main>
-        {route.type === 'list' && <NoteList />}
-        {route.type === 'new' && <NoteEditor />}
-        {route.type === 'view' && <NoteView slug={route.slug} />}
-        {route.type === 'edit' && <NoteEditor slug={route.slug} />}
-      </main>
+      <div class="app-body">
+        <aside class="sidebar">
+          <NoteList activeSlug={activeSlug} listKey={listKey} onMutate={refreshList} />
+        </aside>
+        <main>
+          {route.type === 'list' && <p class="muted select-prompt">Select a note or create a new one.</p>}
+          {route.type === 'new' && <NoteEditor onSave={refreshList} />}
+          {route.type === 'view' && <NoteView slug={route.slug} onDelete={refreshList} />}
+          {route.type === 'edit' && <NoteEditor slug={route.slug} onSave={refreshList} />}
+        </main>
+      </div>
       <Toast />
     </>
   );

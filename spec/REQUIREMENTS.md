@@ -108,28 +108,32 @@ found; 409 conflict on an explicit/renamed slug.
 
 ## Frontend behavior
 
-Routes: list+search (`/`), new-note editor (`/new`), read view of a note
-(`/notes/{slug}`), and existing-note editor (`/notes/{slug}/edit`). URLs are real
-paths (bookmarkable), not hash routes.
+**Two-panel layout:** a persistent left sidebar always shows the full note list;
+a right main panel shows the selected note or editor. URLs are real paths
+(bookmarkable), not hash routes.
 
-- **List/search view:** debounced search box, results showing title, updated
-  time, excerpt, and highlights when searching. Empty and loading states. A "Load
-  more" button pages through results (accumulating and de-duplicating rows by
-  slug); resets on query change. Shows the total count. "New note" and "Upload
-  Markdown" actions.
+Routes: no-note-selected (`/`), new-note editor (`/new`), read view of a note
+(`/notes/{slug}`), and existing-note editor (`/notes/{slug}/edit`).
+
+- **Sidebar (always visible):** debounced search box, results showing title,
+  updated time, and excerpt with highlights when searching. Empty and loading
+  states. A "Load more" button pages through results (accumulating and
+  de-duplicating rows by slug); resets on query change. Shows the total count.
+  "New note" and "Upload Markdown" actions. The currently open note is
+  highlighted in the list.
 - **Upload Markdown:** pick a single `.md`/`.markdown`/text file, read it as
   UTF-8, derive the title (first heading, else filename without extension, else
   "Untitled"), and create a note from its text. Oversized or non-UTF-8 files are
-  rejected with a clear message before/▸from the server.
-- **Read view:** renders the note's Markdown safely into a styled container. The
-  stored title is used as the browser tab title (not duplicated as a body
-  heading). "Edit", "Delete", and "Download Markdown" actions. A 404 (or a
-  malformed-slug deep link) shows a not-found view.
-- **Editor (new/edit):** title input (with auto-derive-from-heading until edited);
-  slug field (suggested for new notes, editable-with-warning when editing); a
-  Markdown source editor with a live local preview; a "Link to note" picker that
-  searches notes and inserts a Markdown link to the chosen note's stable URL;
-  Save and Cancel.
+  rejected with a clear message before/from the server.
+- **Read view (main panel):** renders the note's Markdown safely into a styled
+  container. The stored title is used as the browser tab title (not duplicated as
+  a body heading). "Edit", "Delete", and "Download Markdown" actions. A 404 (or a
+  malformed-slug deep link) shows a not-found message.
+- **Editor (main panel, new/edit):** title input (with auto-derive-from-heading
+  until edited); slug field (suggested for new notes, editable-with-warning when
+  editing); a Markdown source editor with a live local preview; a "Link to note"
+  picker that searches notes and inserts a Markdown link to the chosen note's
+  stable URL; Save and Cancel.
   - Cancel returns to the note's read view (when editing) or the list (when new),
     computed from the route, and is subject to the unsaved-changes guard.
   - An unsaved-changes guard covers both in-app navigation and browser

@@ -6,9 +6,10 @@ import { renderNote } from '../util/markdown.js';
 
 interface Props {
   slug: string;
+  onDelete?: () => void;
 }
 
-export function NoteView({ slug }: Props) {
+export function NoteView({ slug, onDelete }: Props) {
   const [note, setNote] = useState<Note | null>(null);
   const [notFound, setNotFound] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -55,10 +56,12 @@ export function NoteView({ slug }: Props) {
     setDeleting(true);
     try {
       await api.notes.delete(note.slug);
+      onDelete?.();
       navigate('/');
     } catch (e) {
       if (e instanceof NotFoundError) {
         showToast('Note was already deleted');
+        onDelete?.();
         navigate('/');
       } else {
         showToast(`Failed to delete: ${(e as Error).message}`);
@@ -73,7 +76,6 @@ export function NoteView({ slug }: Props) {
     return (
       <div class="note-view">
         <p class="muted">Note not found.</p>
-        <a href="/">Back to list</a>
       </div>
     );
   }
@@ -83,7 +85,6 @@ export function NoteView({ slug }: Props) {
   return (
     <div class="note-view">
       <div class="toolbar">
-        <a href="/">Back</a>
         <a href={`/api/v1/notes/${note.slug}/download`}>Download Markdown</a>
         <button onClick={() => navigate(`/notes/${note.slug}/edit`)}>Edit</button>
         <button class="danger" onClick={handleDelete} disabled={deleting}>
