@@ -338,6 +338,31 @@ mark { background: #fef08a; color: var(--fg); border-radius: 2px; padding: 0 1px
 .dirty-dot { color: var(--primary); font-size: 0.7rem; line-height: 1; }
 .toolbar-spacer { flex: 1; }
 
+/* Format toolbar: bold/italic/list/link buttons above the editor */
+.format-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.125rem;
+  flex-shrink: 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.2rem 0.35rem;
+  background: var(--surface);
+}
+
+.fmt-sep {
+  width: 1px;
+  height: 1.1em;
+  background: var(--border);
+  display: inline-block;
+  margin: 0 0.2rem;
+  flex-shrink: 0;
+}
+
+.fmt-bold { font-weight: 700; }
+.fmt-italic { font-style: italic; }
+.fmt-code { font-family: ui-monospace, 'Cascadia Code', monospace; font-size: 1rem; }
+
 /* Meta bar: title + slug on one row */
 .editor-meta {
   display: flex;

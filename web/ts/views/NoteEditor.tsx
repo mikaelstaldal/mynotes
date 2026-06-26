@@ -214,6 +214,79 @@ export function NoteEditor({ slug, onSave }: Props) {
     view.focus();
   }
 
+  function insertWrap(marker: string) {
+    const view = viewRef.current;
+    if (!view) return;
+    const { from, to } = view.state.selection.main;
+    const selected = view.state.sliceDoc(from, to);
+    if (selected) {
+      const insert = `${marker}${selected}${marker}`;
+      view.dispatch({
+        changes: { from, to, insert },
+        selection: EditorSelection.cursor(from + insert.length),
+      });
+    } else {
+      const insert = `${marker}${marker}`;
+      view.dispatch({
+        changes: { from, insert },
+        selection: EditorSelection.cursor(from + marker.length),
+      });
+    }
+    view.focus();
+  }
+
+  function insertLinePrefix(prefix: string) {
+    const view = viewRef.current;
+    if (!view) return;
+    const { from, to } = view.state.selection.main;
+    const doc = view.state.doc;
+    const startLine = doc.lineAt(from);
+    const endLine = doc.lineAt(to);
+    const changes: { from: number; insert: string }[] = [];
+    for (let i = startLine.number; i <= endLine.number; i++) {
+      changes.push({ from: doc.line(i).from, insert: prefix });
+    }
+    view.dispatch({ changes });
+    view.focus();
+  }
+
+  function insertNumberedList() {
+    const view = viewRef.current;
+    if (!view) return;
+    const { from, to } = view.state.selection.main;
+    const doc = view.state.doc;
+    const startLine = doc.lineAt(from);
+    const endLine = doc.lineAt(to);
+    const changes: { from: number; insert: string }[] = [];
+    for (let i = startLine.number; i <= endLine.number; i++) {
+      changes.push({ from: doc.line(i).from, insert: `${i - startLine.number + 1}. ` });
+    }
+    view.dispatch({ changes });
+    view.focus();
+  }
+
+  function insertExternalLink() {
+    const view = viewRef.current;
+    if (!view) return;
+    const { from, to } = view.state.selection.main;
+    const selected = view.state.sliceDoc(from, to);
+    if (selected) {
+      const insert = `[${selected}](https://)`;
+      const urlStart = from + selected.length + 3;
+      view.dispatch({
+        changes: { from, to, insert },
+        selection: EditorSelection.range(urlStart, urlStart + 8),
+      });
+    } else {
+      const insert = `[](https://)`;
+      view.dispatch({
+        changes: { from, insert },
+        selection: EditorSelection.cursor(from + 1),
+      });
+    }
+    view.focus();
+  }
+
   if (loading) return <p class="muted">Loading…</p>;
 
   const slugPreviewVal = slugFromTitle(title);
@@ -229,7 +302,6 @@ export function NoteEditor({ slug, onSave }: Props) {
         </div>
         {dirty && <span class="dirty-dot" title="Unsaved changes">●</span>}
         <span class="toolbar-spacer" />
-        <button type="button" class="btn-icon" title="Link" aria-label="Link" onClick={() => setPickerOpen(true)}>⛓</button>
         <button type="button" class="btn-icon" title="Cancel" aria-label="Cancel" onClick={() => navigate(editing ? `/notes/${slug}` : '/')}>✕</button>
         <button type="submit" class="primary btn-icon" disabled={saving}
           title={saving ? 'Saving…' : 'Save'} aria-label={saving ? 'Saving…' : 'Save'}>✓</button>
@@ -310,6 +382,20 @@ export function NoteEditor({ slug, onSave }: Props) {
           </div>
         )}
       </div>
+
+      {layout !== 'preview' && (
+        <div class="format-toolbar">
+          <button type="button" class="btn-icon fmt-bold" title="Bold" aria-label="Bold" onClick={() => insertWrap('**')}>B</button>
+          <button type="button" class="btn-icon fmt-italic" title="Italic" aria-label="Italic" onClick={() => insertWrap('*')}>I</button>
+          <button type="button" class="btn-icon fmt-code" title="Code" aria-label="Code" onClick={() => insertWrap('`')}>`</button>
+          <span class="fmt-sep" role="separator" />
+          <button type="button" class="btn-icon" title="Numbered list" aria-label="Numbered list" onClick={insertNumberedList}>1.</button>
+          <button type="button" class="btn-icon" title="Bullet list" aria-label="Bullet list" onClick={() => insertLinePrefix('- ')}>•</button>
+          <span class="fmt-sep" role="separator" />
+          <button type="button" class="btn-icon" title="External link" aria-label="External link" onClick={insertExternalLink}>↗</button>
+          <button type="button" class="btn-icon" title="Internal link" aria-label="Internal link" onClick={() => setPickerOpen(true)}>⛓</button>
+        </div>
+      )}
 
       <div class={`editor-layout editor-layout--${layout}`}>
         <div class="editor-pane" ref={editorContainerRef} />
