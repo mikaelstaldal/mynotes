@@ -160,7 +160,7 @@ func run(addr string, port int, dataDir, publicURL, basicAuthFile, basicAuthReal
 	httpHandler = csrf.Middleware(serverOrigin)(httpHandler)
 
 	csp := "default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; " +
-		"frame-ancestors 'none'; script-src 'self' " + importMapHash
+		"frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'; script-src 'self' " + importMapHash
 	// Enable HSTS when the public URL is served over HTTPS (typically behind a
 	// TLS-terminating proxy). Without a public URL we assume plain HTTP.
 	hsts := ""
