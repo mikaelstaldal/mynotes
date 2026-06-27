@@ -5,6 +5,16 @@ import { base } from '../basepath.js';
 import { showToast } from '../util/toast.js';
 import { renderNote } from '../util/markdown.js';
 
+function formatDateTime(iso: string): string {
+  const d = new Date(iso);
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  const hh = String(d.getHours()).padStart(2, '0');
+  const min = String(d.getMinutes()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd} ${hh}:${min}`;
+}
+
 interface Props {
   slug: string;
   onDelete?: () => void;
@@ -85,14 +95,22 @@ export function NoteView({ slug, onDelete }: Props) {
 
   return (
     <div class="note-view">
-      <div class="toolbar">
-        <a class="btn-icon" href={`${base}/api/v1/notes/${note.slug}/download-markdown`} title="Download Markdown" aria-label="Download Markdown">⬇</a>
-        <a class="btn-icon" href={`${base}/api/v1/notes/${note.slug}/download-html`} title="Download HTML" aria-label="Download HTML">&#x1F5CE;</a>
-        <button class="btn-icon" title="Edit" aria-label="Edit" onClick={() => navigate(`/notes/${note.slug}/edit`)}>✎</button>
-        <button class="danger btn-icon" onClick={handleDelete} disabled={deleting}
-          title={deleting ? 'Deleting…' : 'Delete'} aria-label={deleting ? 'Deleting…' : 'Delete'}>
-          🗑
-        </button>
+      <div class="note-header">
+        <div class="note-header-left">
+          <h1 class="note-title">{note.title}</h1>
+          <time class="muted note-view-date" dateTime={note.updated_at}>
+            {formatDateTime(note.updated_at)}
+          </time>
+        </div>
+        <div class="toolbar">
+          <a class="btn-icon" href={`${base}/api/v1/notes/${note.slug}/download-markdown`} title="Download Markdown" aria-label="Download Markdown">⬇</a>
+          <a class="btn-icon" href={`${base}/api/v1/notes/${note.slug}/download-html`} title="Download HTML" aria-label="Download HTML">&#x1F5CE;</a>
+          <button class="btn-icon" title="Edit" aria-label="Edit" onClick={() => navigate(`/notes/${note.slug}/edit`)}>✎</button>
+          <button class="danger btn-icon" onClick={handleDelete} disabled={deleting}
+            title={deleting ? 'Deleting…' : 'Delete'} aria-label={deleting ? 'Deleting…' : 'Delete'}>
+            🗑
+          </button>
+        </div>
       </div>
       <div class="note-content" dangerouslySetInnerHTML={{ __html: renderedContent }} />
     </div>

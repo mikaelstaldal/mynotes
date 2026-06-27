@@ -29,6 +29,16 @@ function capRunes(s: string, max: number): string {
   return [...s].slice(0, max).join('');
 }
 
+function formatDate(iso: string): string {
+  const d = new Date(iso);
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  const hh = String(d.getHours()).padStart(2, '0');
+  const min = String(d.getMinutes()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd} ${hh}:${min}`;
+}
+
 interface Props {
   activeSlug?: string;
   listKey?: number;
@@ -162,7 +172,7 @@ export function NoteList({ activeSlug, listKey, onMutate }: Props) {
               <div class={`note-row${n.slug === activeSlug ? ' note-row--active' : ''}`}>
                 <a class="link" href={`${base}/notes/${n.slug}`}>{n.title}</a>
                 <time class="muted note-date" dateTime={n.updated_at}>
-                  {new Date(n.updated_at).toLocaleString()}
+                  {formatDate(n.updated_at)}
                 </time>
                 {n.excerpt && (
                   <p class="note-excerpt muted"
