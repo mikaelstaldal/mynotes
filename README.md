@@ -40,6 +40,12 @@ The SQLite database is created automatically at `data/mynotes.sqlite` on first r
 | `-public-url`      | —           | public base URL for CSRF validation behind a proxy; an `https://` URL also enables `Strict-Transport-Security` |
 | `-basic-auth-file` | —           | htpasswd file (bcrypt) to enable HTTP basic auth                                                               |
 
+## Production deployment
+
+See [OPERATIONS.md](OPERATIONS.md) for a step-by-step guide covering systemd
+service setup, TLS termination via nginx/Apache/Caddy, authentication, and
+upgrades.
+
 ## Layout
 
 See [AGENTS.md](AGENTS.md) for the full architecture, conventions, and code-
@@ -61,4 +67,16 @@ web/static/         # embedded assets (HTML/CSS/vendored preact/compiled JS)
 
 ## License
 
-Apache License 2.0 — see [LICENSE](LICENSE).
+Copyright 2026 Mikael Ståldal.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
