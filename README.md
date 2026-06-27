@@ -40,6 +40,72 @@ The SQLite database is created automatically at `data/mynotes.sqlite` on first r
 | `-public-url`      | —           | public base URL for CSRF validation behind a proxy; an `https://` URL also enables `Strict-Transport-Security` |
 | `-basic-auth-file` | —           | htpasswd file (bcrypt) to enable HTTP basic auth                                                               |
 
+## Importing from Google Docs
+
+The binary can bulk-import all your owned Google Docs as notes. When the two
+Google flags are present it runs as a one-shot importer instead of starting the
+server — it connects to the same database and exits when done.
+
+### One-time setup
+
+1. Go to [Google Cloud Console](https://console.cloud.google.com/) and create a
+   project.
+2. Enable the **Google Drive API** for that project.
+3. Go to *APIs & Services → OAuth consent screen*
+   - Scroll to the Test users section
+   - Click Add users and enter your Google account email
+   - Click Save
+4. Under *APIs & Services → Credentials*, create an **OAuth 2.0 Client ID**.
+   Choose **Desktop app** as the application type (this allows any
+   `http://localhost` port without registering exact redirect URIs).
+5. Copy the **Client ID** and **Client Secret**.
+
+### Running the import
+
+```bash
+./mynotes \
+  -gdocs-client-id=<CLIENT_ID> \
+  -gdocs-client-secret=<CLIENT_SECRET> \
+  -data /path/to/your/data \
+  [-port <CALLBACK_PORT>]
+```
+
+In import mode `-port` sets the local port for the OAuth redirect callback
+(default: a random free port). Use this if you need a fixed port — for example
+when your network or firewall blocks arbitrary high ports, or when you want to
+pre-register a specific redirect URI (`http://localhost:<port>/callback`) in the
+Google Cloud Console.
+
+On the **first run** a browser window opens for Google's OAuth consent screen.
+After you approve, the token is saved to `<data>/gdocs-token.json` (readable
+only by the current user). **Subsequent runs** use the stored token and refresh
+it silently — no browser interaction needed.
+
+The importer fetches only documents **you own** (not files shared with you), and
+only **Google Docs** (not Sheets, Slides, or other types). Non-trashed documents
+across all pages are included.
+
+Each document is exported as Markdown; if that fails, it falls back to HTML and
+converts it with the same converter used by the manual HTML import. The document
+title and creation date from Drive are preserved in the imported note.
+
+```
+Listing Google Docs...
+Found 42 document(s). Importing...
+  ✓ My First Note → /notes/my-first-note
+  ✗ Problematic Doc: content validation error: …
+  …
+Imported 41 note(s). 1 failed:
+  - Problematic Doc: content validation error: …
+```
+
+Exit code is 0 on full success, 1 if any document failed. After the import
+finishes, start the server normally to browse the new notes.
+
+> **Note:** Re-running the importer creates new notes for documents that were
+> already imported (with auto-suffixed slugs). It is intended as a one-shot
+> migration rather than an ongoing sync.
+
 ## Production deployment
 
 See [OPERATIONS.md](OPERATIONS.md) for a step-by-step guide covering systemd

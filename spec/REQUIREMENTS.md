@@ -161,6 +161,85 @@ Routes: no-note-selected (`/`), new-note editor (`/new`), read view of a note
     list. A slug conflict (409) shows the server's error message as a toast.
 - Errors are surfaced through a toast component.
 
+## Google Docs Bulk Import
+
+A one-shot batch mode that imports all owned Google Docs as notes into the same
+SQLite database the server uses.
+
+### Invocation
+
+```
+./mynotes -gdocs-client-id=<CLIENT_ID> -gdocs-client-secret=<CLIENT_SECRET> [-data <dir>]
+```
+
+When both `-gdocs-client-id` and `-gdocs-client-secret` are present the binary
+runs the importer instead of starting the HTTP server.  All other flags
+(`-port`, `-addr`, `-public-url`, etc.) are ignored; `-data` controls both the
+database path and the stored token location.
+
+### Setup (one time)
+
+1. Create a Google Cloud project; enable the **Drive API**.
+2. Create **Desktop App** OAuth 2.0 credentials (not Web Application — Desktop
+   App allows any `http://localhost` port without registering exact redirect
+   URIs).
+3. Note the Client ID and Client Secret.
+
+### First run — authentication
+
+On the first run a browser opens to the Google OAuth consent screen.  After the
+user approves, the token (including a refresh token) is saved to
+`<data>/gdocs-token.json` (mode 0600).  Subsequent runs use the stored token and
+refresh it automatically without any user interaction.
+
+### What is imported
+
+- **Owned** Google Docs only (`'me' in owners`).
+- **Google Docs** only (`mimeType = 'application/vnd.google-apps.document'`);
+  Sheets, Slides, Forms, and other file types are excluded.
+- Non-trashed documents only.
+- All pages are fetched automatically (Drive API pagination).
+
+### Export and conversion
+
+Each document is exported via the Drive API:
+
+1. Markdown (`text/markdown`) is tried first.
+2. If the Markdown export fails (e.g., HTTP error), HTML (`text/html`) is fetched
+   and converted to Markdown using the same HTML→Markdown converter used by the
+   import-HTML endpoint.
+
+The document title and creation date are read from the Drive API metadata and
+injected as YAML frontmatter, so the existing import service preserves them
+correctly.
+
+### Validation and error handling
+
+Imported content passes through the same validation pipeline as any note created
+via the REST API.  A document whose content fails validation (e.g., disallowed
+embedded HTML) is skipped with an error message; the remaining documents continue
+importing.
+
+Re-running the importer creates new notes (with auto-suffixed slugs) for
+documents that were already imported.  There is no deduplication — the command is
+intended as a one-shot migration.
+
+### Output
+
+Progress is printed to stdout:
+
+```
+Listing Google Docs...
+Found 42 document(s). Importing...
+  ✓ My First Note → /notes/my-first-note
+  ✗ Problematic Doc: content validation error: …
+  …
+Imported 41 note(s). 1 failed:
+  - Problematic Doc: content validation error: …
+```
+
+Exit code is 0 on full success, 1 if any document failed to import.
+
 ## Security (user-facing guarantees)
 
 - The app must not execute scripts or active content embedded in note bodies;

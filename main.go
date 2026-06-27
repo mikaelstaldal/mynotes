@@ -23,6 +23,7 @@ import (
 	"github.com/mikaelstaldal/go-server-common/httputil"
 	commonweb "github.com/mikaelstaldal/go-server-common/web"
 	"github.com/mikaelstaldal/mynotes/internal/api"
+	"github.com/mikaelstaldal/mynotes/internal/gdocs"
 	"github.com/mikaelstaldal/mynotes/internal/handler"
 	"github.com/mikaelstaldal/mynotes/internal/repository"
 	"github.com/mikaelstaldal/mynotes/internal/service"
@@ -42,7 +43,24 @@ func main() {
 	publicURL := flag.String("public-url", "", "public-facing base URL for CSRF validation, e.g. https://example.com (defaults to http://<addr>:<port>)")
 	basicAuthFile := flag.String("basic-auth-file", "", "enable HTTP basic auth using this htpasswd file (bcrypt only)")
 	basicAuthRealm := flag.String("basic-auth-realm", "MyNotes", "realm for HTTP basic auth")
+	gdocsClientID := flag.String("gdocs-client-id", "", "Google OAuth 2.0 Client ID; when set (with -gdocs-client-secret) runs a bulk Google Docs import instead of the server")
+	gdocsClientSecret := flag.String("gdocs-client-secret", "", "Google OAuth 2.0 Client Secret")
 	flag.Parse()
+
+	if *gdocsClientID != "" && *gdocsClientSecret != "" {
+		// Use -port as the OAuth callback port only when explicitly set;
+		// otherwise 0 lets the OS pick a random free port.
+		callbackPort := 0
+		flag.Visit(func(f *flag.Flag) {
+			if f.Name == "port" {
+				callbackPort = *port
+			}
+		})
+		if err := runGDocsImport(context.Background(), *gdocsClientID, *gdocsClientSecret, *dataDir, callbackPort); err != nil {
+			log.Fatalf("%v", err)
+		}
+		return
+	}
 
 	if *port < 1 || *port > 65535 {
 		log.Fatalf("invalid port: %d", *port)
@@ -51,6 +69,42 @@ func main() {
 	if err := run(*addr, *port, *dataDir, *publicURL, *basicAuthFile, *basicAuthRealm); err != nil {
 		log.Fatalf("%v", err)
 	}
+}
+
+func runGDocsImport(ctx context.Context, clientID, clientSecret, dataDir string, callbackPort int) error {
+	dbPath := filepath.Join(dataDir, databaseName)
+	if err := repository.CreateDataDir(dbPath); err != nil {
+		return err
+	}
+	db, err := repository.OpenDB(dbPath, 5000, "synchronous=NORMAL")
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+
+	noteRepo := repository.NewNoteRepository(db)
+	noteSvc := service.NewNoteService(noteRepo)
+
+	cfg := gdocs.MakeConfig(clientID, clientSecret)
+	tokenPath := filepath.Join(dataDir, "gdocs-token.json")
+	tok, err := gdocs.Authenticate(ctx, cfg, tokenPath, callbackPort)
+	if err != nil {
+		return fmt.Errorf("authenticate with Google: %w", err)
+	}
+
+	drive := gdocs.NewClient(ctx, cfg, tok)
+	imported, errs := gdocs.Run(ctx, drive, noteSvc, os.Stdout)
+
+	fmt.Printf("\nImported %d note(s).", imported)
+	if len(errs) > 0 {
+		fmt.Printf(" %d failed:\n", len(errs))
+		for _, e := range errs {
+			fmt.Printf("  - %v\n", e)
+		}
+		return fmt.Errorf("%d import(s) failed", len(errs))
+	}
+	fmt.Println()
+	return nil
 }
 
 func run(addr string, port int, dataDir, publicURL, basicAuthFile, basicAuthRealm string) error {
