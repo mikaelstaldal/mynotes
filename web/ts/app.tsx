@@ -24,11 +24,9 @@ function App() {
 
   return (
     <>
-      <header class="app-header">
-        <a class="brand" href="/">MyNotes</a>
-      </header>
       <div class="app-body">
         <aside class="sidebar">
+          <a class="brand sidebar-brand" href="/">MyNotes</a>
           <NoteList activeSlug={activeSlug} listKey={listKey} onMutate={refreshList} />
         </aside>
         <main>
