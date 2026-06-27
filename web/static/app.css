@@ -60,7 +60,7 @@ body {
 }
 
 .sidebar {
-  width: 280px;
+  width: 420px;
   flex-shrink: 0;
   border-right: 1px solid var(--border);
   background: var(--surface);
@@ -177,16 +177,15 @@ ul { list-style: none; padding: 0; margin: 0; }
 
 .note-row {
   display: grid;
-  grid-template-areas: "title date" "excerpt excerpt";
-  grid-template-columns: 1fr auto;
-  align-items: baseline;
-  gap: 0.15rem 0.75rem;
+  grid-template-areas: "title" "date" "excerpt";
+  grid-template-columns: 1fr;
+  gap: 0.1rem;
   padding: 0.6rem 0;
 }
 
 .note-row .link { grid-area: title; font-size: 1rem; }
 .note-row .note-date { grid-area: date; font-size: 0.8rem; white-space: nowrap; }
-.note-row .note-excerpt { grid-area: excerpt; margin: 0; font-size: 0.875rem; line-height: 1.4; }
+.note-row .note-excerpt { grid-area: excerpt; margin: 0; font-size: 0.875rem; line-height: 1.4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 mark { background: #fef08a; color: var(--fg); border-radius: 2px; padding: 0 1px; }
 :root[data-theme="dark"] mark { background: #713f12; }

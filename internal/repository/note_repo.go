@@ -4,12 +4,22 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"regexp"
 	"strings"
 	"time"
 
 	"github.com/mikaelstaldal/mynotes/internal/model"
 	sqlitedrv "modernc.org/sqlite"
 	sqlite3 "modernc.org/sqlite/lib"
+)
+
+var (
+	mdImageRE       = regexp.MustCompile(`!\[[^\]]*\]\([^)]*\)`)
+	mdLinkRE        = regexp.MustCompile(`\[([^\]]*)\]\([^)]*\)`)
+	mdCodeRE        = regexp.MustCompile("`+([^`]*)`+")
+	mdStrikeRE      = regexp.MustCompile(`~~([^~]*)~~`)
+	mdOrderedListRE = regexp.MustCompile(`^\d+\.\s+`)
+	mdHRuleRE       = regexp.MustCompile(`^[-*_]{3,}\s*$`)
 )
 
 // NoteRepository is the storage gateway for notes. One repository struct per
@@ -167,7 +177,7 @@ func (r *NoteRepository) browse(ctx context.Context, limit, offset int) ([]model
 	}
 
 	rows, err := r.db.QueryContext(ctx, `
-		SELECT slug, title, updated_at, substr(content, 1, 201)
+		SELECT slug, title, updated_at, substr(content, 1, 501)
 		FROM notes
 		ORDER BY updated_at DESC, id DESC
 		LIMIT ? OFFSET ?`, limit, offset)
@@ -244,21 +254,49 @@ func (r *NoteRepository) search(ctx context.Context, q string, limit, offset int
 	return notes, total, rows.Err()
 }
 
-// plainExcerpt turns a `substr(content, 1, 201)` probe into a display excerpt: a
-// rune-accurate ~200-rune word-boundary prefix. The probe returns at most 201
-// runes; exactly 201 means the content was longer, so cut back to a word
-// boundary and append an ellipsis. A probe of ≤200 runes is the full content,
-// shown verbatim (empty content → empty excerpt).
+// plainExcerpt finds the first non-heading, non-blank line in the Markdown
+// probe, strips inline Markdown syntax, and truncates at ~120 runes.
 func plainExcerpt(probe string) string {
-	runes := []rune(probe)
-	if len(runes) <= 200 {
-		return probe
+	for line := range strings.SplitSeq(probe, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") || mdHRuleRE.MatchString(line) {
+			continue
+		}
+		// Strip blockquote markers
+		for strings.HasPrefix(line, ">") {
+			line = strings.TrimSpace(line[1:])
+		}
+		// Strip unordered list markers
+		if len(line) >= 2 && (line[0] == '-' || line[0] == '*' || line[0] == '+') && line[1] == ' ' {
+			line = strings.TrimSpace(line[2:])
+		}
+		// Strip ordered list markers
+		if m := mdOrderedListRE.FindStringIndex(line); m != nil {
+			line = line[m[1]:]
+		}
+		// Remove images, convert links to their text
+		line = mdImageRE.ReplaceAllString(line, "")
+		line = mdLinkRE.ReplaceAllString(line, "$1")
+		// Remove inline code backticks (keep content)
+		line = mdCodeRE.ReplaceAllString(line, "$1")
+		// Remove strikethrough
+		line = mdStrikeRE.ReplaceAllString(line, "$1")
+		// Remove bold/italic markers (order: *** → ** → *)
+		line = strings.ReplaceAll(line, "***", "")
+		line = strings.ReplaceAll(line, "**", "")
+		line = strings.ReplaceAll(line, "__", "")
+		line = strings.ReplaceAll(line, "*", "")
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		runes := []rune(line)
+		if len(runes) > 120 {
+			return string(runes[:120]) + "…"
+		}
+		return line
 	}
-	prefix := string(runes[:200])
-	if i := strings.LastIndexAny(prefix, " \t\n\r"); i > 0 {
-		prefix = prefix[:i]
-	}
-	return strings.TrimRight(prefix, " \t\n\r") + "…"
+	return ""
 }
 
 // sanitizeFTSQuery turns arbitrary user input into a safe FTS5 MATCH string by
