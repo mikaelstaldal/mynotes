@@ -24,6 +24,7 @@ type Note struct {
 type NoteSummary struct {
 	Slug      string
 	Title     string
+	CreatedAt time.Time
 	UpdatedAt time.Time
 	Excerpt   string
 }

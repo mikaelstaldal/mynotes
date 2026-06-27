@@ -40,6 +40,7 @@ func toAPISummary(n model.NoteSummary) api.NoteSummary {
 	return api.NoteSummary{
 		Slug:      n.Slug,
 		Title:     n.Title,
+		CreatedAt: n.CreatedAt,
 		UpdatedAt: n.UpdatedAt,
 		Excerpt:   n.Excerpt,
 	}

@@ -177,7 +177,7 @@ func (r *NoteRepository) browse(ctx context.Context, limit, offset int) ([]model
 	}
 
 	rows, err := r.db.QueryContext(ctx, `
-		SELECT slug, title, updated_at, substr(content, 1, 501)
+		SELECT slug, title, created_at, updated_at, substr(content, 1, 501)
 		FROM notes
 		ORDER BY updated_at DESC, id DESC
 		LIMIT ? OFFSET ?`, limit, offset)
@@ -189,13 +189,14 @@ func (r *NoteRepository) browse(ctx context.Context, limit, offset int) ([]model
 	notes := make([]model.NoteSummary, 0)
 	for rows.Next() {
 		var (
-			s         model.NoteSummary
-			updatedAt string
-			probe     string
+			s                    model.NoteSummary
+			createdAt, updatedAt string
+			probe                string
 		)
-		if err := rows.Scan(&s.Slug, &s.Title, &updatedAt, &probe); err != nil {
+		if err := rows.Scan(&s.Slug, &s.Title, &createdAt, &updatedAt, &probe); err != nil {
 			return nil, 0, err
 		}
+		s.CreatedAt, _ = time.Parse(rfc3339, createdAt)
 		s.UpdatedAt, _ = time.Parse(rfc3339, updatedAt)
 		s.Excerpt = plainExcerpt(probe)
 		notes = append(notes, s)
@@ -216,7 +217,7 @@ func (r *NoteRepository) search(ctx context.Context, q string, limit, offset int
 	// FTS5 auxiliary functions (snippet/rank) and the MATCH operator must
 	// reference the FTS table by its real name, not a join alias.
 	rows, err := r.db.QueryContext(ctx, `
-		SELECT n.slug, n.title, n.updated_at,
+		SELECT n.slug, n.title, n.created_at, n.updated_at,
 		       snippet(notes_fts, 1, char(2), char(3), '…', 30),
 		       substr(n.content, 1, 201)
 		FROM notes n
@@ -232,14 +233,15 @@ func (r *NoteRepository) search(ctx context.Context, q string, limit, offset int
 	notes := make([]model.NoteSummary, 0)
 	for rows.Next() {
 		var (
-			s         model.NoteSummary
-			updatedAt string
-			snip      string
-			probe     string
+			s                    model.NoteSummary
+			createdAt, updatedAt string
+			snip                 string
+			probe                string
 		)
-		if err := rows.Scan(&s.Slug, &s.Title, &updatedAt, &snip, &probe); err != nil {
+		if err := rows.Scan(&s.Slug, &s.Title, &createdAt, &updatedAt, &snip, &probe); err != nil {
 			return nil, 0, err
 		}
+		s.CreatedAt, _ = time.Parse(rfc3339, createdAt)
 		s.UpdatedAt, _ = time.Parse(rfc3339, updatedAt)
 		// A snippet only carries a U+0002 start sentinel when it actually
 		// matched in content. Otherwise (title-only match / empty content) fall

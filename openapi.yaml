@@ -271,7 +271,7 @@ components:
 
     NoteSummary:
       type: object
-      required: [slug, title, updated_at, excerpt]
+      required: [slug, title, created_at, updated_at, excerpt]
       properties:
         slug:
           type: string
@@ -281,6 +281,9 @@ components:
           type: string
           minLength: 1
           maxLength: 200
+        created_at:
+          type: string
+          format: date-time
         updated_at:
           type: string
           format: date-time
