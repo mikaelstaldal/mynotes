@@ -110,6 +110,8 @@ go test ./internal/handler/ -run TestCreateAndGetNote
     rejected, not silently rewritten. `internal/sanitize` is retained and reused
     as this embedded-HTML validator (not removed). DOMPurify is the
     authoritative render-time gate on the frontend.
+  - **Note `title`** - only validated for length and no control characters, 
+    no HTML sanitization since it is not used in contexts where that would be an issue
 - **Validate URL schemes** (allow only `http`, `https`, `mailto`) wherever URLs
   are stored or rendered.
 - **HTTP hardening:** keep the global `http.MaxBytesHandler` body limit, and both
