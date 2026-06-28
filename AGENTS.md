@@ -11,7 +11,7 @@ Keep spec/REQUIREMENTS.md updated when new features are added.
 ## Build & Run
 
 ```bash
-./build.sh                                   # generate code, compile TS, build binary, test, lint
+./build.sh                           # generate code, compile TS, build binary, test, lint
 ./mynotes                            # serves on 127.0.0.1:8080
 ./mynotes -port 3000 -data /tmp/app  # custom port and data directory
 ```
