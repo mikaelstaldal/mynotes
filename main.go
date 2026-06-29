@@ -132,7 +132,9 @@ func run(addr string, port int, dataDir, publicURL, basicAuthFile, basicAuthReal
 	// --- wiring: repository → service → handler ----------------------------
 	noteRepo := repository.NewNoteRepository(db)
 	noteSvc := service.NewNoteService(noteRepo)
-	h := handler.New(noteSvc)
+	artifactRepo := repository.NewArtifactRepository(db)
+	artifactSvc := service.NewArtifactService(artifactRepo)
+	h := handler.New(noteSvc, artifactSvc)
 
 	ogenServer, err := api.NewServer(h, api.WithPathPrefix("/api/v1"))
 	if err != nil {
@@ -155,6 +157,12 @@ func run(addr string, port int, dataDir, publicURL, basicAuthFile, basicAuthReal
 	}
 
 	mux := http.NewServeMux()
+	// Artifact GET is a raw handler so it can set a dynamic Content-Type header;
+	// the more-specific method+path pattern takes priority over the ogen prefix.
+	// Wrapped with the same middleware as the ogen server (panic recovery, gzip)
+	// so it gets consistent failure behaviour; ServeArtifact overrides the
+	// no-store Cache-Control set by WithMiddleware with its own immutable policy.
+	mux.Handle("GET /api/v1/artifacts/{sha256}", handler.WithMiddleware(http.HandlerFunc(h.ServeArtifact)))
 	mux.Handle("/api/v1/", handler.WithMiddleware(ogenServer))
 	mux.HandleFunc("/", staticHandler(indexHTML))
 

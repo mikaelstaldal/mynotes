@@ -10,6 +10,7 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/mikaelstaldal/mynotes/internal/api"
 	"github.com/mikaelstaldal/mynotes/internal/model"
@@ -17,11 +18,12 @@ import (
 )
 
 type Handler struct {
-	notes *service.NoteService
+	notes     *service.NoteService
+	artifacts *service.ArtifactService
 }
 
-func New(notes *service.NoteService) *Handler {
-	return &Handler{notes: notes}
+func New(notes *service.NoteService, artifacts *service.ArtifactService) *Handler {
+	return &Handler{notes: notes, artifacts: artifacts}
 }
 
 var _ api.Handler = (*Handler)(nil)
@@ -160,6 +162,86 @@ func (h *Handler) DownloadNoteHtml(ctx context.Context, params api.DownloadNoteH
 		ContentSecurityPolicy: "sandbox",
 		Response:              api.DownloadNoteHtmlOK{Data: strings.NewReader(htmlDoc)},
 	}, nil
+}
+
+func toAPIArtifact(a model.Artifact) api.Artifact {
+	return api.Artifact{
+		SHA256:      a.SHA256,
+		ContentType: a.ContentType,
+		CreatedAt:   a.CreatedAt,
+	}
+}
+
+func (h *Handler) CreateArtifact(ctx context.Context, req api.CreateArtifactReq) (*api.Artifact, error) {
+	var content []byte
+	var contentType string
+	var readErr error
+	switch r := req.(type) {
+	case *api.CreateArtifactReqImagePNG:
+		contentType = "image/png"
+		content, readErr = io.ReadAll(r.Data)
+	case *api.CreateArtifactReqImageJpeg:
+		contentType = "image/jpeg"
+		content, readErr = io.ReadAll(r.Data)
+	case *api.CreateArtifactReqImageGIF:
+		contentType = "image/gif"
+		content, readErr = io.ReadAll(r.Data)
+	case *api.CreateArtifactReqImageWEBP:
+		contentType = "image/webp"
+		content, readErr = io.ReadAll(r.Data)
+	case *api.CreateArtifactReqImageSvgXML:
+		contentType = "image/svg+xml"
+		content, readErr = io.ReadAll(r.Data)
+	case *api.CreateArtifactReqApplicationMathmlXML:
+		contentType = "application/mathml+xml"
+		content, readErr = io.ReadAll(r.Data)
+	}
+	if readErr != nil {
+		return nil, readErr
+	}
+	a, err := h.artifacts.Create(ctx, content, contentType)
+	if err != nil {
+		return nil, err
+	}
+	out := toAPIArtifact(a)
+	return &out, nil
+}
+
+func (h *Handler) DeleteArtifact(ctx context.Context, params api.DeleteArtifactParams) error {
+	return h.artifacts.Delete(ctx, params.SHA256)
+}
+
+// ServeArtifact is a raw http.HandlerFunc for GET /api/v1/artifacts/{sha256}.
+// It is registered directly on the mux (not through ogen) so it can set a
+// dynamic Content-Type response header matching the stored artifact MIME type.
+func (h *Handler) ServeArtifact(w http.ResponseWriter, r *http.Request) {
+	sha256hex := r.PathValue("sha256")
+	a, err := h.artifacts.Get(r.Context(), sha256hex)
+	if errors.Is(err, service.ErrNotFound) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(`{"error":"not found"}`))
+		return
+	}
+	if err != nil {
+		log.Printf("serve artifact: %v", err)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte(`{"error":"internal server error"}`))
+		return
+	}
+	w.Header().Set("Content-Type", a.ContentType)
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+	w.Header().Set("Last-Modified", a.CreatedAt.UTC().Format(time.RFC1123))
+	// SVG and MathML are active content: if navigated to directly on the app
+	// origin they could execute scripts. A sandboxed CSP prevents that without
+	// breaking <img src> rendering (response headers are not applied in image
+	// subresource contexts).
+	if a.ContentType == "image/svg+xml" || a.ContentType == "application/mathml+xml" {
+		w.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; sandbox")
+	}
+	_, _ = w.Write(a.Content)
 }
 
 // NewError maps any error returned by a handler method to an HTTP status code.

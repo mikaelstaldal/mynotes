@@ -8,6 +8,7 @@ import {
   type DecorationSet, type ViewUpdate,
 } from 'codemirror';
 import { api, NotFoundError, type CreateNoteRequest, type UpdateNoteRequest } from '../api/client.js';
+import { base } from '../basepath.js';
 import { navigate, setNavigationGuard } from '../router.js';
 import { showToast } from '../util/toast.js';
 import { renderNote, sanitizeSVGOrMathML } from '../util/markdown.js';
@@ -81,6 +82,7 @@ export function NoteEditor({ slug, onSave }: Props) {
   const [layout, setLayout] = useState<Layout>('split');
   const [previewHtml, setPreviewHtml] = useState('');
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [uploading, setUploading] = useState(false);
 
   const editorContainerRef = useRef<HTMLDivElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
@@ -311,20 +313,16 @@ export function NoteEditor({ slug, onSave }: Props) {
     view.focus();
   }
 
-  function handleFileEmbed(e: Event) {
+  async function handleFileEmbed(e: Event) {
     const input = e.target as HTMLInputElement;
     const file = input.files?.[0];
     if (!file) return;
-    if (file.size > 4 * 1024) {
-      showToast('File too large (max 4 KiB)');
-      input.value = '';
-      return;
-    }
+    input.value = '';
     const isSvg = file.type === 'image/svg+xml' || file.name.endsWith('.svg');
     const isMathML = file.type === 'application/mathml+xml'
       || file.name.endsWith('.mml') || file.name.endsWith('.mathml');
-    const reader = new FileReader();
     if (isSvg || isMathML) {
+      const reader = new FileReader();
       reader.onload = () => {
         const clean = sanitizeSVGOrMathML(reader.result as string);
         if (!clean) { showToast('File contains no allowed content'); return; }
@@ -339,22 +337,25 @@ export function NoteEditor({ slug, onSave }: Props) {
       };
       reader.readAsText(file);
     } else {
-      reader.onload = () => {
-        const dataUrl = reader.result as string;
+      setUploading(true);
+      try {
+        const artifact = await api.artifacts.create(file);
         const view = viewRef.current;
         if (!view) return;
         const { from } = view.state.selection.main;
         const altText = file.name.replace(/\.[^.]+$/, '').replace(/[[\]]/g, '');
-        const insert = `![${altText}](${dataUrl})`;
+        const insert = `![${altText}](${base}/api/v1/artifacts/${artifact.sha256})`;
         view.dispatch({
           changes: { from, insert },
           selection: EditorSelection.cursor(from + insert.length),
         });
         view.focus();
-      };
-      reader.readAsDataURL(file);
+      } catch (err) {
+        showToast(err instanceof Error ? err.message : 'Upload failed');
+      } finally {
+        setUploading(false);
+      }
     }
-    input.value = '';
   }
 
   function insertExternalLink() {
@@ -487,7 +488,7 @@ export function NoteEditor({ slug, onSave }: Props) {
           <button type="button" class="btn-icon" title="External link" aria-label="External link" onClick={insertExternalLink}>↗</button>
           <button type="button" class="btn-icon" title="Internal link" aria-label="Internal link" onClick={() => setPickerOpen(true)}>⛓</button>
           <span class="fmt-sep" role="separator" />
-          <button type="button" class="btn-icon" title="Embed image / SVG / MathML" aria-label="Embed image, SVG, or MathML" onClick={() => imageInputRef.current?.click()}>⬆</button>
+          <button type="button" class="btn-icon" title="Embed image / SVG / MathML" aria-label="Embed image, SVG, or MathML" disabled={uploading} onClick={() => imageInputRef.current?.click()}>{uploading ? '…' : '⬆'}</button>
           <input ref={imageInputRef} type="file" accept="image/gif,image/png,image/jpeg,image/webp,image/svg+xml,application/mathml+xml,.mml,.mathml" style={{ display: 'none' }} onChange={handleFileEmbed} />
         </div>
       )}

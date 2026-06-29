@@ -28,7 +28,10 @@ func newServer(t *testing.T) *httptest.Server {
 	db.SetMaxOpenConns(1)
 	require.NoError(t, repository.InitSchema(db))
 
-	h := handler.New(service.NewNoteService(repository.NewNoteRepository(db)))
+	h := handler.New(
+		service.NewNoteService(repository.NewNoteRepository(db)),
+		service.NewArtifactService(repository.NewArtifactRepository(db)),
+	)
 	ogenServer, err := api.NewServer(h, api.WithPathPrefix("/api/v1"))
 	require.NoError(t, err)
 

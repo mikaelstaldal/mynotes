@@ -28,3 +28,12 @@ type NoteSummary struct {
 	UpdatedAt time.Time
 	Excerpt   string
 }
+
+// Artifact is a binary blob stored content-addressed by SHA-256. SHA256 is the
+// hex-encoded digest (64 lowercase chars) and serves as the primary key.
+type Artifact struct {
+	SHA256      string
+	Content     []byte
+	ContentType string
+	CreatedAt   time.Time
+}

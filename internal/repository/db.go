@@ -12,6 +12,7 @@ import (
 // because deployed databases have already applied it.
 var migrations = [][]string{
 	schemaV1,
+	schemaV2,
 }
 
 // OpenDB opens (creating if absent) the SQLite database at path, applies the
@@ -31,6 +32,15 @@ func InitSchema(db *sql.DB) error {
 // CreateDataDir ensures the directory holding the database file exists.
 func CreateDataDir(dbPath string) error {
 	return sqlite.CreateDataDir(dbPath)
+}
+
+var schemaV2 = []string{
+	`CREATE TABLE IF NOT EXISTS artifacts (
+		sha256       TEXT PRIMARY KEY,
+		content      BLOB NOT NULL,
+		content_type TEXT NOT NULL,
+		created_at   TEXT NOT NULL
+	)`,
 }
 
 var schemaV1 = []string{

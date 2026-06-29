@@ -12,6 +12,7 @@ export type NoteSummary = components['schemas']['NoteSummary'];
 export type NoteList = components['schemas']['NoteList'];
 export type CreateNoteRequest = components['schemas']['CreateNoteRequest'];
 export type UpdateNoteRequest = components['schemas']['UpdateNoteRequest'];
+export type Artifact = components['schemas']['Artifact'];
 
 const BASE = base + '/api/v1';
 
@@ -50,6 +51,22 @@ async function requestRaw<T>(
   method: string,
   path: string,
   body: string,
+  contentType: string,
+): Promise<T> {
+  const init: RequestInit = { method, headers: { 'Content-Type': contentType }, body };
+  const res = await fetchWithRetry(BASE + path, init);
+  if (res.status === 401) { window.location.reload(); throw new Error('Unauthorized'); }
+  if (res.status === 404) throw new NotFoundError();
+  if (res.status === 204) return undefined as T;
+  const data = await res.json() as unknown;
+  if (!res.ok) throw new Error((data as { error?: string }).error ?? res.statusText);
+  return data as T;
+}
+
+async function requestBinary<T>(
+  method: string,
+  path: string,
+  body: Blob,
   contentType: string,
 ): Promise<T> {
   const init: RequestInit = { method, headers: { 'Content-Type': contentType }, body };
@@ -107,5 +124,10 @@ export const api = {
 
     importMarkdown: (markdown: string): Promise<Note> =>
       requestRaw<Note>('POST', '/import', markdown, 'text/markdown'),
+  },
+
+  artifacts: {
+    create: (file: File): Promise<Artifact> =>
+      requestBinary<Artifact>('POST', '/artifacts', file, file.type),
   },
 };

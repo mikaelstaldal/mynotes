@@ -22,9 +22,6 @@ built. Implementation choices live in `ARCHITECTURE.md`; the build plan lives in
 - Real-time collaboration / concurrent multi-user editing.
 - Version history / revisions.
 - Folders, tags, or hierarchical organization.
-- File/image attachments or uploads (referencing remote/inline images is allowed;
-  uploading a Markdown file to *create a note* is a client-side convenience, not an
-  attachment — the file's text becomes the note body and the file itself is not stored).
 - Any public publishing workflow beyond the stable URL existing.
 
 ## Domain — a Note
@@ -80,6 +77,24 @@ identity exists but is never exposed as the URL key.
 - Both the read view and the editor's live preview render the same way and must
   be safe against XSS (see Security).
 - Content is bounded at 1,000,000 characters; empty content is valid.
+
+## Artifacts
+
+Binary content (images and other files) may be stored as artifacts and referenced in notes. Artifacts are content-addressed: the SHA-256 of the content is used as the identifier and in the URL, so uploading the same bytes twice returns the existing record unchanged.
+
+### Artifact API
+
+- **Upload an artifact** — `POST /api/v1/artifacts` with a binary body and one of the accepted `Content-Type` values (`image/png`, `image/jpeg`, `image/gif`, `image/webp`, `image/svg+xml`, `application/mathml+xml`). Returns `{ sha256, content_type, created_at }`.
+- **Fetch an artifact** — `GET /api/v1/artifacts/{sha256}` returns the raw binary body with the original `Content-Type` header and `Cache-Control: immutable`.
+- **Delete an artifact** — `DELETE /api/v1/artifacts/{sha256}` removes the artifact (404 if absent).
+
+### Artifact storage
+
+Artifacts are stored as BLOBs in the same SQLite database as notes, in a separate `artifacts` table. There is no automatic garbage collection of artifacts no longer referenced by any note.
+
+### Image embedding in the editor
+
+The "embed image" toolbar button in the note editor uploads the selected file as an artifact and inserts a standard Markdown image reference `![alt](/api/v1/artifacts/{sha256})` at the cursor. SVG and MathML files continue to be embedded inline as before. There is no hard file-size limit on upload (the global 10 MiB request body cap applies).
 
 ## REST behavior (user-observable)
 

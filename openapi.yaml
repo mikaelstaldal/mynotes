@@ -150,6 +150,70 @@ paths:
         default:
           $ref: "#/components/responses/Error"
 
+  /artifacts:
+    post:
+      operationId: createArtifact
+      summary: Upload an artifact
+      description: >
+        Uploads binary content and stores it as a content-addressed artifact
+        keyed by the SHA-256 of the content. Uploading the same bytes twice
+        returns the existing record unchanged. Supported content types are the
+        common image formats. The SHA-256 hex digest is returned in the response
+        and used in the artifact URL.
+      requestBody:
+        required: true
+        content:
+          image/png:
+            schema:
+              type: string
+              format: binary
+          image/jpeg:
+            schema:
+              type: string
+              format: binary
+          image/gif:
+            schema:
+              type: string
+              format: binary
+          image/webp:
+            schema:
+              type: string
+              format: binary
+          image/svg+xml:
+            schema:
+              type: string
+              format: binary
+          application/mathml+xml:
+            schema:
+              type: string
+              format: binary
+      responses:
+        "201":
+          description: The created (or already existing) artifact.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Artifact"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /artifacts/{sha256}:
+    parameters:
+      - name: sha256
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: "^[0-9a-f]{64}$"
+    delete:
+      operationId: deleteArtifact
+      summary: Delete an artifact
+      responses:
+        "204":
+          description: Artifact deleted.
+        default:
+          $ref: "#/components/responses/Error"
+
   /notes/{slug}/download-markdown:
     parameters:
       - name: slug
@@ -334,6 +398,21 @@ components:
           type: string
           maxLength: 100
           pattern: "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+
+    Artifact:
+      type: object
+      required: [sha256, content_type, created_at]
+      properties:
+        sha256:
+          type: string
+          description: Hex-encoded SHA-256 of the artifact content (64 lowercase hex chars).
+          pattern: "^[0-9a-f]{64}$"
+        content_type:
+          type: string
+          description: MIME type of the artifact content.
+        created_at:
+          type: string
+          format: date-time
 
     Error:
       type: object
