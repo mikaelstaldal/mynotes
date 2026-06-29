@@ -45,6 +45,100 @@ DOMPurify.setConfig({
   // Load-bearing for in-app /notes/<slug> links.
   ALLOWED_URI_REGEXP: /^(?:(?:https?|mailto):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i,
   FORCE_BODY: true,
+  // ADD_TAGS and ADD_ATTR are additive to ALLOWED_TAGS/ALLOWED_ATTR above (unlike
+  // USE_PROFILES which would replace them). They mirror the DOMPurify svg$1 +
+  // svgFilters + mathMl$1 profile lists, minus <use>/<animate>/<set>/<style>/<metadata>
+  // and <foreignObject> which DOMPurify itself disallows or which require CSS sanitization.
+  ADD_TAGS: [
+    // SVG presentation elements
+    'svg', 'altglyph', 'altglyphdef', 'altglyphitem',
+    'animatecolor', 'animatemotion', 'animatetransform',
+    'circle', 'clippath', 'defs', 'desc', 'ellipse',
+    'filter', 'font', 'g', 'glyph', 'glyphref', 'hkern',
+    'image', 'line', 'lineargradient', 'marker', 'mask',
+    'mpath', 'path', 'pattern', 'polygon', 'polyline',
+    'radialgradient', 'rect', 'stop', 'switch', 'symbol',
+    'text', 'textpath', 'title', 'tref', 'tspan', 'view', 'vkern',
+    // SVG filter primitives
+    'feblend', 'fecolormatrix', 'fecomponenttransfer', 'fecomposite',
+    'feconvolvematrix', 'fediffuselighting', 'fedisplacementmap',
+    'fedistantlight', 'fedropshadow', 'feflood',
+    'fefunca', 'fefuncb', 'fefuncg', 'fefuncr',
+    'fegaussianblur', 'feimage', 'femerge', 'femergenode',
+    'femorphology', 'feoffset', 'fepointlight',
+    'fespecularlighting', 'fespotlight', 'fetile', 'feturbulence',
+    // MathML elements (DOMPurify mathMl$1 profile)
+    'math', 'menclose', 'merror', 'mfenced', 'mfrac', 'mglyph',
+    'mi', 'mlabeledtr', 'mmultiscripts', 'mn', 'mo', 'mover',
+    'mpadded', 'mphantom', 'mroot', 'mrow', 'ms', 'mspace',
+    'msqrt', 'mstyle', 'msub', 'msup', 'msubsup', 'mtable',
+    'mtd', 'mtext', 'mtr', 'munder', 'munderover', 'mprescripts',
+  ],
+  // SVG and MathML attributes (DOMPurify svg + mathMl profile attrs).
+  // "style" is intentionally excluded (requires CSS sanitization).
+  // Many attrs (href, height, width, type, dir, lang, id, title) are already
+  // in ALLOWED_ATTR above; listing them here is harmless (additive, no-op).
+  ADD_ATTR: [
+    // SVG geometry and presentation
+    'accent-height', 'accumulate', 'additive', 'alignment-baseline',
+    'amplitude', 'ascent', 'attributename', 'attributetype',
+    'azimuth', 'basefrequency', 'baseline-shift', 'begin', 'bias', 'by',
+    'class', 'clip', 'clippathunits', 'clip-path', 'clip-rule',
+    'color', 'color-interpolation', 'color-interpolation-filters',
+    'color-profile', 'color-rendering',
+    'cx', 'cy', 'd', 'dx', 'dy',
+    'diffuseconstant', 'direction', 'display', 'divisor', 'dur',
+    'edgemode', 'elevation', 'end', 'exponent',
+    'fill', 'fill-opacity', 'fill-rule', 'filter', 'filterunits',
+    'flood-color', 'flood-opacity',
+    'font-family', 'font-size', 'font-size-adjust', 'font-stretch',
+    'font-style', 'font-variant', 'font-weight',
+    'fx', 'fy', 'g1', 'g2', 'glyph-name', 'glyphref',
+    'gradientunits', 'gradienttransform',
+    'image-rendering', 'in', 'in2', 'intercept',
+    'k', 'k1', 'k2', 'k3', 'k4', 'kerning',
+    'keypoints', 'keysplines', 'keytimes',
+    'lengthadjust', 'letter-spacing',
+    'kernelmatrix', 'kernelunitlength', 'lighting-color', 'local',
+    'marker-end', 'marker-mid', 'marker-start',
+    'markerheight', 'markerunits', 'markerwidth',
+    'maskcontentunits', 'maskunits', 'mask', 'mask-type',
+    'media', 'method', 'mode', 'numoctaves',
+    'offset', 'operator', 'opacity', 'order',
+    'orient', 'orientation', 'origin', 'overflow',
+    'paint-order', 'path', 'pathlength',
+    'patterncontentunits', 'patterntransform', 'patternunits',
+    'points', 'preservealpha', 'preserveaspectratio', 'primitiveunits',
+    'r', 'rx', 'ry', 'radius', 'refx', 'refy',
+    'repeatcount', 'repeatdur', 'restart', 'result', 'rotate',
+    'scale', 'seed', 'shape-rendering', 'slope',
+    'specularconstant', 'specularexponent', 'spreadmethod',
+    'startoffset', 'stddeviation', 'stitchtiles',
+    'stop-color', 'stop-opacity',
+    'stroke-dasharray', 'stroke-dashoffset', 'stroke-linecap',
+    'stroke-linejoin', 'stroke-miterlimit', 'stroke-opacity',
+    'stroke', 'stroke-width',
+    'surfacescale', 'systemlanguage', 'tablevalues', 'targetx', 'targety',
+    'transform', 'transform-origin',
+    'text-anchor', 'text-decoration', 'text-rendering', 'textlength',
+    'u1', 'u2', 'unicode', 'values',
+    'viewbox', 'visibility', 'version',
+    'vert-adv-y', 'vert-origin-x', 'vert-origin-y',
+    'word-spacing', 'wrap', 'writing-mode',
+    'xchannelselector', 'ychannelselector',
+    'x', 'x1', 'x2', 'xmlns', 'y', 'y1', 'y2', 'z', 'zoomandpan',
+    // MathML-specific attributes (DOMPurify mathMl profile)
+    'accent', 'accentunder', 'bevelled', 'close',
+    'columnalign', 'columnlines', 'columnspacing', 'columnspan',
+    'denomalign', 'displaystyle', 'encoding',
+    'fence', 'frame', 'largeop', 'length', 'linethickness',
+    'lquote', 'lspace', 'mathbackground', 'mathcolor',
+    'mathsize', 'mathvariant', 'maxsize', 'minsize', 'movablelimits',
+    'notation', 'numalign', 'rowalign', 'rowlines', 'rowspacing',
+    'rspace', 'rquote', 'scriptlevel', 'scriptminsize',
+    'scriptsizemultiplier', 'selection', 'separator', 'separators',
+    'stretchy', 'subscriptshift', 'supscriptshift', 'symmetric', 'voffset',
+  ],
 });
 
 // Open external links in a new tab; keep internal links in the same tab.
@@ -71,4 +165,29 @@ DOMPurify.addHook('uponSanitizeAttribute', (node, data) => {
 
 export function renderNote(markdown: string): string {
   return DOMPurify.sanitize(md.render(markdown));
+}
+
+// Sanitize an SVG or MathML string for direct embedding in markdown.
+// DOMPurify.sanitize() (string return) is used because setConfig() above sets
+// the SET_CONFIG flag, causing DOMPurify to ignore per-call RETURN_DOM_FRAGMENT.
+// The sanitized string is then re-parsed via a <template> element so the browser
+// normalizes multi-line opening tags onto one line (required for markdown-it to
+// recognise the HTML block) and we can extract just the root element.
+// Blank lines inside the element are collapsed so markdown-it doesn't break the
+// HTML block at a blank line mid-element.
+export function sanitizeSVGOrMathML(html: string): string {
+  const clean = DOMPurify.sanitize(html); // already sanitized — safe to parse below
+  const tpl = document.createElement('template');
+  tpl.innerHTML = clean; // safe: content is DOMPurify-sanitized; <template> is inert (no script execution, no resource loads)
+  for (const node of Array.from(tpl.content.children)) {
+    const tag = node.tagName.toLowerCase();
+    if (tag === 'svg' || tag === 'math') {
+      return node.outerHTML
+        .replace(/ xmlns(?::\w+)?="[^"]*"/g, '') // strip namespace declarations (redundant in HTML5)
+        .replace(/^[ \t]+$/gm, '') // blank out whitespace-only lines left by stripped comments
+        .replace(/\n{2,}/g, '\n')  // collapse consecutive empty lines
+        .trim();
+    }
+  }
+  return '';
 }

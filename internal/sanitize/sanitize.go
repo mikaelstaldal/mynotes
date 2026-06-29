@@ -43,6 +43,11 @@ var DataImageRaster = regexp.MustCompile(`(?i)^data:image/(gif|png|jpeg|webp);`)
 // custom policy below remain as the policy-level expression of the same rules.
 var imgSrcPattern = regexp.MustCompile(`(?i)^(https:|data:image/(gif|png|jpeg|webp);|[^:/?#]*(?:[/?#]|$))`)
 
+// svgFragmentHref restricts SVG href to same-document fragment references (e.g.
+// "#pathId"). Used for <mpath> and <textpath> which must reference elements in
+// the same SVG tree and never external resources.
+var svgFragmentHref = regexp.MustCompile(`^#[\w:.\-]+$`)
+
 var policy = newPolicy()
 
 // newPolicy builds the removal-only validation policy: bluemonday's broad
@@ -80,7 +85,160 @@ func newPolicy() *bluemonday.Policy {
 	// (ANDed with the global scheme policy above).
 	p.AllowAttrs("src").Matching(imgSrcPattern).OnElements("img")
 
+	// SVG: presentation and filter elements, matching DOMPurify's svg+svgFilters
+	// profiles (sans <style>, <metadata>, <use>, <animate>, <set>,
+	// <foreignObject>, <script> which DOMPurify also disallows or which require
+	// CSS sanitization or pose external-load / script-injection risk).
+	// Element names are lowercase because golang.org/x/net/html lowercases all
+	// tag names during tokenisation, so bluemonday sees them lowercased.
+	//
+	// AllowNoAttrs().OnElements() is used instead of AllowElements() because
+	// bluemonday only emits an allowed element when either (a) it has permitted
+	// attributes or (b) it is in setOfElementsAllowedWithoutAttrs. AllowElements
+	// alone only does (a); AllowNoAttrs().OnElements() does both, so bare
+	// elements like <defs>, <g>, <text> survive the comparison.
+	p.AllowNoAttrs().OnElements(svgElements...)
+	p.AllowAttrs(svgAttrs...).OnElements(svgElements...)
+	// <image href>: same scheme rules as HTML <img src> (https, relative, raster data:).
+	// Explicit Matching is required because bluemonday's linkable() URL validation
+	// only covers a fixed set of HTML elements and does not extend to SVG elements.
+	p.AllowAttrs("href").Matching(imgSrcPattern).OnElements("image")
+	// <textpath href> and <mpath href> must only reference same-document elements.
+	p.AllowAttrs("href").Matching(svgFragmentHref).OnElements("textpath", "mpath")
+
+	// MathML: matching DOMPurify's mathMl profile for frontend parity. Excluded:
+	// <maction> (interactive), <semantics>/<annotation>/<annotation-xml>
+	// (arbitrary XML), <none> (not in DOMPurify's mathMl allow-list).
+	// href is excluded (not needed for display; would require per-element URL
+	// validation since bluemonday's linkable() does not cover MathML elements).
+	// See the SVG comment above for why AllowNoAttrs().OnElements() is used.
+	p.AllowNoAttrs().OnElements(mathMLElements...)
+	p.AllowAttrs(mathMLAttrs...).OnElements(mathMLElements...)
+
 	return p
+}
+
+// svgElements is the set of SVG presentation and filter elements accepted by the
+// policy, mirroring DOMPurify's svg$1 + svgFilters profiles minus disallowed
+// elements. All names are lowercase (golang.org/x/net/html lowercases tag names).
+var svgElements = []string{
+	// Core structure
+	"svg", "g", "defs", "desc", "title", "symbol", "switch",
+	// Shapes
+	"circle", "ellipse", "line", "path", "polygon", "polyline", "rect",
+	// Text
+	"text", "tspan", "textpath", "tref",
+	// Images (href handled separately below)
+	"image",
+	// Gradients and patterns
+	"lineargradient", "radialgradient", "pattern", "stop",
+	// Clipping, masking, markers
+	"clippath", "mask", "marker",
+	// Views
+	"view",
+	// Font elements (legacy SVG 1.x, harmless)
+	"font", "glyph", "glyphref", "hkern", "vkern",
+	"altglyph", "altglyphdef", "altglyphitem",
+	// Animation (subset; <animate> and <set> are excluded per DOMPurify)
+	"animatecolor", "animatemotion", "animatetransform",
+	// <mpath> href handled separately below
+	"mpath",
+	// Filter primitives
+	"filter",
+	"feblend", "fecolormatrix", "fecomponenttransfer", "fecomposite",
+	"feconvolvematrix", "fediffuselighting", "fedisplacementmap",
+	"fedistantlight", "fedropshadow", "feflood",
+	"fefunca", "fefuncb", "fefuncg", "fefuncr",
+	"fegaussianblur", "feimage", "femerge", "femergenode",
+	"femorphology", "feoffset", "fepointlight",
+	"fespecularlighting", "fespotlight", "fetile", "feturbulence",
+}
+
+// svgAttrs is the set of SVG attributes accepted on svgElements, mirroring
+// DOMPurify's svg attrs profile. Excluded: "style" (requires CSS sanitization),
+// "href" (handled per-element below with scheme restriction).
+// All names are lowercase (golang.org/x/net/html lowercases attribute names).
+var svgAttrs = []string{
+	"accent-height", "accumulate", "additive", "alignment-baseline",
+	"amplitude", "ascent", "attributename", "attributetype",
+	"azimuth", "basefrequency", "baseline-shift", "begin", "bias", "by",
+	"class", "clip", "clippathunits", "clip-path", "clip-rule",
+	"color", "color-interpolation", "color-interpolation-filters",
+	"color-profile", "color-rendering",
+	"cx", "cy", "d", "dx", "dy",
+	"diffuseconstant", "direction", "display", "divisor", "dur",
+	"edgemode", "elevation", "end", "exponent",
+	"fill", "fill-opacity", "fill-rule", "filter", "filterunits",
+	"flood-color", "flood-opacity",
+	"font-family", "font-size", "font-size-adjust", "font-stretch",
+	"font-style", "font-variant", "font-weight",
+	"fx", "fy",
+	"g1", "g2", "glyph-name", "glyphref",
+	"gradientunits", "gradienttransform",
+	"height", "id", "image-rendering",
+	"in", "in2", "intercept",
+	"k", "k1", "k2", "k3", "k4", "kerning",
+	"keypoints", "keysplines", "keytimes",
+	"lang", "lengthadjust", "letter-spacing",
+	"kernelmatrix", "kernelunitlength", "lighting-color", "local",
+	"marker-end", "marker-mid", "marker-start",
+	"markerheight", "markerunits", "markerwidth",
+	"maskcontentunits", "maskunits", "max", "mask", "mask-type",
+	"media", "method", "mode", "min", "name",
+	"numoctaves", "offset", "operator", "opacity", "order",
+	"orient", "orientation", "origin", "overflow",
+	"paint-order", "path", "pathlength",
+	"patterncontentunits", "patterntransform", "patternunits",
+	"points", "preservealpha", "preserveaspectratio", "primitiveunits",
+	"r", "rx", "ry", "radius", "refx", "refy",
+	"repeatcount", "repeatdur", "restart", "result", "rotate",
+	"scale", "seed", "shape-rendering", "slope",
+	"specularconstant", "specularexponent", "spreadmethod",
+	"startoffset", "stddeviation", "stitchtiles",
+	"stop-color", "stop-opacity",
+	"stroke-dasharray", "stroke-dashoffset", "stroke-linecap",
+	"stroke-linejoin", "stroke-miterlimit", "stroke-opacity",
+	"stroke", "stroke-width",
+	"surfacescale", "systemlanguage", "tabindex", "tablevalues",
+	"targetx", "targety",
+	"transform", "transform-origin",
+	"text-anchor", "text-decoration", "text-rendering", "textlength",
+	"type", "u1", "u2", "unicode", "values",
+	"viewbox", "visibility", "version",
+	"vert-adv-y", "vert-origin-x", "vert-origin-y",
+	"width", "word-spacing", "wrap", "writing-mode",
+	"xchannelselector", "ychannelselector",
+	"x", "x1", "x2", "xmlns", "y", "y1", "y2", "z", "zoomandpan",
+}
+
+// mathMLElements mirrors DOMPurify's mathMl profile (mathMl$1 allow-list).
+// Excluded: <maction> (interactive), <semantics>/<annotation>/<annotation-xml>
+// (arbitrary XML per DOMPurify mathMlDisallowed), <none> (not in allow-list).
+var mathMLElements = []string{
+	"math", "menclose", "merror", "mfenced", "mfrac", "mglyph",
+	"mi", "mlabeledtr", "mmultiscripts", "mn", "mo", "mover",
+	"mpadded", "mphantom", "mroot", "mrow", "ms", "mspace",
+	"msqrt", "mstyle", "msub", "msup", "msubsup", "mtable",
+	"mtd", "mtext", "mtr", "munder", "munderover", "mprescripts",
+}
+
+// mathMLAttrs mirrors DOMPurify's mathMl attribute profile.
+// Excluded: "href" (not needed for display; would require per-element URL
+// validation since bluemonday's linkable() does not cover MathML elements).
+// "id", "dir", "lang" are already globally allowed by UGCPolicy's
+// AllowStandardAttributes but listing them here is harmless.
+var mathMLAttrs = []string{
+	"accent", "accentunder", "align", "bevelled", "close",
+	"columnalign", "columnlines", "columnspacing", "columnspan",
+	"denomalign", "depth", "dir", "display", "displaystyle", "encoding",
+	"fence", "frame", "height", "id", "largeop", "length",
+	"linethickness", "lquote", "lspace", "mathbackground", "mathcolor",
+	"mathsize", "mathvariant", "maxsize", "minsize", "movablelimits",
+	"notation", "numalign", "open", "rowalign", "rowlines", "rowspacing",
+	"rowspan", "rspace", "rquote", "scriptlevel", "scriptminsize",
+	"scriptsizemultiplier", "selection", "separator", "separators",
+	"stretchy", "subscriptshift", "supscriptshift", "symmetric",
+	"voffset", "width", "xmlns",
 }
 
 // HTML returns the policy-cleaned form of an HTML fragment. It is used only to

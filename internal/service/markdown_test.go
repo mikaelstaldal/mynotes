@@ -41,6 +41,19 @@ func TestValidateMarkdownStructure_Accepts(t *testing.T) {
 		"embedded data img":     "<img src=\"data:image/gif;base64,R0lGOD==\">",
 		"angle in text":         "5 < 6 and 7 > 2",
 		"deep but ok nesting":   strings.Repeat("> ", 50) + "deep",
+		// SVG
+		"svg basic shapes": "<svg width=\"100\" height=\"100\"><circle cx=\"50\" cy=\"50\" r=\"40\" fill=\"blue\"/></svg>",
+		"svg path rect":    "<svg><rect width=\"50\" height=\"50\"/><path d=\"M0 0 L10 10\"/></svg>",
+		"svg text":         "<svg><text x=\"10\" y=\"20\">label</text></svg>",
+		"svg gradient":     "<svg><defs><linearGradient id=\"g\"><stop offset=\"0%\" stop-color=\"red\"/></linearGradient></defs><rect fill=\"url(#g)\" width=\"50\" height=\"50\"/></svg>",
+		"svg filter":       "<svg><defs><filter id=\"f\"><feGaussianBlur stdDeviation=\"3\"/></filter></defs><rect filter=\"url(#f)\" width=\"50\" height=\"50\"/></svg>",
+		"svg image https":  "<svg><image href=\"https://example.com/logo.png\" width=\"50\" height=\"50\"/></svg>",
+		"svg textpath":     "<svg><defs><path id=\"p\" d=\"M0 0 L100 0\"/></defs><text><textPath href=\"#p\">text</textPath></text></svg>",
+		// MathML
+		"mathml fraction":    "<math><mfrac><mn>1</mn><mn>2</mn></mfrac></math>",
+		"mathml sqrt":        "<math display=\"block\"><msqrt><mn>2</mn></msqrt></math>",
+		"mathml superscript": "<math><msup><mi>x</mi><mn>2</mn></msup></math>",
+		"mathml table":       "<math><mtable><mtr><mtd><mn>1</mn></mtd></mtr></mtable></math>",
 	}
 	for name, content := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -78,6 +91,17 @@ func TestValidateMarkdownStructure_Rejects(t *testing.T) {
 		"http image":              "![x](http://example.com/a.png)",
 		"data svg image":          "![x](data:image/svg+xml;base64,PHN2Zz4=)",
 		"data no-semicolon image": "![x](data:image/png,foo)",
+
+		// SVG unsafe
+		"svg with script":      "<svg><script>alert(1)</script></svg>",
+		"svg onerror handler":  "<svg><circle onmouseover=\"alert(1)\" cx=\"10\" cy=\"10\" r=\"5\"/></svg>",
+		"svg foreignobject":    "<svg><foreignObject><div>html</div></foreignObject></svg>",
+		"svg use external":     "<svg><use href=\"https://evil.com/file.svg#icon\"/></svg>",
+		"svg style block":      "<svg><style>circle{fill:red}</style><circle r=\"5\"/></svg>",
+		"svg image javascript": "<svg><image href=\"javascript:alert(1)\" width=\"50\" height=\"50\"/></svg>",
+		// MathML unsafe
+		"mathml with script": "<math><mi><script>alert(1)</script></mi></math>",
+		"mathml annotation":  "<math><semantics><mn>1</mn><annotation encoding=\"application/x-tex\">1</annotation></semantics></math>",
 
 		"nul byte":   "before\x00after",
 		"sentinel 2": "a\x02b",

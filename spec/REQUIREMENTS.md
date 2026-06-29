@@ -74,6 +74,9 @@ identity exists but is never exposed as the URL key.
   download-html endpoint.
 - Supported syntax: CommonMark plus GFM tables, strikethrough, and autolinks;
   bare URLs/emails auto-link; images render. Task lists are not supported in v1.
+- Inline SVG and MathML embedded directly in Markdown HTML blocks are allowed;
+  scripts, event handlers, `<foreignObject>`, `<use>`, `<style>`, and other
+  unsafe constructs are rejected at write time.
 - Both the read view and the editor's live preview render the same way and must
   be safe against XSS (see Security).
 - Content is bounded at 1,000,000 characters; empty content is valid.

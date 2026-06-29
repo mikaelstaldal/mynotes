@@ -8,7 +8,7 @@ import {
 import { api, NotFoundError, type CreateNoteRequest, type UpdateNoteRequest } from '../api/client.js';
 import { navigate, setNavigationGuard } from '../router.js';
 import { showToast } from '../util/toast.js';
-import { renderNote } from '../util/markdown.js';
+import { renderNote, sanitizeSVGOrMathML } from '../util/markdown.js';
 import { titleFromContent } from '../util/title.js';
 import { slugFromTitle } from '../util/slug.js';
 import { LinkPicker } from '../components/LinkPicker.js';
@@ -39,6 +39,7 @@ export function NoteEditor({ slug, onSave }: Props) {
   const [pickerOpen, setPickerOpen] = useState(false);
 
   const editorContainerRef = useRef<HTMLDivElement>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   const titleTouchedRef = useRef(false);    // true once user manually edits title
   // Snapshot of (title, content, slug) at last successful save or load — dirty baseline.
@@ -265,6 +266,52 @@ export function NoteEditor({ slug, onSave }: Props) {
     view.focus();
   }
 
+  function handleFileEmbed(e: Event) {
+    const input = e.target as HTMLInputElement;
+    const file = input.files?.[0];
+    if (!file) return;
+    if (file.size > 4 * 1024) {
+      showToast('File too large (max 4 KiB)');
+      input.value = '';
+      return;
+    }
+    const isSvg = file.type === 'image/svg+xml' || file.name.endsWith('.svg');
+    const isMathML = file.type === 'application/mathml+xml'
+      || file.name.endsWith('.mml') || file.name.endsWith('.mathml');
+    const reader = new FileReader();
+    if (isSvg || isMathML) {
+      reader.onload = () => {
+        const clean = sanitizeSVGOrMathML(reader.result as string);
+        if (!clean) { showToast('File contains no allowed content'); return; }
+        const view = viewRef.current;
+        if (!view) return;
+        const { from } = view.state.selection.main;
+        view.dispatch({
+          changes: { from, insert: clean },
+          selection: EditorSelection.cursor(from + clean.length),
+        });
+        view.focus();
+      };
+      reader.readAsText(file);
+    } else {
+      reader.onload = () => {
+        const dataUrl = reader.result as string;
+        const view = viewRef.current;
+        if (!view) return;
+        const { from } = view.state.selection.main;
+        const altText = file.name.replace(/\.[^.]+$/, '').replace(/[[\]]/g, '');
+        const insert = `![${altText}](${dataUrl})`;
+        view.dispatch({
+          changes: { from, insert },
+          selection: EditorSelection.cursor(from + insert.length),
+        });
+        view.focus();
+      };
+      reader.readAsDataURL(file);
+    }
+    input.value = '';
+  }
+
   function insertExternalLink() {
     const view = viewRef.current;
     if (!view) return;
@@ -394,6 +441,9 @@ export function NoteEditor({ slug, onSave }: Props) {
           <span class="fmt-sep" role="separator" />
           <button type="button" class="btn-icon" title="External link" aria-label="External link" onClick={insertExternalLink}>↗</button>
           <button type="button" class="btn-icon" title="Internal link" aria-label="Internal link" onClick={() => setPickerOpen(true)}>⛓</button>
+          <span class="fmt-sep" role="separator" />
+          <button type="button" class="btn-icon" title="Embed image / SVG / MathML" aria-label="Embed image, SVG, or MathML" onClick={() => imageInputRef.current?.click()}>⬆</button>
+          <input ref={imageInputRef} type="file" accept="image/gif,image/png,image/jpeg,image/webp,image/svg+xml,application/mathml+xml,.mml,.mathml" style={{ display: 'none' }} onChange={handleFileEmbed} />
         </div>
       )}
 
