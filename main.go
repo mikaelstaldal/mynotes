@@ -14,6 +14,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime"
+	"runtime/debug"
 	"strings"
 	"syscall"
 	"time"
@@ -37,6 +38,7 @@ const databaseName = "mynotes.sqlite"
 const maxRequestBody = 10 << 20 // 10 MiB
 
 func main() {
+	version := flag.Bool("version", false, "print version information and exit")
 	port := flag.Int("port", 8080, "HTTP listen port")
 	addr := flag.String("addr", "127.0.0.1", "bind address")
 	dataDir := flag.String("data", "data", "data directory")
@@ -46,6 +48,11 @@ func main() {
 	gdocsClientID := flag.String("gdocs-client-id", "", "Google OAuth 2.0 Client ID; when set (with -gdocs-client-secret) runs a bulk Google Docs import instead of the server")
 	gdocsClientSecret := flag.String("gdocs-client-secret", "", "Google OAuth 2.0 Client Secret")
 	flag.Parse()
+
+	if *version {
+		printVersion()
+		return
+	}
 
 	if *gdocsClientID != "" && *gdocsClientSecret != "" {
 		// Use -port as the OAuth callback port only when explicitly set;
@@ -227,6 +234,36 @@ func basePathFromPublicURL(publicURL string) string {
 		p += "/"
 	}
 	return p
+}
+
+func printVersion() {
+	fmt.Println("MyNotes")
+	info, ok := debug.ReadBuildInfo()
+	if !ok {
+		return
+	}
+	settings := make(map[string]string, len(info.Settings))
+	for _, s := range info.Settings {
+		settings[s.Key] = s.Value
+	}
+	if vcs, ok := settings["vcs"]; ok {
+		fmt.Printf("%s ", vcs)
+	}
+	modified := settings["vcs.modified"] == "true"
+	if rev, ok := settings["vcs.revision"]; ok {
+		if modified {
+			fmt.Printf("revision: %s (dirty)\n", rev)
+		} else {
+			fmt.Printf("revision: %s\n", rev)
+		}
+	}
+	if t, ok := settings["vcs.time"]; ok {
+		if parsedTime, err := time.Parse(time.RFC3339, t); err == nil {
+			fmt.Printf("updated at: %s\n", parsedTime.Local().Format("2006-01-02 15:04:05"))
+		} else {
+			fmt.Printf("updated at: %s\n", t)
+		}
+	}
 }
 
 // staticHandler serves embedded static files, falling back to index.html for
