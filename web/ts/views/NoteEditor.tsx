@@ -4,6 +4,8 @@ import {
   defaultKeymap, history, historyKeymap,
   syntaxHighlighting, defaultHighlightStyle,
   markdown, EditorSelection,
+  ViewPlugin, Decoration, WidgetType,
+  type DecorationSet, type ViewUpdate,
 } from 'codemirror';
 import { api, NotFoundError, type CreateNoteRequest, type UpdateNoteRequest } from '../api/client.js';
 import { navigate, setNavigationGuard } from '../router.js';
@@ -12,6 +14,48 @@ import { renderNote, sanitizeSVGOrMathML } from '../util/markdown.js';
 import { titleFromContent } from '../util/title.js';
 import { slugFromTitle } from '../util/slug.js';
 import { LinkPicker } from '../components/LinkPicker.js';
+
+const DATA_URL_RE = /data:([^;,\s]+);base64,[A-Za-z0-9+/]+=*/g;
+
+class DataUrlWidget extends WidgetType {
+  constructor(readonly mimeType: string) { super(); }
+  toDOM(): HTMLElement {
+    const s = document.createElement('span');
+    s.className = 'cm-data-url-collapsed';
+    s.textContent = '…';
+    s.title = this.mimeType;
+    return s;
+  }
+  eq(other: DataUrlWidget) { return other.mimeType === this.mimeType; }
+}
+
+function buildDataUrlDecos(view: EditorView): DecorationSet {
+  const sel = view.state.selection;
+  const text = view.state.doc.toString();
+  const deco: ReturnType<ReturnType<typeof Decoration.replace>['range']>[] = [];
+  DATA_URL_RE.lastIndex = 0;
+  let m: RegExpExecArray | null;
+  while ((m = DATA_URL_RE.exec(text)) !== null) {
+    const dataStart = m.index + m[0].indexOf(';base64,') + 8;
+    const dataEnd = m.index + m[0].length;
+    const overlaps = sel.ranges.some(r => r.from <= dataEnd && r.to >= dataStart);
+    if (!overlaps) {
+      deco.push(Decoration.replace({ widget: new DataUrlWidget(m[1]) }).range(dataStart, dataEnd));
+    }
+  }
+  return Decoration.set(deco);
+}
+
+const dataUrlCollapse = ViewPlugin.fromClass(
+  class {
+    decorations: DecorationSet;
+    constructor(view: EditorView) { this.decorations = buildDataUrlDecos(view); }
+    update(u: ViewUpdate) {
+      if (u.docChanged || u.selectionSet) this.decorations = buildDataUrlDecos(u.view);
+    }
+  },
+  { decorations: v => v.decorations },
+);
 
 function escapeLinkText(s: string): string {
   return s.replace(/[\\[\]]/g, '\\$&');
@@ -133,6 +177,7 @@ export function NoteEditor({ slug, onSave }: Props) {
         EditorView.lineWrapping,
         syntaxHighlighting(defaultHighlightStyle),
         markdown(),
+        dataUrlCollapse,
         EditorView.updateListener.of((update) => {
           if (update.docChanged) handleDocChangeRef.current(update.state.doc.toString());
         }),

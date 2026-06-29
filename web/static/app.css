@@ -489,6 +489,16 @@ mark { background: #fef08a; color: var(--fg); border-radius: 2px; padding: 0 1px
   color: var(--muted);
 }
 
+/* Collapsed data: URL placeholder */
+.cm-data-url-collapsed {
+  background: var(--border);
+  border-radius: 3px;
+  padding: 0 3px;
+  font-size: 0.85em;
+  color: var(--muted);
+  cursor: default;
+}
+
 /* ── Link picker modal ─────────────────────────────────────────── */
 
 .link-picker-overlay {

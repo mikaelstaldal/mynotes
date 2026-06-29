@@ -36,7 +36,7 @@ trap 'rm -rf "$WORK_DIR"' EXIT
 # excludes @codemirror/search, line numbers/gutters, placeholder, bracket
 # matching, and EditorView.theme (styling lives in app.css, not JS themes).
 cat > "$WORK_DIR/codemirror-entry.mjs" <<'EOF'
-export { EditorView, keymap } from "@codemirror/view";
+export { EditorView, keymap, ViewPlugin, Decoration, WidgetType } from "@codemirror/view";
 export { EditorState, EditorSelection } from "@codemirror/state";
 export { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 export { syntaxHighlighting, defaultHighlightStyle } from "@codemirror/language";
