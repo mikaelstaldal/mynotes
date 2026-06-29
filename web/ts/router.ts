@@ -66,7 +66,10 @@ export function onRouteChange(cb: (route: Route) => void): () => void {
     const href = a.getAttribute('href');
     if (!href || !isInAppPath(href)) return;
     e.preventDefault();
-    navigate(href);
+    // href may already carry the base prefix (e.g. from ${base}/notes/slug in
+    // templates); strip it before calling navigate, which re-adds it.
+    const localPath = base && href.startsWith(base) ? href.slice(base.length) : href;
+    navigate(localPath);
   };
   document.addEventListener('click', onClick);
 
