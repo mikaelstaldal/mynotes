@@ -478,17 +478,73 @@ export function NoteEditor({ slug, onSave }: Props) {
 
       {layout !== 'preview' && (
         <div class="format-toolbar">
-          <button type="button" class="btn-icon fmt-bold" title="Bold" aria-label="Bold" onClick={() => insertWrap('**')}>B</button>
-          <button type="button" class="btn-icon fmt-italic" title="Italic" aria-label="Italic" onClick={() => insertWrap('*')}>I</button>
-          <button type="button" class="btn-icon fmt-code" title="Code" aria-label="Code" onClick={() => insertWrap('`')}>`</button>
+          <button type="button" class="btn-icon" title="Bold" aria-label="Bold" onClick={() => insertWrap('**')}>
+            <svg viewBox="0 0 18 18">
+              <path class="fmt-stroke" d="M5,4H9.5A2.5,2.5,0,0,1,12,6.5v0A2.5,2.5,0,0,1,9.5,9H5A0,0,0,0,1,5,9V4A0,0,0,0,1,5,4Z"></path>
+              <path class="fmt-stroke" d="M5,9h5.5A2.5,2.5,0,0,1,13,11.5v0A2.5,2.5,0,0,1,10.5,14H5a0,0,0,0,1,0,0V9A0,0,0,0,1,5,9Z"></path>
+            </svg>
+          </button>
+          <button type="button" class="btn-icon" title="Italic" aria-label="Italic" onClick={() => insertWrap('*')}>
+            <svg viewBox="0 0 18 18">
+              <line class="fmt-stroke" x1="7" x2="13" y1="4" y2="4"></line>
+              <line class="fmt-stroke" x1="5" x2="11" y1="14" y2="14"></line>
+              <line class="fmt-stroke" x1="8" x2="10" y1="14" y2="4"></line>
+            </svg>
+          </button>
+          <button type="button" class="btn-icon" title="Code" aria-label="Code" onClick={() => insertWrap('`')}>
+            <svg viewBox="0 0 18 18">
+              <polyline class="fmt-even fmt-stroke" points="5 7 3 9 5 11"></polyline>
+              <polyline class="fmt-even fmt-stroke" points="13 7 15 9 13 11"></polyline>
+              <line class="fmt-stroke" x1="10" x2="8" y1="5" y2="13"></line>
+            </svg>
+          </button>
           <span class="fmt-sep" role="separator" />
-          <button type="button" class="btn-icon" title="Numbered list" aria-label="Numbered list" onClick={insertNumberedList}>1.</button>
-          <button type="button" class="btn-icon" title="Bullet list" aria-label="Bullet list" onClick={() => insertLinePrefix('- ')}>•</button>
+          <button type="button" class="btn-icon" title="Numbered list" aria-label="Numbered list" onClick={insertNumberedList}>
+            <svg viewBox="0 0 18 18">
+              <line class="fmt-stroke" x1="7" x2="15" y1="4" y2="4"/>
+              <line class="fmt-stroke" x1="7" x2="15" y1="9" y2="9"/>
+              <line class="fmt-stroke" x1="7" x2="15" y1="14" y2="14"/>
+              <line class="fmt-stroke fmt-thin" x1="2.5" x2="4.5" y1="5.5" y2="5.5"/>
+              <path class="fmt-fill" d="M3.5,6A0.5,0.5,0,0,1,3,5.5V3.085l-0.276.138A0.5,0.5,0,0,1,2.053,3c-0.124-.247-0.023-0.324.224-0.447l1-.5A0.5,0.5,0,0,1,4,2.5v3A0.5,0.5,0,0,1,3.5,6Z"/>
+              <path class="fmt-stroke fmt-thin" d="M4.5,10.5h-2c0-.234,1.85-1.076,1.85-2.234A0.959,0.959,0,0,0,2.5,8.156"/>
+              <path class="fmt-stroke fmt-thin" d="M2.5,14.846a0.959,0.959,0,0,0,1.85-.109A0.7,0.7,0,0,0,3.75,14a0.688,0.688,0,0,0,.6-0.736,0.959,0.959,0,0,0-1.85-.109"/>
+            </svg>
+          </button>
+          <button type="button" class="btn-icon" title="Bullet list" aria-label="Bullet list" onClick={() => insertLinePrefix('- ')}>
+            <svg viewBox="0 0 18 18">
+              <line class="fmt-stroke" x1="6" x2="15" y1="4" y2="4"/>
+              <line class="fmt-stroke" x1="6" x2="15" y1="9" y2="9"/>
+              <line class="fmt-stroke" x1="6" x2="15" y1="14" y2="14"/>
+              <line class="fmt-stroke" x1="3" x2="3" y1="4" y2="4"/>
+              <line class="fmt-stroke" x1="3" x2="3" y1="9" y2="9"/>
+              <line class="fmt-stroke" x1="3" x2="3" y1="14" y2="14"/>
+            </svg>
+          </button>
           <span class="fmt-sep" role="separator" />
-          <button type="button" class="btn-icon" title="External link" aria-label="External link" onClick={insertExternalLink}>↗</button>
-          <button type="button" class="btn-icon" title="Internal link" aria-label="Internal link" onClick={() => setPickerOpen(true)}>⛓</button>
+          <button type="button" class="btn-icon" title="Internal link" aria-label="Internal link" onClick={() => setPickerOpen(true)}>
+            <svg viewBox="0 0 18 18">
+              <line class="fmt-stroke" x1="7" x2="11" y1="7" y2="11"/>
+              <path class="fmt-even fmt-stroke" d="M8.9,4.577a3.476,3.476,0,0,1,.36,4.679A3.476,3.476,0,0,1,4.577,8.9C3.185,7.5,2.035,6.4,4.217,4.217S7.5,3.185,8.9,4.577Z"/>
+              <path class="fmt-even fmt-stroke" d="M13.423,9.1a3.476,3.476,0,0,0-4.679-.36,3.476,3.476,0,0,0,.36,4.679c1.392,1.392,2.5,2.542,4.679.36S14.815,10.5,13.423,9.1Z"/>
+            </svg>
+          </button>
+          <button type="button" class="btn-icon" title="External link" aria-label="External link" onClick={insertExternalLink}>
+            <svg viewBox="0 0 18 18">
+              <line class="fmt-stroke" x1="9" y1="9" x2="15" y2="3"/>
+              <polyline class="fmt-stroke" points="11,3 15,3 15,7"/>
+              <polyline class="fmt-stroke" points="9,5 4,5 4,14 13,14 13,9"/>
+            </svg>
+          </button>
           <span class="fmt-sep" role="separator" />
-          <button type="button" class="btn-icon" title="Embed image / SVG / MathML" aria-label="Embed image, SVG, or MathML" disabled={uploading} onClick={() => imageInputRef.current?.click()}>{uploading ? '…' : '⬆'}</button>
+          <button type="button" class="btn-icon" title="Embed image / SVG / MathML" aria-label="Embed image, SVG, or MathML" disabled={uploading} onClick={() => imageInputRef.current?.click()}>
+            {uploading ? '…' : (
+              <svg viewBox="0 0 18 18">
+                <rect class="fmt-stroke" height="10" width="12" x="3" y="4"></rect>
+                <circle class="fmt-fill" cx="6" cy="7" r="1"></circle>
+                <polyline class="fmt-even fmt-fill" points="5 12 5 11 7 9 8 10 11 7 13 9 13 12 5 12"></polyline>
+              </svg>
+            )}
+          </button>
           <input ref={imageInputRef} type="file" accept="image/gif,image/png,image/jpeg,image/webp,image/svg+xml,application/mathml+xml,.mml,.mathml" style={{ display: 'none' }} onChange={handleFileEmbed} />
         </div>
       )}
