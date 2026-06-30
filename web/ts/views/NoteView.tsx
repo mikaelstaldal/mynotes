@@ -98,9 +98,12 @@ export function NoteView({ slug, onDelete }: Props) {
       <div class="note-header">
         <div class="note-header-left">
           <h1 class="note-title">{note.title}</h1>
-          <time class="muted note-view-date" dateTime={note.updated_at}>
-            {formatDateTime(note.updated_at)}
-          </time>
+          <span class="muted note-view-date">
+            <time dateTime={note.created_at}>created {formatDateTime(note.created_at)}</time>
+            {' · '}
+            <time dateTime={note.updated_at}>updated {formatDateTime(note.updated_at)}</time>
+            {' · v'}{note.version}
+          </span>
         </div>
         <div class="toolbar">
           <a class="btn-icon" href={`${base}/api/v1/notes/${note.slug}/download-markdown`} title="Download Markdown" aria-label="Download Markdown">⬇</a>
