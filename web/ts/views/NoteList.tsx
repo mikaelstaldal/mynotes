@@ -179,6 +179,15 @@ export function NoteList({ activeSlug, listKey, onMutate }: Props) {
                     dangerouslySetInnerHTML={{ __html: renderExcerpt(n.excerpt) }}
                   />
                 )}
+                <span class="note-info" tabIndex={0} aria-label="Note metadata">
+                  ⓘ
+                  <div class="note-meta-popup" role="tooltip">
+                    <div class="note-meta-row"><span class="note-meta-label">Slug</span><code>{n.slug}</code></div>
+                    <div class="note-meta-row"><span class="note-meta-label">Created</span><span>{formatDate(n.created_at)}</span></div>
+                    <div class="note-meta-row"><span class="note-meta-label">Updated</span><span>{formatDate(n.updated_at)}</span></div>
+                    <div class="note-meta-row"><span class="note-meta-label">Version</span><span>{String(n.version)}</span></div>
+                  </div>
+                </span>
               </div>
             </li>
           ))}

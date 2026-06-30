@@ -183,11 +183,66 @@ ul { list-style: none; padding: 0; margin: 0; }
   grid-template-columns: 1fr;
   gap: 0.1rem;
   padding: 0.6rem 0;
+  position: relative;
 }
 
-.note-row .link { grid-area: title; font-size: 1rem; }
+.note-row .link { grid-area: title; font-size: 1rem; padding-right: 1.25rem; }
 .note-row .note-date { grid-area: date; font-size: 0.8rem; white-space: nowrap; }
 .note-row .note-excerpt { grid-area: excerpt; margin: 0; font-size: 0.875rem; line-height: 1.4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.note-info {
+  position: absolute;
+  top: 0.45rem;
+  right: 0;
+  font-size: 0.75rem;
+  color: var(--muted);
+  cursor: default;
+  opacity: 0;
+  transition: opacity 0.1s;
+  line-height: 1;
+  outline: none;
+}
+
+.note-row:hover .note-info,
+.note-info:focus-within,
+.note-info:focus { opacity: 1; }
+
+.note-meta-popup {
+  display: none;
+  position: absolute;
+  right: 0;
+  top: 1.2rem;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  padding: 0.5rem 0.75rem;
+  z-index: 200;
+  white-space: nowrap;
+  font-size: 0.8rem;
+  min-width: 220px;
+}
+
+.note-info:hover .note-meta-popup,
+.note-info:focus .note-meta-popup,
+.note-info:focus-within .note-meta-popup { display: block; }
+
+.note-meta-row {
+  display: flex;
+  gap: 0.75rem;
+  padding: 0.1rem 0;
+}
+
+.note-meta-label {
+  color: var(--muted);
+  min-width: 4rem;
+  flex-shrink: 0;
+}
+
+.note-meta-row code {
+  font-family: ui-monospace, 'Cascadia Code', monospace;
+  font-size: 0.9em;
+}
 
 mark { background: #fef08a; color: var(--fg); border-radius: 2px; padding: 0 1px; }
 :root[data-theme="dark"] mark { background: #713f12; }
