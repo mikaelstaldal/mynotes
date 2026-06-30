@@ -73,7 +73,6 @@ export function NoteEditor({ slug, onSave }: Props) {
   const editing = slug !== undefined;
 
   const [title, setTitle] = useState('');
-  const [slugField, setSlugField] = useState('');         // edit: current slug value
   const [slugOverride, setSlugOverride] = useState('');   // new: explicit slug when overriding
   const [slugOverrideActive, setSlugOverrideActive] = useState(false);
   const [loading, setLoading] = useState(editing);
@@ -95,7 +94,6 @@ export function NoteEditor({ slug, onSave }: Props) {
   const versionRef = useRef<number | undefined>(undefined);
   // Synchronous mirror of `dirty` state for the navigation guard closure.
   const dirtyRef = useRef(false);
-  const originalSlugRef = useRef('');       // slug at load time (edit mode)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Register a navigation guard while this form is mounted so in-app link clicks
@@ -131,7 +129,7 @@ export function NoteEditor({ slug, onSave }: Props) {
         currentTitle = extracted;
       }
     }
-    const currentSlug = editing ? slugField : (slugOverrideActive ? slugOverride : undefined);
+    const currentSlug = editing ? snapshotRef.current.slug : (slugOverrideActive ? slugOverride : undefined);
     const snap = snapshotRef.current;
     const d = currentTitle !== snap.title || doc !== snap.content || currentSlug !== snap.slug;
     setDirty(d);
@@ -150,8 +148,6 @@ export function NoteEditor({ slug, onSave }: Props) {
         const note = await api.notes.get(slug);
         if (cancelled) return;
         setTitle(note.title);
-        setSlugField(note.slug);
-        originalSlugRef.current = note.slug;
         versionRef.current = note.version;
         snapshotRef.current = { title: note.title, content: note.content, slug: note.slug };
         titleTouchedRef.current = true; // suppress auto-sync in edit mode
@@ -221,7 +217,6 @@ export function NoteEditor({ slug, onSave }: Props) {
     try {
       if (editing) {
         const body: UpdateNoteRequest = { title, content };
-        if (slugField !== originalSlugRef.current) body.slug = slugField;
         const ifMatch = versionRef.current !== undefined
           ? `"${versionRef.current}"`
           : undefined;
@@ -391,7 +386,6 @@ export function NoteEditor({ slug, onSave }: Props) {
   if (loading) return <p class="muted">Loading…</p>;
 
   const slugPreviewVal = slugFromTitle(title);
-  const slugChanged = editing && slugField !== originalSlugRef.current;
 
   return (
     <form class="editor-page" onSubmit={handleSubmit}>
@@ -421,32 +415,14 @@ export function NoteEditor({ slug, onSave }: Props) {
               titleTouchedRef.current = true;
               setTitle(v);
               const c = viewRef.current?.state.doc.toString() ?? '';
-              const s = editing ? slugField : (slugOverrideActive ? slugOverride : undefined);
+              const s = editing ? snapshotRef.current.slug : (slugOverrideActive ? slugOverride : undefined);
               const d = v !== snapshotRef.current.title || c !== snapshotRef.current.content || s !== snapshotRef.current.slug;
               setDirty(d); dirtyRef.current = d;
             }}
           />
         </label>
 
-        {editing ? (
-          <label class="meta-slug">
-            Slug
-            <input
-              type="text"
-              value={slugField}
-              maxLength={100}
-              pattern="^[a-z0-9]+(?:-[a-z0-9]+)*$"
-              onInput={(e) => {
-                const v = (e.target as HTMLInputElement).value;
-                setSlugField(v);
-                const c = viewRef.current?.state.doc.toString() ?? '';
-                const d = title !== snapshotRef.current.title || c !== snapshotRef.current.content || v !== snapshotRef.current.slug;
-                setDirty(d); dirtyRef.current = d;
-              }}
-            />
-            {slugChanged && <span class="slug-warning">URL will change</span>}
-          </label>
-        ) : (
+        {!editing && (
           <div class="meta-slug">
             <span class="meta-label-text">Slug</span>
             {slugOverrideActive ? (

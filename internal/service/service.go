@@ -154,14 +154,13 @@ func (s *NoteService) createNote(ctx context.Context, title string, content, slu
 
 // Update applies a partial (PATCH) update. nil fields are absent and left
 // unchanged. All-fields-absent is rejected. Each present field is validated,
-// then diffed against the stored note (title post-TrimSpace, content verbatim,
-// slug against its own current value); if nothing differs no SQL UPDATE runs and
-// the unchanged note is returned. Otherwise only the changed columns are written
-// and updated_at is bumped. A slug rename onto a taken slug is ErrConflict.
+// then diffed against the stored note (title post-TrimSpace, content verbatim);
+// if nothing differs no SQL UPDATE runs and the unchanged note is returned.
+// Otherwise only the changed columns are written and updated_at is bumped.
 // ifMatch, when non-nil, is compared against the stored version; a mismatch
 // returns ErrVersionMismatch (optimistic locking).
-func (s *NoteService) Update(ctx context.Context, slug string, title, content, newSlug *string, ifMatch *string) (model.Note, error) {
-	if title == nil && content == nil && newSlug == nil {
+func (s *NoteService) Update(ctx context.Context, slug string, title, content *string, ifMatch *string) (model.Note, error) {
+	if title == nil && content == nil {
 		return model.Note{}, validationError("no fields to update")
 	}
 
@@ -174,11 +173,6 @@ func (s *NoteService) Update(ctx context.Context, slug string, title, content, n
 	}
 	if content != nil {
 		if err := validateContent(*content); err != nil {
-			return model.Note{}, err
-		}
-	}
-	if newSlug != nil {
-		if err := validateSlug(*newSlug); err != nil {
 			return model.Note{}, err
 		}
 	}
@@ -197,23 +191,20 @@ func (s *NoteService) Update(ctx context.Context, slug string, title, content, n
 	}
 
 	// Diff each present field; only the genuinely-changed columns are written.
-	var changedTitle, changedContent, changedSlug *string
+	var changedTitle, changedContent *string
 	if title != nil && *title != existing.Title {
 		changedTitle = title
 	}
 	if content != nil && *content != existing.Content {
 		changedContent = content
 	}
-	if newSlug != nil && *newSlug != existing.Slug {
-		changedSlug = newSlug
-	}
 
 	// No-op: nothing differs, so issue no UPDATE and return the note untouched.
-	if changedTitle == nil && changedContent == nil && changedSlug == nil {
+	if changedTitle == nil && changedContent == nil {
 		return existing, nil
 	}
 
-	return s.repo.Update(ctx, slug, changedTitle, changedContent, changedSlug)
+	return s.repo.Update(ctx, slug, changedTitle, changedContent, nil)
 }
 
 // Delete removes the note addressed by slug, or returns ErrNotFound.

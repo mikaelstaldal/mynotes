@@ -96,7 +96,7 @@ func (h *Handler) UpdateNote(ctx context.Context, req *api.UpdateNoteRequest, pa
 	if v, ok := params.IfMatch.Get(); ok {
 		ifMatch = &v
 	}
-	n, err := h.notes.Update(ctx, params.Slug, optPtr(req.Title), optPtr(req.Content), optPtr(req.Slug), ifMatch)
+	n, err := h.notes.Update(ctx, params.Slug, optPtr(req.Title), optPtr(req.Content), ifMatch)
 	if errors.Is(err, service.ErrVersionMismatch) {
 		return &api.Error{Error: err.Error()}, nil
 	}

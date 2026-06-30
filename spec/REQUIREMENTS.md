@@ -59,10 +59,6 @@ identity exists but is never exposed as the URL key.
     until free. Concurrent double-submits never surface a spurious error.
   - Explicit (client-supplied) slug, on collision: it is an error (409), never
     silently suffixed.
-- A slug may be changed (renamed) on update. Renaming to another note's slug is a
-  conflict (409); renaming to the note's own current slug is a no-op. Changing a
-  slug changes the note's URL — old links break (no redirects); the UI must warn
-  before changing an existing slug.
 
 ## Markdown handling
 
@@ -115,7 +111,7 @@ The API manages notes keyed by slug. Operations:
 - **Fetch a note** by slug — returns the full note (Markdown content), plus a
   `version` integer and an `ETag` response header quoting the version (e.g.
   `"1"`).
-- **Update a note** (partial) — any of title, content, slug; absent fields are
+- **Update a note** (partial) — any of title, content; absent fields are
   left unchanged. Returns the full updated note. An update that changes nothing
   does not bump the updated timestamp or version; an update with no recognized
   fields is an error. Supports optimistic locking via the `If-Match` request
@@ -144,7 +140,7 @@ Notes also expose a monotonically increasing `version` integer (1 on creation,
 
 Errors use the shape `{ "error": "message" }`. Status codes: 201 create/import;
 200 get/update/list/download; 204 delete; 400 validation/malformed input; 404 not
-found; 409 conflict on an explicit/renamed slug; 412 version mismatch on update.
+found; 409 conflict on an explicit slug; 412 version mismatch on update.
 
 ## Frontend behavior
 
