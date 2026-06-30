@@ -15,6 +15,7 @@ type Note struct {
 	Content   string
 	CreatedAt time.Time
 	UpdatedAt time.Time
+	Version   int
 }
 
 // NoteSummary is the list/search projection of a note: the addressable Slug, the
@@ -24,9 +25,10 @@ type Note struct {
 type NoteSummary struct {
 	Slug      string
 	Title     string
+	Excerpt   string
 	CreatedAt time.Time
 	UpdatedAt time.Time
-	Excerpt   string
+	Version   int
 }
 
 // Artifact is a binary blob stored content-addressed by SHA-256. SHA256 is the

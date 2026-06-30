@@ -19,8 +19,8 @@ built. Implementation choices live in `ARCHITECTURE.md`; the build plan lives in
 
 ### Non-goals (v1)
 
-- Real-time collaboration / concurrent multi-user editing.
-- Version history / revisions.
+- Real-time collaboration / concurrent multi-user editing (beyond simple optimistic locking).
+- Version history / revisions (beyond version number).
 - Folders, tags, or hierarchical organization.
 - Any public publishing workflow beyond the stable URL existing.
 
@@ -112,11 +112,16 @@ The API manages notes keyed by slug. Operations:
     past the end returns an empty page, not an error.
 - **Create a note** — title (required), content (optional, defaults empty), slug
   (optional, auto-generated if absent). Returns the full created note.
-- **Fetch a note** by slug — returns the full note (Markdown content).
+- **Fetch a note** by slug — returns the full note (Markdown content), plus a
+  `version` integer and an `ETag` response header quoting the version (e.g.
+  `"1"`).
 - **Update a note** (partial) — any of title, content, slug; absent fields are
   left unchanged. Returns the full updated note. An update that changes nothing
-  does not bump the updated timestamp; an update with no recognized fields is an
-  error.
+  does not bump the updated timestamp or version; an update with no recognized
+  fields is an error. Supports optimistic locking via the `If-Match` request
+  header: if provided, the update is rejected with 412 Precondition Failed when
+  the note's current version does not match. The response includes the new
+  `version` and `ETag`.
 - **Delete a note** by slug — deleting an unknown note is a not-found error
   (delete is not idempotent).
 - **Download Markdown** — `GET /notes/{slug}/download-markdown` returns the raw Markdown as a `.md` file (filename derived from slug).
@@ -133,9 +138,13 @@ The API manages notes keyed by slug. Operations:
   Markdown is subject to the same validation as regular note creation (401 on auth
   failure, 400 on invalid content, 409 on slug conflict).
 
-Errors use the shape `{ "error": "message" }`. Status codes: 201 create/import; 200
-get/update/list/download; 204 delete; 400 validation/malformed input; 404 not
-found; 409 conflict on an explicit/renamed slug.
+Notes also expose a monotonically increasing `version` integer (1 on creation,
++1 per write, no-op PATCHes do not increment it) in all response bodies
+(`Note` and `NoteSummary`).
+
+Errors use the shape `{ "error": "message" }`. Status codes: 201 create/import;
+200 get/update/list/download; 204 delete; 400 validation/malformed input; 404 not
+found; 409 conflict on an explicit/renamed slug; 412 version mismatch on update.
 
 ## Frontend behavior
 

@@ -249,7 +249,7 @@ func TestUpdate_RejectsEmptyPatch(t *testing.T) {
 	created, err := svc.Create(ctx, "Title", nil, nil)
 	require.NoError(t, err)
 
-	_, err = svc.Update(ctx, created.Slug, nil, nil, nil)
+	_, err = svc.Update(ctx, created.Slug, nil, nil, nil, nil)
 	assert.ErrorIs(t, err, ErrValidation, "all-fields-absent patch rejected")
 }
 
@@ -259,13 +259,13 @@ func TestUpdate_ValidatesPresentFields(t *testing.T) {
 	created, err := svc.Create(ctx, "Title", nil, nil)
 	require.NoError(t, err)
 
-	_, err = svc.Update(ctx, created.Slug, ptr("   "), nil, nil)
+	_, err = svc.Update(ctx, created.Slug, ptr("   "), nil, nil, nil)
 	assert.ErrorIs(t, err, ErrValidation, "blank title rejected on update")
 
-	_, err = svc.Update(ctx, created.Slug, nil, ptr("<iframe></iframe>"), nil)
+	_, err = svc.Update(ctx, created.Slug, nil, ptr("<iframe></iframe>"), nil, nil)
 	assert.ErrorIs(t, err, ErrValidation, "unsafe content rejected on update")
 
-	_, err = svc.Update(ctx, created.Slug, nil, nil, ptr("Bad Slug"))
+	_, err = svc.Update(ctx, created.Slug, nil, nil, ptr("Bad Slug"), nil)
 	assert.ErrorIs(t, err, ErrValidation, "invalid slug rejected on update")
 }
 
@@ -277,7 +277,7 @@ func TestUpdate_NoOpWhenNothingChanges(t *testing.T) {
 
 	// Re-supplying the existing values (title post-trim) changes nothing, so no
 	// UPDATE runs and updated_at is left untouched.
-	got, err := svc.Update(ctx, created.Slug, ptr("Title"), ptr("body"), ptr(created.Slug))
+	got, err := svc.Update(ctx, created.Slug, ptr("Title"), ptr("body"), ptr(created.Slug), nil)
 	require.NoError(t, err)
 	assert.Equal(t, created.UpdatedAt, got.UpdatedAt, "no-op update must not bump updated_at")
 }
@@ -288,7 +288,7 @@ func TestUpdate_AppliesChanges(t *testing.T) {
 	created, err := svc.Create(ctx, "Title", ptr("body"), nil)
 	require.NoError(t, err)
 
-	got, err := svc.Update(ctx, created.Slug, ptr("New Title"), ptr("new body"), ptr("new-slug"))
+	got, err := svc.Update(ctx, created.Slug, ptr("New Title"), ptr("new body"), ptr("new-slug"), nil)
 	require.NoError(t, err)
 	assert.Equal(t, "New Title", got.Title)
 	assert.Equal(t, "new body", got.Content)
@@ -304,13 +304,13 @@ func TestUpdate_RenameOntoTakenSlugIsConflict(t *testing.T) {
 	second, err := svc.Create(ctx, "Second", nil, ptr("second"))
 	require.NoError(t, err)
 
-	_, err = svc.Update(ctx, second.Slug, nil, nil, ptr("first"))
+	_, err = svc.Update(ctx, second.Slug, nil, nil, ptr("first"), nil)
 	assert.ErrorIs(t, err, ErrConflict)
 }
 
 func TestUpdate_MissingNoteIsNotFound(t *testing.T) {
 	ctx := context.Background()
 	svc := newTestService(t)
-	_, err := svc.Update(ctx, "does-not-exist", ptr("X"), nil, nil)
+	_, err := svc.Update(ctx, "does-not-exist", ptr("X"), nil, nil, nil)
 	assert.ErrorIs(t, err, ErrNotFound)
 }

@@ -13,6 +13,7 @@ import (
 var migrations = [][]string{
 	schemaV1,
 	schemaV2,
+	schemaV3,
 }
 
 // OpenDB opens (creating if absent) the SQLite database at path, applies the
@@ -32,6 +33,10 @@ func InitSchema(db *sql.DB) error {
 // CreateDataDir ensures the directory holding the database file exists.
 func CreateDataDir(dbPath string) error {
 	return sqlite.CreateDataDir(dbPath)
+}
+
+var schemaV3 = []string{
+	`ALTER TABLE notes ADD COLUMN version INTEGER NOT NULL DEFAULT 1`,
 }
 
 var schemaV2 = []string{

@@ -36,6 +36,7 @@ func toAPI(n model.Note) api.Note {
 		Content:   n.Content,
 		CreatedAt: n.CreatedAt,
 		UpdatedAt: n.UpdatedAt,
+		Version:   n.Version,
 	}
 }
 
@@ -43,11 +44,14 @@ func toAPISummary(n model.NoteSummary) api.NoteSummary {
 	return api.NoteSummary{
 		Slug:      n.Slug,
 		Title:     n.Title,
+		Excerpt:   n.Excerpt,
 		CreatedAt: n.CreatedAt,
 		UpdatedAt: n.UpdatedAt,
-		Excerpt:   n.Excerpt,
+		Version:   n.Version,
 	}
 }
+
+func formatETag(version int) string { return fmt.Sprintf(`"%d"`, version) }
 
 // optPtr converts an ogen OptString to a *string: nil when absent (leave
 // unchanged), a pointer to the value when present.
@@ -70,13 +74,12 @@ func (h *Handler) ListNotes(ctx context.Context, params api.ListNotesParams) (*a
 	return &api.NoteList{Total: total, Notes: out}, nil
 }
 
-func (h *Handler) GetNote(ctx context.Context, params api.GetNoteParams) (*api.Note, error) {
+func (h *Handler) GetNote(ctx context.Context, params api.GetNoteParams) (*api.NoteHeaders, error) {
 	n, err := h.notes.Get(ctx, params.Slug)
 	if err != nil {
 		return nil, err
 	}
-	out := toAPI(n)
-	return &out, nil
+	return &api.NoteHeaders{Etag: formatETag(n.Version), Response: toAPI(n)}, nil
 }
 
 func (h *Handler) CreateNote(ctx context.Context, req *api.CreateNoteRequest) (*api.Note, error) {
@@ -88,13 +91,19 @@ func (h *Handler) CreateNote(ctx context.Context, req *api.CreateNoteRequest) (*
 	return &out, nil
 }
 
-func (h *Handler) UpdateNote(ctx context.Context, req *api.UpdateNoteRequest, params api.UpdateNoteParams) (*api.Note, error) {
-	n, err := h.notes.Update(ctx, params.Slug, optPtr(req.Title), optPtr(req.Content), optPtr(req.Slug))
+func (h *Handler) UpdateNote(ctx context.Context, req *api.UpdateNoteRequest, params api.UpdateNoteParams) (api.UpdateNoteRes, error) {
+	var ifMatch *string
+	if v, ok := params.IfMatch.Get(); ok {
+		ifMatch = &v
+	}
+	n, err := h.notes.Update(ctx, params.Slug, optPtr(req.Title), optPtr(req.Content), optPtr(req.Slug), ifMatch)
+	if errors.Is(err, service.ErrVersionMismatch) {
+		return &api.Error{Error: err.Error()}, nil
+	}
 	if err != nil {
 		return nil, err
 	}
-	out := toAPI(n)
-	return &out, nil
+	return &api.NoteHeaders{Etag: formatETag(n.Version), Response: toAPI(n)}, nil
 }
 
 func (h *Handler) DeleteNote(ctx context.Context, params api.DeleteNoteParams) error {
@@ -260,6 +269,8 @@ func (h *Handler) NewError(_ context.Context, err error) *api.ErrorStatusCode {
 		return &api.ErrorStatusCode{StatusCode: http.StatusBadRequest, Response: api.Error{Error: err.Error()}}
 	case errors.Is(err, service.ErrConflict):
 		return &api.ErrorStatusCode{StatusCode: http.StatusConflict, Response: api.Error{Error: err.Error()}}
+	case errors.Is(err, service.ErrVersionMismatch):
+		return &api.ErrorStatusCode{StatusCode: http.StatusPreconditionFailed, Response: api.Error{Error: err.Error()}}
 	default:
 		log.Printf("internal error: %v", err)
 		return &api.ErrorStatusCode{StatusCode: http.StatusInternalServerError, Response: api.Error{Error: "internal server error"}}

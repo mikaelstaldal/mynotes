@@ -44,7 +44,7 @@ func scanNote(s interface{ Scan(...any) error }) (model.Note, error) {
 		n                    model.Note
 		createdAt, updatedAt string
 	)
-	if err := s.Scan(&n.ID, &n.Slug, &n.Title, &n.Content, &createdAt, &updatedAt); err != nil {
+	if err := s.Scan(&n.ID, &n.Slug, &n.Title, &n.Content, &createdAt, &updatedAt, &n.Version); err != nil {
 		return model.Note{}, err
 	}
 	n.CreatedAt, _ = time.Parse(rfc3339, createdAt)
@@ -55,7 +55,7 @@ func scanNote(s interface{ Scan(...any) error }) (model.Note, error) {
 // GetBySlug returns the full note, or ErrNotFound if no note has that slug.
 func (r *NoteRepository) GetBySlug(ctx context.Context, slug string) (model.Note, error) {
 	row := r.db.QueryRowContext(ctx, `
-		SELECT id, slug, title, content, created_at, updated_at FROM notes WHERE slug = ?`, slug)
+		SELECT id, slug, title, content, created_at, updated_at, version FROM notes WHERE slug = ?`, slug)
 	n, err := scanNote(row)
 	if errors.Is(err, sql.ErrNoRows) {
 		return model.Note{}, ErrNotFound
@@ -115,7 +115,7 @@ func (r *NoteRepository) Update(ctx context.Context, slug string, title, content
 		return model.Note{}, err
 	}
 
-	sets := []string{"updated_at = ?"}
+	sets := []string{"updated_at = ?", "version = version + 1"}
 	args := []any{time.Now().UTC().Format(rfc3339)}
 	if title != nil {
 		sets = append(sets, "title = ?")
@@ -177,7 +177,7 @@ func (r *NoteRepository) browse(ctx context.Context, limit, offset int) ([]model
 	}
 
 	rows, err := r.db.QueryContext(ctx, `
-		SELECT slug, title, created_at, updated_at, substr(content, 1, 501)
+		SELECT slug, title, created_at, updated_at, substr(content, 1, 501), version
 		FROM notes
 		ORDER BY updated_at DESC, id DESC
 		LIMIT ? OFFSET ?`, limit, offset)
@@ -193,7 +193,7 @@ func (r *NoteRepository) browse(ctx context.Context, limit, offset int) ([]model
 			createdAt, updatedAt string
 			probe                string
 		)
-		if err := rows.Scan(&s.Slug, &s.Title, &createdAt, &updatedAt, &probe); err != nil {
+		if err := rows.Scan(&s.Slug, &s.Title, &createdAt, &updatedAt, &probe, &s.Version); err != nil {
 			return nil, 0, err
 		}
 		s.CreatedAt, _ = time.Parse(rfc3339, createdAt)
@@ -219,7 +219,8 @@ func (r *NoteRepository) search(ctx context.Context, q string, limit, offset int
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT n.slug, n.title, n.created_at, n.updated_at,
 		       snippet(notes_fts, 1, char(2), char(3), '…', 30),
-		       substr(n.content, 1, 201)
+		       substr(n.content, 1, 201),
+		       n.version
 		FROM notes n
 		JOIN notes_fts ON notes_fts.rowid = n.id
 		WHERE notes_fts MATCH ?
@@ -238,7 +239,7 @@ func (r *NoteRepository) search(ctx context.Context, q string, limit, offset int
 			snip                 string
 			probe                string
 		)
-		if err := rows.Scan(&s.Slug, &s.Title, &createdAt, &updatedAt, &snip, &probe); err != nil {
+		if err := rows.Scan(&s.Slug, &s.Title, &createdAt, &updatedAt, &snip, &probe, &s.Version); err != nil {
 			return nil, 0, err
 		}
 		s.CreatedAt, _ = time.Parse(rfc3339, createdAt)

@@ -20,6 +20,10 @@ export class NotFoundError extends Error {
   constructor() { super('Not found'); this.name = 'NotFoundError'; }
 }
 
+export class PreconditionFailedError extends Error {
+  constructor() { super('Precondition failed'); this.name = 'PreconditionFailedError'; }
+}
+
 function delay(ms: number): Promise<void> {
   return new Promise(r => setTimeout(r, ms));
 }
@@ -79,14 +83,23 @@ async function requestBinary<T>(
   return data as T;
 }
 
-async function request<T>(method: string, path: string, body?: unknown, notFoundOn: number[] = []): Promise<T> {
-  const init: RequestInit = { method, headers: { 'Content-Type': 'application/json' } };
+async function request<T>(
+  method: string,
+  path: string,
+  body?: unknown,
+  notFoundOn: number[] = [],
+  extraHeaders?: Record<string, string>,
+): Promise<T> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (extraHeaders) Object.assign(headers, extraHeaders);
+  const init: RequestInit = { method, headers };
   if (body !== undefined) init.body = JSON.stringify(body);
 
   const res = await fetchWithRetry(BASE + path, init);
 
   if (res.status === 401) { window.location.reload(); throw new Error('Unauthorized'); }
   if (res.status === 404 || notFoundOn.includes(res.status)) throw new NotFoundError();
+  if (res.status === 412) throw new PreconditionFailedError();
   if (res.status === 204) return undefined as T;
 
   const data = await res.json() as unknown;
@@ -113,8 +126,9 @@ export const api = {
     create: (body: CreateNoteRequest) =>
       request<Note>('POST', '/notes', body),
 
-    update: (slug: string, body: UpdateNoteRequest) =>
-      request<Note>('PATCH', `/notes/${slug}`, body),
+    update: (slug: string, body: UpdateNoteRequest, ifMatch?: string) =>
+      request<Note>('PATCH', `/notes/${slug}`, body, [],
+        ifMatch ? { 'If-Match': ifMatch } : undefined),
 
     delete: (slug: string) =>
       request<void>('DELETE', `/notes/${slug}`),

@@ -62,16 +62,19 @@ func TestCreateAndGetNote(t *testing.T) {
 	assert.Equal(t, "Buy milk", created.Title)
 	assert.Equal(t, "buy-milk", created.Slug, "slug should be derived from the title")
 	assert.Equal(t, "# Shopping\n\nmilk", created.Content, "content is stored verbatim")
+	assert.Equal(t, 1, created.Version, "new note starts at version 1")
 
 	res, err := http.Get(srv.URL + "/api/v1/notes/" + created.Slug)
 	require.NoError(t, err)
 	defer res.Body.Close()
 	require.Equal(t, http.StatusOK, res.StatusCode)
+	assert.Equal(t, `"1"`, res.Header.Get("ETag"), "GET response carries ETag")
 
 	var got api.Note
 	require.NoError(t, json.NewDecoder(res.Body).Decode(&got))
 	assert.Equal(t, created.Slug, got.Slug)
 	assert.Equal(t, created.Content, got.Content)
+	assert.Equal(t, 1, got.Version)
 }
 
 func TestCreateValidationError(t *testing.T) {
@@ -114,11 +117,53 @@ func TestUpdateNote(t *testing.T) {
 	require.NoError(t, err)
 	defer res.Body.Close()
 	require.Equal(t, http.StatusOK, res.StatusCode)
+	assert.Equal(t, `"2"`, res.Header.Get("ETag"), "successful update returns new ETag")
 
 	var updated api.Note
 	require.NoError(t, json.NewDecoder(res.Body).Decode(&updated))
 	assert.Equal(t, "new", updated.Content)
 	assert.Equal(t, "Draft", updated.Title, "title left unchanged when absent")
+	assert.Equal(t, 2, updated.Version)
+}
+
+func TestOptimisticLocking(t *testing.T) {
+	srv := newServer(t)
+	created := createNote(t, srv, `{"title":"Lock","content":"v1"}`)
+	require.Equal(t, 1, created.Version)
+
+	patchURL := srv.URL + "/api/v1/notes/" + created.Slug
+
+	patch := func(body, ifMatch string) *http.Response {
+		req, err := http.NewRequestWithContext(context.Background(), http.MethodPatch,
+			patchURL, strings.NewReader(body))
+		require.NoError(t, err)
+		req.Header.Set("Content-Type", "application/json")
+		if ifMatch != "" {
+			req.Header.Set("If-Match", ifMatch)
+		}
+		res, err := http.DefaultClient.Do(req)
+		require.NoError(t, err)
+		return res
+	}
+
+	// Matching version succeeds and bumps to v2.
+	res := patch(`{"content":"v2"}`, `"1"`)
+	defer res.Body.Close()
+	require.Equal(t, http.StatusOK, res.StatusCode)
+	assert.Equal(t, `"2"`, res.Header.Get("ETag"))
+	var updated api.Note
+	require.NoError(t, json.NewDecoder(res.Body).Decode(&updated))
+	assert.Equal(t, 2, updated.Version)
+
+	// Stale If-Match (still "1" but note is now v2) returns 412.
+	res2 := patch(`{"content":"conflict"}`, `"1"`)
+	defer res2.Body.Close()
+	assert.Equal(t, http.StatusPreconditionFailed, res2.StatusCode)
+
+	// Absent If-Match always succeeds (header is optional).
+	res3 := patch(`{"content":"unconditional"}`, "")
+	defer res3.Body.Close()
+	assert.Equal(t, http.StatusOK, res3.StatusCode)
 }
 
 func TestDeleteNote(t *testing.T) {

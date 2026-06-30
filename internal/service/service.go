@@ -47,6 +47,9 @@ var (
 	ErrConflict = repository.ErrConflict
 	// ErrValidation wraps a human-readable validation failure.
 	ErrValidation = errors.New("validation error")
+	// ErrVersionMismatch is returned when an If-Match ETag does not match the
+	// note's current version (optimistic locking failure).
+	ErrVersionMismatch = errors.New("version mismatch")
 )
 
 // slugPattern mirrors the OpenAPI slug constraint: lowercase alphanumerics in
@@ -155,7 +158,9 @@ func (s *NoteService) createNote(ctx context.Context, title string, content, slu
 // slug against its own current value); if nothing differs no SQL UPDATE runs and
 // the unchanged note is returned. Otherwise only the changed columns are written
 // and updated_at is bumped. A slug rename onto a taken slug is ErrConflict.
-func (s *NoteService) Update(ctx context.Context, slug string, title, content, newSlug *string) (model.Note, error) {
+// ifMatch, when non-nil, is compared against the stored version; a mismatch
+// returns ErrVersionMismatch (optimistic locking).
+func (s *NoteService) Update(ctx context.Context, slug string, title, content, newSlug *string, ifMatch *string) (model.Note, error) {
 	if title == nil && content == nil && newSlug == nil {
 		return model.Note{}, validationError("no fields to update")
 	}
@@ -181,6 +186,14 @@ func (s *NoteService) Update(ctx context.Context, slug string, title, content, n
 	existing, err := s.repo.GetBySlug(ctx, slug)
 	if err != nil {
 		return model.Note{}, err
+	}
+
+	if ifMatch != nil {
+		etag := strings.Trim(*ifMatch, `"`)
+		expectedVer, parseErr := strconv.Atoi(etag)
+		if parseErr != nil || expectedVer != existing.Version {
+			return model.Note{}, ErrVersionMismatch
+		}
 	}
 
 	// Diff each present field; only the genuinely-changed columns are written.

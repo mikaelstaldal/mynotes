@@ -86,6 +86,14 @@ paths:
       responses:
         "200":
           description: The requested note.
+          headers:
+            Etag:
+              description: >
+                Strong entity tag reflecting the note's current version.
+                Quoted integer, e.g. "1", "2".
+              required: true
+              schema:
+                type: string
           content:
             application/json:
               schema:
@@ -96,6 +104,15 @@ paths:
       operationId: updateNote
       summary: Update a note (partial)
       description: Only the fields present in the request body are changed.
+      parameters:
+        - name: If-Match
+          in: header
+          required: false
+          description: >
+            When provided, the update is rejected with 412 Precondition Failed
+            unless the note's current version matches this Etag (quoted integer).
+          schema:
+            type: string
       requestBody:
         required: true
         content:
@@ -105,10 +122,24 @@ paths:
       responses:
         "200":
           description: The updated note.
+          headers:
+            Etag:
+              description: Etag of the note after the update.
+              required: true
+              schema:
+                type: string
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Note"
+        "412":
+          description: >
+            Precondition Failed — If-Match was provided and the current version
+            does not match.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         default:
           $ref: "#/components/responses/Error"
     delete:
@@ -354,7 +385,7 @@ components:
   schemas:
     Note:
       type: object
-      required: [slug, title, content, created_at, updated_at]
+      required: [slug, title, content, created_at, updated_at, version]
       properties:
         slug:
           type: string
@@ -374,10 +405,17 @@ components:
         updated_at:
           type: string
           format: date-time
+        version:
+          type: integer
+          minimum: 1
+          description: >
+            Monotonically increasing edit counter. Starts at 1 on creation and
+            increments by 1 on each write. No-op PATCHes do not increment it.
+            Use with If-Match for optimistic locking.
 
     NoteSummary:
       type: object
-      required: [slug, title, created_at, updated_at, excerpt]
+      required: [slug, title, created_at, updated_at, excerpt, version]
       properties:
         slug:
           type: string
@@ -396,6 +434,9 @@ components:
         excerpt:
           type: string
           description: Short text excerpt; empty string when none, never absent.
+        version:
+          type: integer
+          minimum: 1
 
     NoteList:
       type: object

@@ -7,7 +7,7 @@ import {
   ViewPlugin, Decoration, WidgetType,
   type DecorationSet, type ViewUpdate,
 } from 'codemirror';
-import { api, NotFoundError, type CreateNoteRequest, type UpdateNoteRequest } from '../api/client.js';
+import { api, NotFoundError, PreconditionFailedError, type CreateNoteRequest, type UpdateNoteRequest } from '../api/client.js';
 import { base } from '../basepath.js';
 import { navigate, setNavigationGuard } from '../router.js';
 import { showToast } from '../util/toast.js';
@@ -92,6 +92,7 @@ export function NoteEditor({ slug, onSave }: Props) {
   const snapshotRef = useRef<{ title: string; content: string; slug: string | undefined }>({
     title: '', content: '', slug: undefined,
   });
+  const versionRef = useRef<number | undefined>(undefined);
   // Synchronous mirror of `dirty` state for the navigation guard closure.
   const dirtyRef = useRef(false);
   const originalSlugRef = useRef('');       // slug at load time (edit mode)
@@ -151,6 +152,7 @@ export function NoteEditor({ slug, onSave }: Props) {
         setTitle(note.title);
         setSlugField(note.slug);
         originalSlugRef.current = note.slug;
+        versionRef.current = note.version;
         snapshotRef.current = { title: note.title, content: note.content, slug: note.slug };
         titleTouchedRef.current = true; // suppress auto-sync in edit mode
         setPreviewHtml(renderNote(note.content));
@@ -220,7 +222,11 @@ export function NoteEditor({ slug, onSave }: Props) {
       if (editing) {
         const body: UpdateNoteRequest = { title, content };
         if (slugField !== originalSlugRef.current) body.slug = slugField;
-        const note = await api.notes.update(slug, body);
+        const ifMatch = versionRef.current !== undefined
+          ? `"${versionRef.current}"`
+          : undefined;
+        const note = await api.notes.update(slug, body, ifMatch);
+        versionRef.current = note.version;
         snapshotRef.current = { title, content, slug: note.slug };
         dirtyRef.current = false;
         setDirty(false);
@@ -241,6 +247,8 @@ export function NoteEditor({ slug, onSave }: Props) {
         dirtyRef.current = false;
         setDirty(false);
         navigate('/');
+      } else if (e instanceof PreconditionFailedError) {
+        showToast('Note was modified elsewhere — please reload before saving');
       } else {
         showToast((e as Error).message);
       }

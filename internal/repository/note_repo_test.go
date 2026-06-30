@@ -33,6 +33,7 @@ func TestNoteCRUD(t *testing.T) {
 	assert.Equal(t, "Hello", created.Title)
 	assert.Equal(t, "world", created.Content)
 	assert.False(t, created.CreatedAt.IsZero())
+	assert.Equal(t, 1, created.Version, "new note starts at version 1")
 
 	got, err := repo.GetBySlug(ctx, "hello")
 	require.NoError(t, err)
@@ -45,10 +46,41 @@ func TestNoteCRUD(t *testing.T) {
 	assert.Equal(t, "Updated", updated.Title)
 	assert.Equal(t, "world", updated.Content, "content left unchanged when nil")
 	assert.Equal(t, "hello", updated.Slug, "slug left unchanged when nil")
+	assert.Equal(t, 2, updated.Version, "first update bumps version to 2")
 
 	require.NoError(t, repo.Delete(ctx, "hello"))
 	_, err = repo.GetBySlug(ctx, "hello")
 	assert.ErrorIs(t, err, ErrNotFound)
+}
+
+func TestVersionIncrementsPerUpdate(t *testing.T) {
+	ctx := context.Background()
+	repo := NewNoteRepository(newTestDB(t))
+
+	n, err := repo.Create(ctx, "v-note", "V", "")
+	require.NoError(t, err)
+	assert.Equal(t, 1, n.Version)
+
+	n2, err := repo.Update(ctx, "v-note", ptr("V2"), nil, nil)
+	require.NoError(t, err)
+	assert.Equal(t, 2, n2.Version)
+
+	n3, err := repo.Update(ctx, "v-note", nil, ptr("new content"), nil)
+	require.NoError(t, err)
+	assert.Equal(t, 3, n3.Version)
+}
+
+func TestListIncludesVersion(t *testing.T) {
+	ctx := context.Background()
+	repo := NewNoteRepository(newTestDB(t))
+
+	_, err := repo.Create(ctx, "note-a", "A", "body")
+	require.NoError(t, err)
+
+	notes, _, err := repo.List(ctx, "", 50, 0)
+	require.NoError(t, err)
+	require.Len(t, notes, 1)
+	assert.Equal(t, 1, notes[0].Version)
 }
 
 func TestGetMissingReturnsNotFound(t *testing.T) {
