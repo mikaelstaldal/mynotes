@@ -6,6 +6,7 @@ package handler
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -209,6 +210,11 @@ func (h *Handler) CreateArtifact(ctx context.Context, req api.CreateArtifactReq)
 
 func (h *Handler) DeleteArtifact(ctx context.Context, params api.DeleteArtifactParams) error {
 	return h.artifacts.Delete(ctx, params.SHA256)
+}
+
+// GetArtifact is overridden by ServeArtifact and never used
+func (h *Handler) GetArtifact(ctx context.Context, params api.GetArtifactParams) (api.GetArtifactRes, error) {
+	return nil, fmt.Errorf("not used")
 }
 
 // ServeArtifact is a raw http.HandlerFunc for GET /api/v1/artifacts/{sha256}.
