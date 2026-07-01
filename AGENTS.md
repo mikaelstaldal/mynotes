@@ -8,6 +8,10 @@ OpenAPI, and an embedded Preact + TypeScript frontend.
 
 Keep spec/REQUIREMENTS.md updated when new features are added.
 
+## REST API
+
+The REST API is used by both the embedded web UI and an Android (Kotlin/Compose) app in another repository.
+
 ## Build & Run
 
 ```bash

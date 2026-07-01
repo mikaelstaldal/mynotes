@@ -4,6 +4,12 @@ A small, self-hosted note-taking web application. Go backend with SQLite storage
 a REST API defined in OpenAPI, and an embedded Preact + TypeScript frontend —
 all shipped as a single binary.
 
+## Clients
+
+In addition to the built-in web interface, there is also 
+
+* A [native Android app](https://github.com/mikaelstaldal/mynotes-android)
+
 ## Stack
 
 - **Backend:** Go, layered `handler → service → repository → SQLite`
