@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -41,7 +42,7 @@ func TestNoteCRUD(t *testing.T) {
 	assert.Equal(t, "Hello", got.Title)
 
 	// Title-only update leaves content and slug unchanged.
-	updated, err := repo.Update(ctx, "hello", ptr("Updated"), nil, nil)
+	updated, err := repo.Update(ctx, "hello", ptr("Updated"), nil, nil, nil)
 	require.NoError(t, err)
 	assert.Equal(t, "Updated", updated.Title)
 	assert.Equal(t, "world", updated.Content, "content left unchanged when nil")
@@ -61,11 +62,11 @@ func TestVersionIncrementsPerUpdate(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 1, n.Version)
 
-	n2, err := repo.Update(ctx, "v-note", ptr("V2"), nil, nil)
+	n2, err := repo.Update(ctx, "v-note", ptr("V2"), nil, nil, nil)
 	require.NoError(t, err)
 	assert.Equal(t, 2, n2.Version)
 
-	n3, err := repo.Update(ctx, "v-note", nil, ptr("new content"), nil)
+	n3, err := repo.Update(ctx, "v-note", nil, ptr("new content"), nil, nil)
 	require.NoError(t, err)
 	assert.Equal(t, 3, n3.Version)
 }
@@ -77,7 +78,7 @@ func TestListIncludesVersion(t *testing.T) {
 	_, err := repo.Create(ctx, "note-a", "A", "body")
 	require.NoError(t, err)
 
-	notes, _, err := repo.List(ctx, "", 50, 0)
+	notes, _, err := repo.List(ctx, "", "", 50, 0)
 	require.NoError(t, err)
 	require.Len(t, notes, 1)
 	assert.Equal(t, 1, notes[0].Version)
@@ -91,7 +92,7 @@ func TestGetMissingReturnsNotFound(t *testing.T) {
 
 func TestUpdateMissingReturnsNotFound(t *testing.T) {
 	repo := NewNoteRepository(newTestDB(t))
-	_, err := repo.Update(context.Background(), "nope", ptr("x"), nil, nil)
+	_, err := repo.Update(context.Background(), "nope", ptr("x"), nil, nil, nil)
 	assert.ErrorIs(t, err, ErrNotFound)
 }
 
@@ -109,7 +110,7 @@ func TestSlugRename(t *testing.T) {
 	require.NoError(t, err)
 
 	// Rename writes the new slug onto the resolved id in the same UPDATE.
-	renamed, err := repo.Update(ctx, "old-slug", nil, nil, ptr("new-slug"))
+	renamed, err := repo.Update(ctx, "old-slug", nil, nil, ptr("new-slug"), nil)
 	require.NoError(t, err)
 	assert.Equal(t, "new-slug", renamed.Slug)
 	assert.Equal(t, "Title", renamed.Title)
@@ -132,7 +133,7 @@ func TestSlugRenameConflictWritesNothing(t *testing.T) {
 
 	// Renaming "second" onto the taken slug "first" must fail and write nothing
 	// (UNIQUE constraint trips the single UPDATE statement).
-	_, err = repo.Update(ctx, "second", ptr("Changed"), nil, ptr("first"))
+	_, err = repo.Update(ctx, "second", ptr("Changed"), nil, ptr("first"), nil)
 	require.Error(t, err)
 
 	unchanged, err := repo.GetBySlug(ctx, "second")
@@ -192,7 +193,7 @@ func TestListBrowseOrderingAndTotal(t *testing.T) {
 	_, err = repo.Create(ctx, "third", "Third", "three")
 	require.NoError(t, err)
 
-	notes, total, err := repo.List(ctx, "", 50, 0)
+	notes, total, err := repo.List(ctx, "", "", 50, 0)
 	require.NoError(t, err)
 	assert.Equal(t, 3, total)
 	require.Len(t, notes, 3)
@@ -200,7 +201,7 @@ func TestListBrowseOrderingAndTotal(t *testing.T) {
 		[]string{notes[0].Slug, notes[1].Slug, notes[2].Slug}, "newest id first")
 
 	// total is independent of limit/offset.
-	page, total, err := repo.List(ctx, "", 1, 1)
+	page, total, err := repo.List(ctx, "", "", 1, 1)
 	require.NoError(t, err)
 	assert.Equal(t, 3, total)
 	require.Len(t, page, 1)
@@ -224,7 +225,7 @@ func TestBrowseExcerptTruncation(t *testing.T) {
 	require.NoError(t, err)
 
 	bySlug := map[string]string{}
-	notes, _, err := repo.List(ctx, "", 50, 0)
+	notes, _, err := repo.List(ctx, "", "", 50, 0)
 	require.NoError(t, err)
 	for _, n := range notes {
 		bySlug[n.Slug] = n.Excerpt
@@ -247,7 +248,7 @@ func TestSearchMatchesAndSnippet(t *testing.T) {
 	_, err = repo.Create(ctx, "grocery-list", "Grocery list", "milk and eggs")
 	require.NoError(t, err)
 
-	hits, total, err := repo.List(ctx, "revenue", 50, 0)
+	hits, total, err := repo.List(ctx, "revenue", "", 50, 0)
 	require.NoError(t, err)
 	assert.Equal(t, 1, total)
 	require.Len(t, hits, 1)
@@ -272,7 +273,7 @@ func TestSearchRankingOrder(t *testing.T) {
 	_, err = repo.Create(ctx, "strong", "Apple", "apple apple apple")
 	require.NoError(t, err)
 
-	hits, total, err := repo.List(ctx, "apple", 50, 0)
+	hits, total, err := repo.List(ctx, "apple", "", 50, 0)
 	require.NoError(t, err)
 	assert.Equal(t, 2, total)
 	require.Len(t, hits, 2)
@@ -287,16 +288,16 @@ func TestSearchTriggerSyncOnTitleUpdate(t *testing.T) {
 	_, err := repo.Create(ctx, "note", "Aardvark", "body text")
 	require.NoError(t, err)
 
-	_, err = repo.Update(ctx, "note", ptr("Zeppelin"), nil, nil)
+	_, err = repo.Update(ctx, "note", ptr("Zeppelin"), nil, nil, nil)
 	require.NoError(t, err)
 
 	// The AFTER UPDATE trigger must reindex the title column too: the old title
 	// is gone from the index and the new one is searchable.
-	gone, _, err := repo.List(ctx, "Aardvark", 50, 0)
+	gone, _, err := repo.List(ctx, "Aardvark", "", 50, 0)
 	require.NoError(t, err)
 	assert.Empty(t, gone, "old title no longer indexed")
 
-	found, _, err := repo.List(ctx, "Zeppelin", 50, 0)
+	found, _, err := repo.List(ctx, "Zeppelin", "", 50, 0)
 	require.NoError(t, err)
 	require.Len(t, found, 1)
 	assert.Equal(t, "note", found[0].Slug)
@@ -311,7 +312,7 @@ func TestSearchEmptyContentMatchHasEmptyExcerpt(t *testing.T) {
 	_, err := repo.Create(ctx, "pineapple", "Pineapple", "")
 	require.NoError(t, err)
 
-	hits, _, err := repo.List(ctx, "Pineapple", 50, 0)
+	hits, _, err := repo.List(ctx, "Pineapple", "", 50, 0)
 	require.NoError(t, err)
 	require.Len(t, hits, 1)
 	assert.NotContains(t, hits[0].Excerpt, "\x02", "no content sentinel for a title-only match")
@@ -325,7 +326,7 @@ func TestSearchTitleOnlyMatchFallsBackToPrefix(t *testing.T) {
 	_, err := repo.Create(ctx, "widgets", "Widgets", "no match in body")
 	require.NoError(t, err)
 
-	hits, _, err := repo.List(ctx, "widgets", 50, 0)
+	hits, _, err := repo.List(ctx, "widgets", "", 50, 0)
 	require.NoError(t, err)
 	require.Len(t, hits, 1)
 	// Title-only match: no content sentinel, so excerpt falls back to the prefix.
@@ -342,13 +343,13 @@ func TestSearchTreatsInputAsLiteral(t *testing.T) {
 	_, err = repo.Create(ctx, "grocery", "Grocery list", "milk and eggs")
 	require.NoError(t, err)
 
-	hits, _, err := repo.List(ctx, "report", 50, 0)
+	hits, _, err := repo.List(ctx, "report", "", 50, 0)
 	require.NoError(t, err)
 	require.Len(t, hits, 1)
 	assert.Equal(t, "Quarterly report", hits[0].Title)
 
 	// FTS operator keywords must be matched literally, not interpreted.
-	none, total, err := repo.List(ctx, "report OR grocery", 50, 0)
+	none, total, err := repo.List(ctx, "report OR grocery", "", 50, 0)
 	require.NoError(t, err)
 	assert.Empty(t, none)
 	assert.Equal(t, 0, total)
@@ -361,16 +362,189 @@ func TestSearchTriggerSyncOnUpdate(t *testing.T) {
 	_, err := repo.Create(ctx, "note", "Title", "original text")
 	require.NoError(t, err)
 
-	_, err = repo.Update(ctx, "note", nil, ptr("replacement prose"), nil)
+	_, err = repo.Update(ctx, "note", nil, ptr("replacement prose"), nil, nil)
 	require.NoError(t, err)
 
 	// The FTS index must reflect the new content (AFTER UPDATE trigger).
-	gone, _, err := repo.List(ctx, "original", 50, 0)
+	gone, _, err := repo.List(ctx, "original", "", 50, 0)
 	require.NoError(t, err)
 	assert.Empty(t, gone, "old content no longer indexed")
 
-	found, _, err := repo.List(ctx, "replacement", 50, 0)
+	found, _, err := repo.List(ctx, "replacement", "", 50, 0)
 	require.NoError(t, err)
 	require.Len(t, found, 1)
 	assert.Equal(t, "note", found[0].Slug)
+}
+
+// --- Tags --------------------------------------------------------------
+
+func TestCreateWithTagsAttachesThem(t *testing.T) {
+	ctx := context.Background()
+	db := newTestDB(t)
+	repo := NewNoteRepository(db)
+	tagRepo := NewTagRepository(db)
+
+	work, err := tagRepo.Create(ctx, "work", "Work")
+	require.NoError(t, err)
+	home, err := tagRepo.Create(ctx, "home", "Home")
+	require.NoError(t, err)
+
+	note, err := repo.CreateWithTime(ctx, "note", "Note", "body", time.Now().UTC(), []int64{work.ID, home.ID})
+	require.NoError(t, err)
+	require.Len(t, note.Tags, 2)
+	slugs := []string{note.Tags[0].Slug, note.Tags[1].Slug}
+	assert.ElementsMatch(t, []string{"work", "home"}, slugs)
+
+	// GetBySlug independently re-fetches and attaches tags too.
+	got, err := repo.GetBySlug(ctx, "note")
+	require.NoError(t, err)
+	require.Len(t, got.Tags, 2)
+}
+
+func TestCreateWithUnknownTagIDFails(t *testing.T) {
+	ctx := context.Background()
+	repo := NewNoteRepository(newTestDB(t))
+
+	_, err := repo.CreateWithTime(ctx, "note", "Note", "body", time.Now().UTC(), []int64{999})
+	assert.ErrorIs(t, err, ErrUnknownTag)
+
+	// The whole transaction rolled back: the note itself must not exist either.
+	_, err = repo.GetBySlug(ctx, "note")
+	assert.ErrorIs(t, err, ErrNotFound, "failed tag attachment must roll back the note insert too")
+}
+
+func TestUpdateTagsNilLeavesUnchanged(t *testing.T) {
+	ctx := context.Background()
+	db := newTestDB(t)
+	repo := NewNoteRepository(db)
+	tagRepo := NewTagRepository(db)
+
+	tag, err := tagRepo.Create(ctx, "work", "Work")
+	require.NoError(t, err)
+	_, err = repo.CreateWithTime(ctx, "note", "Note", "body", time.Now().UTC(), []int64{tag.ID})
+	require.NoError(t, err)
+
+	updated, err := repo.Update(ctx, "note", ptr("Renamed"), nil, nil, nil)
+	require.NoError(t, err)
+	require.Len(t, updated.Tags, 1, "nil tagIDs leaves the tag set untouched")
+	assert.Equal(t, "work", updated.Tags[0].Slug)
+}
+
+func TestUpdateTagsReplacesFullSet(t *testing.T) {
+	ctx := context.Background()
+	db := newTestDB(t)
+	repo := NewNoteRepository(db)
+	tagRepo := NewTagRepository(db)
+
+	work, err := tagRepo.Create(ctx, "work", "Work")
+	require.NoError(t, err)
+	home, err := tagRepo.Create(ctx, "home", "Home")
+	require.NoError(t, err)
+	_, err = repo.CreateWithTime(ctx, "note", "Note", "body", time.Now().UTC(), []int64{work.ID})
+	require.NoError(t, err)
+
+	updated, err := repo.Update(ctx, "note", nil, nil, nil, &[]int64{home.ID})
+	require.NoError(t, err)
+	require.Len(t, updated.Tags, 1)
+	assert.Equal(t, "home", updated.Tags[0].Slug, "full replace: work is gone, home is attached")
+}
+
+func TestUpdateTagsEmptySliceClears(t *testing.T) {
+	ctx := context.Background()
+	db := newTestDB(t)
+	repo := NewNoteRepository(db)
+	tagRepo := NewTagRepository(db)
+
+	tag, err := tagRepo.Create(ctx, "work", "Work")
+	require.NoError(t, err)
+	_, err = repo.CreateWithTime(ctx, "note", "Note", "body", time.Now().UTC(), []int64{tag.ID})
+	require.NoError(t, err)
+
+	updated, err := repo.Update(ctx, "note", nil, nil, nil, &[]int64{})
+	require.NoError(t, err)
+	assert.Empty(t, updated.Tags)
+}
+
+func TestDeleteNoteDetachesTagsViaCascade(t *testing.T) {
+	ctx := context.Background()
+	db := newTestDB(t)
+	repo := NewNoteRepository(db)
+	tagRepo := NewTagRepository(db)
+
+	tag, err := tagRepo.Create(ctx, "work", "Work")
+	require.NoError(t, err)
+	_, err = repo.CreateWithTime(ctx, "note", "Note", "body", time.Now().UTC(), []int64{tag.ID})
+	require.NoError(t, err)
+
+	require.NoError(t, repo.Delete(ctx, "note"))
+
+	// The tag itself must survive; only the junction row is gone.
+	_, err = tagRepo.GetBySlug(ctx, "work")
+	assert.NoError(t, err)
+}
+
+func TestDeleteTagDetachesFromNoteViaCascade(t *testing.T) {
+	ctx := context.Background()
+	db := newTestDB(t)
+	repo := NewNoteRepository(db)
+	tagRepo := NewTagRepository(db)
+
+	tag, err := tagRepo.Create(ctx, "work", "Work")
+	require.NoError(t, err)
+	_, err = repo.CreateWithTime(ctx, "note", "Note", "body", time.Now().UTC(), []int64{tag.ID})
+	require.NoError(t, err)
+
+	require.NoError(t, tagRepo.Delete(ctx, "work"))
+
+	got, err := repo.GetBySlug(ctx, "note")
+	require.NoError(t, err)
+	assert.Empty(t, got.Tags)
+}
+
+func TestListFilteredByTag(t *testing.T) {
+	ctx := context.Background()
+	db := newTestDB(t)
+	repo := NewNoteRepository(db)
+	tagRepo := NewTagRepository(db)
+
+	work, err := tagRepo.Create(ctx, "work", "Work")
+	require.NoError(t, err)
+	home, err := tagRepo.Create(ctx, "home", "Home")
+	require.NoError(t, err)
+
+	_, err = repo.CreateWithTime(ctx, "report", "Report", "a", time.Now().UTC(), []int64{work.ID})
+	require.NoError(t, err)
+	_, err = repo.CreateWithTime(ctx, "chores", "Chores", "b", time.Now().UTC(), []int64{home.ID})
+	require.NoError(t, err)
+	_, err = repo.CreateWithTime(ctx, "both", "Both", "c", time.Now().UTC(), []int64{work.ID, home.ID})
+	require.NoError(t, err)
+
+	notes, total, err := repo.List(ctx, "", "work", 50, 0)
+	require.NoError(t, err)
+	assert.Equal(t, 2, total)
+	slugs := []string{notes[0].Slug, notes[1].Slug}
+	assert.ElementsMatch(t, []string{"report", "both"}, slugs)
+}
+
+func TestSearchFilteredByTag(t *testing.T) {
+	ctx := context.Background()
+	db := newTestDB(t)
+	repo := NewNoteRepository(db)
+	tagRepo := NewTagRepository(db)
+
+	work, err := tagRepo.Create(ctx, "work", "Work")
+	require.NoError(t, err)
+	home, err := tagRepo.Create(ctx, "home", "Home")
+	require.NoError(t, err)
+
+	_, err = repo.CreateWithTime(ctx, "report", "Report", "quarterly revenue figures", time.Now().UTC(), []int64{work.ID})
+	require.NoError(t, err)
+	_, err = repo.CreateWithTime(ctx, "chores", "Chores", "quarterly cleanup list", time.Now().UTC(), []int64{home.ID})
+	require.NoError(t, err)
+
+	hits, total, err := repo.List(ctx, "quarterly", "work", 50, 0)
+	require.NoError(t, err)
+	assert.Equal(t, 1, total)
+	require.Len(t, hits, 1)
+	assert.Equal(t, "report", hits[0].Slug, "tag filter combines with the FTS query via AND")
 }

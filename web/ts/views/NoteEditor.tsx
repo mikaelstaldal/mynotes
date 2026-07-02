@@ -7,7 +7,7 @@ import {
   ViewPlugin, Decoration, WidgetType,
   type DecorationSet, type ViewUpdate,
 } from 'codemirror';
-import { api, NotFoundError, PreconditionFailedError, type CreateNoteRequest, type UpdateNoteRequest } from '../api/client.js';
+import { api, NotFoundError, PreconditionFailedError, type CreateNoteRequest, type UpdateNoteRequest, type Tag } from '../api/client.js';
 import { base } from '../basepath.js';
 import { navigate, setNavigationGuard } from '../router.js';
 import { showToast } from '../util/toast.js';
@@ -15,6 +15,7 @@ import { renderNote, sanitizeSVGOrMathML } from '../util/markdown.js';
 import { titleFromContent } from '../util/title.js';
 import { slugFromTitle } from '../util/slug.js';
 import { LinkPicker } from '../components/LinkPicker.js';
+import { TagPicker } from '../components/TagPicker.js';
 
 const DATA_URL_RE = /data:([^;,\s]+);base64,[A-Za-z0-9+/]+=*/g;
 
@@ -62,6 +63,14 @@ function escapeLinkText(s: string): string {
   return s.replace(/[\\[\]]/g, '\\$&');
 }
 
+function sortedSlugs(tags: Tag[]): string[] {
+  return tags.map(t => t.slug).sort();
+}
+
+function sameSlugs(a: string[], b: string[]): boolean {
+  return a.length === b.length && a.every((s, i) => s === b[i]);
+}
+
 type Layout = 'split' | 'editor' | 'preview';
 
 interface Props {
@@ -75,6 +84,7 @@ export function NoteEditor({ slug, onSave }: Props) {
   const [title, setTitle] = useState('');
   const [slugOverride, setSlugOverride] = useState('');   // new: explicit slug when overriding
   const [slugOverrideActive, setSlugOverrideActive] = useState(false);
+  const [tags, setTags] = useState<Tag[]>([]);
   const [loading, setLoading] = useState(editing);
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
@@ -87,14 +97,32 @@ export function NoteEditor({ slug, onSave }: Props) {
   const imageInputRef = useRef<HTMLInputElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   const titleTouchedRef = useRef(false);    // true once user manually edits title
-  // Snapshot of (title, content, slug) at last successful save or load — dirty baseline.
-  const snapshotRef = useRef<{ title: string; content: string; slug: string | undefined }>({
-    title: '', content: '', slug: undefined,
+  // Snapshot of (title, content, slug, tags) at last successful save or load —
+  // dirty baseline. tags is a sorted slug array for order-independent diffing.
+  const snapshotRef = useRef<{ title: string; content: string; slug: string | undefined; tags: string[] }>({
+    title: '', content: '', slug: undefined, tags: [],
   });
   const versionRef = useRef<number | undefined>(undefined);
   // Synchronous mirror of `dirty` state for the navigation guard closure.
   const dirtyRef = useRef(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Diffs (title, content, slug, tags) against the last-saved/loaded snapshot
+  // and updates both the dirty state and its synchronous ref mirror.
+  function applyDirty(nextTitle: string, nextContent: string, nextSlug: string | undefined, nextTags: Tag[]) {
+    const snap = snapshotRef.current;
+    const d = nextTitle !== snap.title || nextContent !== snap.content || nextSlug !== snap.slug
+      || !sameSlugs(sortedSlugs(nextTags), snap.tags);
+    setDirty(d);
+    dirtyRef.current = d;
+  }
+
+  function handleTagsChange(next: Tag[]) {
+    setTags(next);
+    const content = viewRef.current?.state.doc.toString() ?? '';
+    const currentSlug = editing ? snapshotRef.current.slug : (slugOverrideActive ? slugOverride : undefined);
+    applyDirty(title, content, currentSlug, next);
+  }
 
   // Register a navigation guard while this form is mounted so in-app link clicks
   // and the Cancel button ask for confirmation when there are unsaved changes.
@@ -130,10 +158,7 @@ export function NoteEditor({ slug, onSave }: Props) {
       }
     }
     const currentSlug = editing ? snapshotRef.current.slug : (slugOverrideActive ? slugOverride : undefined);
-    const snap = snapshotRef.current;
-    const d = currentTitle !== snap.title || doc !== snap.content || currentSlug !== snap.slug;
-    setDirty(d);
-    dirtyRef.current = d;
+    applyDirty(currentTitle, doc, currentSlug, tags);
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => setPreviewHtml(renderNote(doc)), 300);
   };
@@ -148,8 +173,9 @@ export function NoteEditor({ slug, onSave }: Props) {
         const note = await api.notes.get(slug);
         if (cancelled) return;
         setTitle(note.title);
+        setTags(note.tags);
         versionRef.current = note.version;
-        snapshotRef.current = { title: note.title, content: note.content, slug: note.slug };
+        snapshotRef.current = { title: note.title, content: note.content, slug: note.slug, tags: sortedSlugs(note.tags) };
         titleTouchedRef.current = true; // suppress auto-sync in edit mode
         setPreviewHtml(renderNote(note.content));
       } catch (e) {
@@ -215,20 +241,21 @@ export function NoteEditor({ slug, onSave }: Props) {
     const content = viewRef.current?.state.doc.toString() ?? '';
     setSaving(true);
     try {
+      const tagSlugs = tags.map(t => t.slug);
       if (editing) {
-        const body: UpdateNoteRequest = { title, content };
+        const body: UpdateNoteRequest = { title, content, tags: tagSlugs };
         const ifMatch = versionRef.current !== undefined
           ? `"${versionRef.current}"`
           : undefined;
         const note = await api.notes.update(slug, body, ifMatch);
         versionRef.current = note.version;
-        snapshotRef.current = { title, content, slug: note.slug };
+        snapshotRef.current = { title, content, slug: note.slug, tags: sortedSlugs(tags) };
         dirtyRef.current = false;
         setDirty(false);
         onSave?.();
         navigate(`/notes/${note.slug}`);
       } else {
-        const body: CreateNoteRequest = { title, content };
+        const body: CreateNoteRequest = { title, content, tags: tagSlugs };
         if (slugOverrideActive && slugOverride) body.slug = slugOverride;
         const note = await api.notes.create(body);
         dirtyRef.current = false;
@@ -416,8 +443,7 @@ export function NoteEditor({ slug, onSave }: Props) {
               setTitle(v);
               const c = viewRef.current?.state.doc.toString() ?? '';
               const s = editing ? snapshotRef.current.slug : (slugOverrideActive ? slugOverride : undefined);
-              const d = v !== snapshotRef.current.title || c !== snapshotRef.current.content || s !== snapshotRef.current.slug;
-              setDirty(d); dirtyRef.current = d;
+              applyDirty(v, c, s, tags);
             }}
           />
         </label>
@@ -436,8 +462,7 @@ export function NoteEditor({ slug, onSave }: Props) {
                   const v = (e.target as HTMLInputElement).value;
                   setSlugOverride(v);
                   const c = viewRef.current?.state.doc.toString() ?? '';
-                  const d = title !== snapshotRef.current.title || c !== snapshotRef.current.content || v !== snapshotRef.current.slug;
-                  setDirty(d); dirtyRef.current = d;
+                  applyDirty(title, c, v, tags);
                 }}
               />
             ) : (
@@ -450,14 +475,18 @@ export function NoteEditor({ slug, onSave }: Props) {
                     setSlugOverride(slugPreviewVal);
                     setSlugOverrideActive(true);
                     const c = viewRef.current?.state.doc.toString() ?? '';
-                    const d = title !== snapshotRef.current.title || c !== snapshotRef.current.content || slugPreviewVal !== snapshotRef.current.slug;
-                    setDirty(d); dirtyRef.current = d;
+                    applyDirty(title, c, slugPreviewVal, tags);
                   }}
                 >Override</button>
               </>
             )}
           </div>
         )}
+
+        <div class="meta-tags">
+          <span class="meta-label-text">Tags</span>
+          <TagPicker selected={tags} onChange={handleTagsChange} />
+        </div>
       </div>
 
       {layout !== 'preview' && (

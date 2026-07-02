@@ -90,7 +90,8 @@ func runGDocsImport(ctx context.Context, clientID, clientSecret, dataDir string,
 	defer db.Close()
 
 	noteRepo := repository.NewNoteRepository(db)
-	noteSvc := service.NewNoteService(noteRepo)
+	tagRepo := repository.NewTagRepository(db)
+	noteSvc := service.NewNoteService(noteRepo, tagRepo)
 
 	cfg := gdocs.MakeConfig(clientID, clientSecret)
 	tokenPath := filepath.Join(dataDir, "gdocs-token.json")
@@ -131,10 +132,12 @@ func run(addr string, port int, dataDir, publicURL, basicAuthFile, basicAuthReal
 
 	// --- wiring: repository → service → handler ----------------------------
 	noteRepo := repository.NewNoteRepository(db)
-	noteSvc := service.NewNoteService(noteRepo)
+	tagRepo := repository.NewTagRepository(db)
+	noteSvc := service.NewNoteService(noteRepo, tagRepo)
 	artifactRepo := repository.NewArtifactRepository(db)
 	artifactSvc := service.NewArtifactService(artifactRepo)
-	h := handler.New(noteSvc, artifactSvc)
+	tagSvc := service.NewTagService(tagRepo)
+	h := handler.New(noteSvc, artifactSvc, tagSvc)
 
 	ogenServer, err := api.NewServer(h, api.WithPathPrefix("/api/v1"))
 	if err != nil {

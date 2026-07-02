@@ -69,22 +69,64 @@ func (e errVal) Is(target error) bool { return target == ErrValidation }
 // NoteService is the use-case API for notes.
 type NoteService struct {
 	repo *repository.NoteRepository
+	tags *repository.TagRepository
 }
 
-func NewNoteService(repo *repository.NoteRepository) *NoteService {
-	return &NoteService{repo: repo}
+func NewNoteService(repo *repository.NoteRepository, tags *repository.TagRepository) *NoteService {
+	return &NoteService{repo: repo, tags: tags}
 }
 
 // List returns a page of note summaries and the total matching count. limit and
-// offset are clamped to a sane window.
-func (s *NoteService) List(ctx context.Context, query string, limit, offset int) ([]model.NoteSummary, int, error) {
+// offset are clamped to a sane window. tagSlug, when non-empty, restricts
+// results to notes carrying that tag.
+func (s *NoteService) List(ctx context.Context, query, tagSlug string, limit, offset int) ([]model.NoteSummary, int, error) {
 	if limit <= 0 || limit > 200 {
 		limit = 50
 	}
 	if offset < 0 {
 		offset = 0
 	}
-	return s.repo.List(ctx, query, limit, offset)
+	return s.repo.List(ctx, query, tagSlug, limit, offset)
+}
+
+// resolveTagIDs de-dupes tagSlugs, resolves them to ids in one query, and
+// validates that every slug refers to an existing tag — tags must be created
+// explicitly (POST /tags) before they can be attached to a note, so an
+// unknown slug is a validation error, not a not-found.
+func (s *NoteService) resolveTagIDs(ctx context.Context, tagSlugs []string) ([]int64, error) {
+	dedup := dedupeStrings(tagSlugs)
+	if len(dedup) == 0 {
+		return nil, nil
+	}
+	found, err := s.tags.GetBySlugs(ctx, dedup)
+	if err != nil {
+		return nil, err
+	}
+	bySlug := make(map[string]model.Tag, len(found))
+	for _, t := range found {
+		bySlug[t.Slug] = t
+	}
+	ids := make([]int64, 0, len(dedup))
+	for _, slug := range dedup {
+		t, ok := bySlug[slug]
+		if !ok {
+			return nil, validationError("unknown tag: " + slug)
+		}
+		ids = append(ids, t.ID)
+	}
+	return ids, nil
+}
+
+func dedupeStrings(in []string) []string {
+	seen := make(map[string]bool, len(in))
+	out := make([]string, 0, len(in))
+	for _, s := range in {
+		if !seen[s] {
+			seen[s] = true
+			out = append(out, s)
+		}
+	}
+	return out
 }
 
 // Get returns the full note addressed by slug, or ErrNotFound.
@@ -96,14 +138,16 @@ func (s *NoteService) Get(ctx context.Context, slug string) (model.Note, error) 
 // owns the default, not the OpenAPI schema). slug nil derives a slug from the
 // title and de-conflicts it with a numeric suffix; an explicit slug is used
 // verbatim and a collision is ErrConflict (never suffixed). created_at and
-// updated_at are set to the same instant by the repository.
-func (s *NoteService) Create(ctx context.Context, title string, content, slug *string) (model.Note, error) {
-	return s.createNote(ctx, title, content, slug, time.Time{})
+// updated_at are set to the same instant by the repository. tagSlugs must
+// name existing tags (created via POST /tags) — an unknown slug is a
+// validation error.
+func (s *NoteService) Create(ctx context.Context, title string, content, slug *string, tagSlugs []string) (model.Note, error) {
+	return s.createNote(ctx, title, content, slug, time.Time{}, tagSlugs)
 }
 
 // createNote is the internal implementation shared by Create and the import
 // paths. createdAt zero means "use the current time".
-func (s *NoteService) createNote(ctx context.Context, title string, content, slug *string, createdAt time.Time) (model.Note, error) {
+func (s *NoteService) createNote(ctx context.Context, title string, content, slug *string, createdAt time.Time, tagSlugs []string) (model.Note, error) {
 	title = strings.TrimSpace(title)
 	if err := validateTitle(title); err != nil {
 		return model.Note{}, err
@@ -114,6 +158,11 @@ func (s *NoteService) createNote(ctx context.Context, title string, content, slu
 		body = *content
 	}
 	if err := validateContent(body); err != nil {
+		return model.Note{}, err
+	}
+
+	tagIDs, err := s.resolveTagIDs(ctx, tagSlugs)
+	if err != nil {
 		return model.Note{}, err
 	}
 
@@ -128,7 +177,8 @@ func (s *NoteService) createNote(ctx context.Context, title string, content, slu
 		if err := validateSlug(*slug); err != nil {
 			return model.Note{}, err
 		}
-		return s.repo.CreateWithTime(ctx, *slug, title, body, ts)
+		note, err := s.repo.CreateWithTime(ctx, *slug, title, body, ts, tagIDs)
+		return note, mapTagErr(err)
 	}
 
 	// Auto-generated slug: scan for a free suffix, insert, and on a racy UNIQUE
@@ -139,12 +189,12 @@ func (s *NoteService) createNote(ctx context.Context, title string, content, slu
 		if err != nil {
 			return model.Note{}, err
 		}
-		note, err := s.repo.CreateWithTime(ctx, candidate, title, body, ts)
+		note, err := s.repo.CreateWithTime(ctx, candidate, title, body, ts, tagIDs)
 		if errors.Is(err, ErrConflict) {
 			continue
 		}
 		if err != nil {
-			return model.Note{}, err
+			return model.Note{}, mapTagErr(err)
 		}
 		return note, nil
 	}
@@ -152,15 +202,28 @@ func (s *NoteService) createNote(ctx context.Context, title string, content, slu
 	return model.Note{}, errors.New("could not allocate a unique slug")
 }
 
+// mapTagErr translates the rare repository.ErrUnknownTag race (a tag deleted
+// between resolveTagIDs and the write transaction) into a validation error,
+// so it surfaces as 400 rather than an unmapped 500.
+func mapTagErr(err error) error {
+	if errors.Is(err, repository.ErrUnknownTag) {
+		return validationError("a tag was deleted before the note could be saved; please retry")
+	}
+	return err
+}
+
 // Update applies a partial (PATCH) update. nil fields are absent and left
 // unchanged. All-fields-absent is rejected. Each present field is validated,
-// then diffed against the stored note (title post-TrimSpace, content verbatim);
-// if nothing differs no SQL UPDATE runs and the unchanged note is returned.
-// Otherwise only the changed columns are written and updated_at is bumped.
-// ifMatch, when non-nil, is compared against the stored version; a mismatch
-// returns ErrVersionMismatch (optimistic locking).
-func (s *NoteService) Update(ctx context.Context, slug string, title, content *string, ifMatch *string) (model.Note, error) {
-	if title == nil && content == nil {
+// then diffed against the stored note (title post-TrimSpace, content verbatim,
+// tags as a resolved id set); if nothing differs no SQL UPDATE runs and the
+// unchanged note is returned. Otherwise only the changed columns are written
+// and updated_at is bumped. tags nil leaves the note's tags unchanged; a
+// non-nil (possibly empty) slice of tag slugs replaces the full set — an
+// unknown slug is a validation error. ifMatch, when non-nil, is compared
+// against the stored version; a mismatch returns ErrVersionMismatch
+// (optimistic locking).
+func (s *NoteService) Update(ctx context.Context, slug string, title, content *string, tags *[]string, ifMatch *string) (model.Note, error) {
+	if title == nil && content == nil && tags == nil {
 		return model.Note{}, validationError("no fields to update")
 	}
 
@@ -175,6 +238,15 @@ func (s *NoteService) Update(ctx context.Context, slug string, title, content *s
 		if err := validateContent(*content); err != nil {
 			return model.Note{}, err
 		}
+	}
+
+	var tagIDs []int64
+	if tags != nil {
+		ids, err := s.resolveTagIDs(ctx, *tags)
+		if err != nil {
+			return model.Note{}, err
+		}
+		tagIDs = ids
 	}
 
 	existing, err := s.repo.GetBySlug(ctx, slug)
@@ -198,13 +270,36 @@ func (s *NoteService) Update(ctx context.Context, slug string, title, content *s
 	if content != nil && *content != existing.Content {
 		changedContent = content
 	}
+	var changedTagIDs *[]int64
+	if tags != nil && !sameTagSet(tagIDs, existing.Tags) {
+		changedTagIDs = &tagIDs
+	}
 
 	// No-op: nothing differs, so issue no UPDATE and return the note untouched.
-	if changedTitle == nil && changedContent == nil {
+	if changedTitle == nil && changedContent == nil && changedTagIDs == nil {
 		return existing, nil
 	}
 
-	return s.repo.Update(ctx, slug, changedTitle, changedContent, nil)
+	note, err := s.repo.Update(ctx, slug, changedTitle, changedContent, nil, changedTagIDs)
+	return note, mapTagErr(err)
+}
+
+// sameTagSet reports whether ids (already de-duped, from resolveTagIDs) names
+// the same set of tags as existing, order-independent.
+func sameTagSet(ids []int64, existing []model.Tag) bool {
+	if len(ids) != len(existing) {
+		return false
+	}
+	have := make(map[int64]bool, len(existing))
+	for _, t := range existing {
+		have[t.ID] = true
+	}
+	for _, id := range ids {
+		if !have[id] {
+			return false
+		}
+	}
+	return true
 }
 
 // Delete removes the note addressed by slug, or returns ErrNotFound.
@@ -234,7 +329,7 @@ func (s *NoteService) ImportHTML(ctx context.Context, htmlContent string) (model
 	}
 
 	content := result.Content
-	return s.Create(ctx, title, &content, nil)
+	return s.Create(ctx, title, &content, nil, nil)
 }
 
 // ImportMarkdown stores Markdown content directly as a note. Title priority:
@@ -259,7 +354,7 @@ func (s *NoteService) ImportMarkdown(ctx context.Context, markdownContent string
 		slugPtr = &fm.Slug
 	}
 
-	return s.createNote(ctx, title, &content, slugPtr, fm.Date)
+	return s.createNote(ctx, title, &content, slugPtr, fm.Date, nil)
 }
 
 // firstATXHeading scans Markdown content for the first ATX heading line,

@@ -5,7 +5,7 @@
 import { base } from './basepath.js';
 
 export type Route =
-  | { type: 'list' }
+  | { type: 'list'; tag?: string }
   | { type: 'new' }
   | { type: 'view'; slug: string }
   | { type: 'edit'; slug: string };
@@ -16,18 +16,19 @@ function stripBase(pathname: string): string {
   return pathname.startsWith(base) ? pathname.slice(base.length) || '/' : pathname;
 }
 
-function parseRoute(pathname: string): Route {
+function parseRoute(pathname: string, search: string): Route {
   const parts = stripBase(pathname).split('/').filter(Boolean);
   if (parts[0] === 'new') return { type: 'new' };
   if (parts[0] === 'notes' && parts[1]) {
     if (parts[2] === 'edit') return { type: 'edit', slug: parts[1] };
     return { type: 'view', slug: parts[1] };
   }
-  return { type: 'list' };
+  const tag = new URLSearchParams(search).get('tag');
+  return tag ? { type: 'list', tag } : { type: 'list' };
 }
 
 export function currentRoute(): Route {
-  return parseRoute(window.location.pathname);
+  return parseRoute(window.location.pathname, window.location.search);
 }
 
 // A navigation guard returns true to allow the navigation, false to block it.

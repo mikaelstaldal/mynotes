@@ -13,6 +13,9 @@ export type NoteList = components['schemas']['NoteList'];
 export type CreateNoteRequest = components['schemas']['CreateNoteRequest'];
 export type UpdateNoteRequest = components['schemas']['UpdateNoteRequest'];
 export type Artifact = components['schemas']['Artifact'];
+export type Tag = components['schemas']['Tag'];
+export type TagList = components['schemas']['TagList'];
+export type CreateTagRequest = components['schemas']['CreateTagRequest'];
 
 const BASE = base + '/api/v1';
 
@@ -111,9 +114,10 @@ async function request<T>(
 
 export const api = {
   notes: {
-    list: (opts: { q?: string; limit?: number; offset?: number } = {}) => {
+    list: (opts: { q?: string; tag?: string; limit?: number; offset?: number } = {}) => {
       const p = new URLSearchParams();
       if (opts.q) p.set('q', opts.q);
+      if (opts.tag) p.set('tag', opts.tag);
       if (opts.limit != null) p.set('limit', String(opts.limit));
       if (opts.offset != null) p.set('offset', String(opts.offset));
       const qs = p.toString();
@@ -143,5 +147,16 @@ export const api = {
   artifacts: {
     create: (file: File): Promise<Artifact> =>
       requestBinary<Artifact>('POST', '/artifacts', file, file.type),
+  },
+
+  tags: {
+    list: (): Promise<TagList> =>
+      request<TagList>('GET', '/tags'),
+
+    create: (body: CreateTagRequest): Promise<Tag> =>
+      request<Tag>('POST', '/tags', body),
+
+    delete: (slug: string): Promise<void> =>
+      request<void>('DELETE', `/tags/${slug}`),
   },
 };

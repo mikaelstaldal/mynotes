@@ -104,6 +104,13 @@ export function NoteView({ slug, onDelete }: Props) {
             <time dateTime={note.updated_at}>updated {formatDateTime(note.updated_at)}</time>
             {' · v'}{note.version}
           </span>
+          {note.tags.length > 0 && (
+            <div class="tag-chips">
+              {note.tags.map(t => (
+                <a key={t.slug} class="tag-chip" href={`${base}/?tag=${t.slug}`}>{t.name}</a>
+              ))}
+            </div>
+          )}
         </div>
         <div class="toolbar">
           <a class="btn-icon" href={`${base}/api/v1/notes/${note.slug}/download-markdown`} title="Download Markdown" aria-label="Download Markdown">⬇</a>

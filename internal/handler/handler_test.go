@@ -28,9 +28,11 @@ func newServer(t *testing.T) *httptest.Server {
 	db.SetMaxOpenConns(1)
 	require.NoError(t, repository.InitSchema(db))
 
+	tagRepo := repository.NewTagRepository(db)
 	h := handler.New(
-		service.NewNoteService(repository.NewNoteRepository(db)),
+		service.NewNoteService(repository.NewNoteRepository(db), tagRepo),
 		service.NewArtifactService(repository.NewArtifactRepository(db)),
+		service.NewTagService(tagRepo),
 	)
 	ogenServer, err := api.NewServer(h, api.WithPathPrefix("/api/v1"))
 	require.NoError(t, err)
@@ -53,6 +55,30 @@ func createNote(t *testing.T, srv *httptest.Server, body string) api.Note {
 	var created api.Note
 	require.NoError(t, json.NewDecoder(res.Body).Decode(&created))
 	return created
+}
+
+// createTag POSTs a tag and returns the decoded response, asserting 201.
+func createTag(t *testing.T, srv *httptest.Server, body string) api.Tag {
+	t.Helper()
+	res, err := http.Post(srv.URL+"/api/v1/tags", "application/json", strings.NewReader(body))
+	require.NoError(t, err)
+	defer res.Body.Close()
+	require.Equal(t, http.StatusCreated, res.StatusCode)
+	var created api.Tag
+	require.NoError(t, json.NewDecoder(res.Body).Decode(&created))
+	return created
+}
+
+// patchNote sends a PATCH to /notes/{slug} and returns the raw response.
+func patchNote(t *testing.T, srv *httptest.Server, slug, body string) *http.Response {
+	t.Helper()
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodPatch,
+		srv.URL+"/api/v1/notes/"+slug, strings.NewReader(body))
+	require.NoError(t, err)
+	req.Header.Set("Content-Type", "application/json")
+	res, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	return res
 }
 
 func TestCreateAndGetNote(t *testing.T) {
@@ -430,4 +456,205 @@ func TestImportMarkdownNoTitleRejected(t *testing.T) {
 	}
 	require.NoError(t, json.NewDecoder(res.Body).Decode(&errBody))
 	assert.NotEmpty(t, errBody.Error)
+}
+
+// --- Tags --------------------------------------------------------------
+
+func TestCreateAndListTags(t *testing.T) {
+	srv := newServer(t)
+
+	created := createTag(t, srv, `{"name":"Work"}`)
+	assert.Equal(t, "Work", created.Name)
+	assert.Equal(t, "work", created.Slug, "slug derived from name")
+
+	res, err := http.Get(srv.URL + "/api/v1/tags")
+	require.NoError(t, err)
+	defer res.Body.Close()
+	require.Equal(t, http.StatusOK, res.StatusCode)
+
+	var list api.TagList
+	require.NoError(t, json.NewDecoder(res.Body).Decode(&list))
+	require.Len(t, list.Tags, 1)
+	assert.Equal(t, "work", list.Tags[0].Slug)
+}
+
+func TestCreateTagAutoSlugCollisionSuffixes(t *testing.T) {
+	srv := newServer(t)
+
+	first := createTag(t, srv, `{"name":"Home"}`)
+	assert.Equal(t, "home", first.Slug)
+
+	second := createTag(t, srv, `{"name":"Home"}`)
+	assert.Equal(t, "home-2", second.Slug, "auto slug de-conflicts with a numeric suffix")
+}
+
+func TestCreateTagExplicitSlugConflictIs409(t *testing.T) {
+	srv := newServer(t)
+	createTag(t, srv, `{"name":"First","slug":"shared"}`)
+
+	res, err := http.Post(srv.URL+"/api/v1/tags", "application/json",
+		strings.NewReader(`{"name":"Second","slug":"shared"}`))
+	require.NoError(t, err)
+	defer res.Body.Close()
+	assert.Equal(t, http.StatusConflict, res.StatusCode, "explicit slug collision is 409, never suffixed")
+}
+
+func TestCreateTagValidationError(t *testing.T) {
+	srv := newServer(t)
+	res, err := http.Post(srv.URL+"/api/v1/tags", "application/json",
+		strings.NewReader(`{"name":"   "}`))
+	require.NoError(t, err)
+	defer res.Body.Close()
+	assert.Equal(t, http.StatusBadRequest, res.StatusCode)
+}
+
+func TestDeleteTag(t *testing.T) {
+	srv := newServer(t)
+	tag := createTag(t, srv, `{"name":"Temp"}`)
+
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodDelete,
+		srv.URL+"/api/v1/tags/"+tag.Slug, nil)
+	require.NoError(t, err)
+	res, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer res.Body.Close()
+	assert.Equal(t, http.StatusNoContent, res.StatusCode)
+
+	res2, err := http.Get(srv.URL + "/api/v1/tags")
+	require.NoError(t, err)
+	defer res2.Body.Close()
+	var list api.TagList
+	require.NoError(t, json.NewDecoder(res2.Body).Decode(&list))
+	assert.Empty(t, list.Tags)
+}
+
+func TestDeleteUnknownTagReturns404(t *testing.T) {
+	srv := newServer(t)
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodDelete,
+		srv.URL+"/api/v1/tags/never-existed", nil)
+	require.NoError(t, err)
+	res, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer res.Body.Close()
+	assert.Equal(t, http.StatusNotFound, res.StatusCode)
+}
+
+func TestCreateNoteWithTags(t *testing.T) {
+	srv := newServer(t)
+	work := createTag(t, srv, `{"name":"Work"}`)
+	urgent := createTag(t, srv, `{"name":"Urgent"}`)
+
+	created := createNote(t, srv, `{"title":"Report","tags":["`+work.Slug+`","`+urgent.Slug+`"]}`)
+	require.Len(t, created.Tags, 2)
+	slugs := []string{created.Tags[0].Slug, created.Tags[1].Slug}
+	assert.ElementsMatch(t, []string{"work", "urgent"}, slugs)
+}
+
+func TestCreateNoteWithoutTagsHasEmptyTagsArray(t *testing.T) {
+	srv := newServer(t)
+	created := createNote(t, srv, `{"title":"No tags"}`)
+	assert.NotNil(t, created.Tags)
+	assert.Empty(t, created.Tags)
+}
+
+func TestCreateNoteUnknownTagRejected(t *testing.T) {
+	srv := newServer(t)
+	res, err := http.Post(srv.URL+"/api/v1/notes", "application/json",
+		strings.NewReader(`{"title":"Bad","tags":["does-not-exist"]}`))
+	require.NoError(t, err)
+	defer res.Body.Close()
+	assert.Equal(t, http.StatusBadRequest, res.StatusCode)
+}
+
+func TestUpdateNoteTagsAbsentLeavesUnchanged(t *testing.T) {
+	srv := newServer(t)
+	tag := createTag(t, srv, `{"name":"Work"}`)
+	created := createNote(t, srv, `{"title":"Note","tags":["`+tag.Slug+`"]}`)
+
+	res := patchNote(t, srv, created.Slug, `{"title":"Renamed"}`)
+	defer res.Body.Close()
+	require.Equal(t, http.StatusOK, res.StatusCode)
+	var updated api.Note
+	require.NoError(t, json.NewDecoder(res.Body).Decode(&updated))
+	require.Len(t, updated.Tags, 1, "tags left unchanged when the field is absent from the PATCH")
+	assert.Equal(t, "work", updated.Tags[0].Slug)
+}
+
+func TestUpdateNoteTagsEmptyArrayClears(t *testing.T) {
+	srv := newServer(t)
+	tag := createTag(t, srv, `{"name":"Work"}`)
+	created := createNote(t, srv, `{"title":"Note","tags":["`+tag.Slug+`"]}`)
+
+	res := patchNote(t, srv, created.Slug, `{"tags":[]}`)
+	defer res.Body.Close()
+	require.Equal(t, http.StatusOK, res.StatusCode)
+	var updated api.Note
+	require.NoError(t, json.NewDecoder(res.Body).Decode(&updated))
+	assert.Empty(t, updated.Tags, "an explicit empty tags array clears the note's tags")
+}
+
+func TestUpdateNoteSameTagSetIsNoOp(t *testing.T) {
+	srv := newServer(t)
+	tag := createTag(t, srv, `{"name":"Work"}`)
+	created := createNote(t, srv, `{"title":"Note","tags":["`+tag.Slug+`"]}`)
+	require.Equal(t, 1, created.Version)
+
+	res := patchNote(t, srv, created.Slug, `{"tags":["`+tag.Slug+`"]}`)
+	defer res.Body.Close()
+	require.Equal(t, http.StatusOK, res.StatusCode)
+	var updated api.Note
+	require.NoError(t, json.NewDecoder(res.Body).Decode(&updated))
+	assert.Equal(t, 1, updated.Version, "replacing with an identical tag set must not bump version")
+}
+
+func TestUpdateNoteUnknownTagRejected(t *testing.T) {
+	srv := newServer(t)
+	created := createNote(t, srv, `{"title":"Note"}`)
+
+	res := patchNote(t, srv, created.Slug, `{"tags":["does-not-exist"]}`)
+	defer res.Body.Close()
+	assert.Equal(t, http.StatusBadRequest, res.StatusCode)
+}
+
+func TestListNotesFilteredByTag(t *testing.T) {
+	srv := newServer(t)
+	work := createTag(t, srv, `{"name":"Work"}`)
+	home := createTag(t, srv, `{"name":"Home"}`)
+
+	createNote(t, srv, `{"title":"Report","tags":["`+work.Slug+`"]}`)
+	createNote(t, srv, `{"title":"Chores","tags":["`+home.Slug+`"]}`)
+	createNote(t, srv, `{"title":"Both","tags":["`+work.Slug+`","`+home.Slug+`"]}`)
+
+	res, err := http.Get(srv.URL + "/api/v1/notes?tag=" + work.Slug)
+	require.NoError(t, err)
+	defer res.Body.Close()
+	require.Equal(t, http.StatusOK, res.StatusCode)
+
+	var list api.NoteList
+	require.NoError(t, json.NewDecoder(res.Body).Decode(&list))
+	assert.Equal(t, 2, list.Total)
+	titles := []string{list.Notes[0].Title, list.Notes[1].Title}
+	assert.ElementsMatch(t, []string{"Report", "Both"}, titles)
+}
+
+func TestDeleteTagDetachesFromNotes(t *testing.T) {
+	srv := newServer(t)
+	tag := createTag(t, srv, `{"name":"Work"}`)
+	created := createNote(t, srv, `{"title":"Note","tags":["`+tag.Slug+`"]}`)
+	require.Len(t, created.Tags, 1)
+
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodDelete,
+		srv.URL+"/api/v1/tags/"+tag.Slug, nil)
+	require.NoError(t, err)
+	del, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer del.Body.Close()
+	require.Equal(t, http.StatusNoContent, del.StatusCode)
+
+	res, err := http.Get(srv.URL + "/api/v1/notes/" + created.Slug)
+	require.NoError(t, err)
+	defer res.Body.Close()
+	var got api.Note
+	require.NoError(t, json.NewDecoder(res.Body).Decode(&got))
+	assert.Empty(t, got.Tags, "deleting a tag detaches it from every note that had it")
 }

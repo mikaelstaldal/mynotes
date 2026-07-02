@@ -27,7 +27,12 @@ function App() {
       <div class="app-body">
         <aside class="sidebar">
           <a class="brand sidebar-brand" href="/">MyNotes</a>
-          <NoteList activeSlug={activeSlug} listKey={listKey} onMutate={refreshList} />
+          <NoteList
+            activeSlug={activeSlug}
+            activeTag={route.type === 'list' ? route.tag : undefined}
+            listKey={listKey}
+            onMutate={refreshList}
+          />
         </aside>
         <main>
           {route.type === 'list' && <p class="muted select-prompt">Select a note or create a new one.</p>}

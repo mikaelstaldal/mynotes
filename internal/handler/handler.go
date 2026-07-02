@@ -21,13 +21,26 @@ import (
 type Handler struct {
 	notes     *service.NoteService
 	artifacts *service.ArtifactService
+	tags      *service.TagService
 }
 
-func New(notes *service.NoteService, artifacts *service.ArtifactService) *Handler {
-	return &Handler{notes: notes, artifacts: artifacts}
+func New(notes *service.NoteService, artifacts *service.ArtifactService, tags *service.TagService) *Handler {
+	return &Handler{notes: notes, artifacts: artifacts, tags: tags}
 }
 
 var _ api.Handler = (*Handler)(nil)
+
+func toAPITag(t model.Tag) api.Tag {
+	return api.Tag{Slug: t.Slug, Name: t.Name}
+}
+
+func toAPITags(tags []model.Tag) []api.Tag {
+	out := make([]api.Tag, len(tags))
+	for i, t := range tags {
+		out[i] = toAPITag(t)
+	}
+	return out
+}
 
 func toAPI(n model.Note) api.Note {
 	return api.Note{
@@ -37,6 +50,7 @@ func toAPI(n model.Note) api.Note {
 		CreatedAt: n.CreatedAt,
 		UpdatedAt: n.UpdatedAt,
 		Version:   n.Version,
+		Tags:      toAPITags(n.Tags),
 	}
 }
 
@@ -48,6 +62,7 @@ func toAPISummary(n model.NoteSummary) api.NoteSummary {
 		CreatedAt: n.CreatedAt,
 		UpdatedAt: n.UpdatedAt,
 		Version:   n.Version,
+		Tags:      toAPITags(n.Tags),
 	}
 }
 
@@ -63,7 +78,7 @@ func optPtr(o api.OptString) *string {
 }
 
 func (h *Handler) ListNotes(ctx context.Context, params api.ListNotesParams) (*api.NoteList, error) {
-	notes, total, err := h.notes.List(ctx, params.Q.Or(""), params.Limit.Or(50), params.Offset.Or(0))
+	notes, total, err := h.notes.List(ctx, params.Q.Or(""), params.Tag.Or(""), params.Limit.Or(50), params.Offset.Or(0))
 	if err != nil {
 		return nil, err
 	}
@@ -83,7 +98,7 @@ func (h *Handler) GetNote(ctx context.Context, params api.GetNoteParams) (*api.N
 }
 
 func (h *Handler) CreateNote(ctx context.Context, req *api.CreateNoteRequest) (*api.Note, error) {
-	n, err := h.notes.Create(ctx, req.Title, optPtr(req.Content), optPtr(req.Slug))
+	n, err := h.notes.Create(ctx, req.Title, optPtr(req.Content), optPtr(req.Slug), req.Tags)
 	if err != nil {
 		return nil, err
 	}
@@ -91,12 +106,23 @@ func (h *Handler) CreateNote(ctx context.Context, req *api.CreateNoteRequest) (*
 	return &out, nil
 }
 
+// optTagsPtr converts ogen's bare []string tags field to a *[]string: nil
+// when the JSON key was absent (leave unchanged), a pointer to the slice
+// (possibly empty) when present — see UpdateNoteRequest.Decode, which only
+// assigns Tags when the "tags" key appears in the request body.
+func optTagsPtr(tags []string) *[]string {
+	if tags == nil {
+		return nil
+	}
+	return &tags
+}
+
 func (h *Handler) UpdateNote(ctx context.Context, req *api.UpdateNoteRequest, params api.UpdateNoteParams) (api.UpdateNoteRes, error) {
 	var ifMatch *string
 	if v, ok := params.IfMatch.Get(); ok {
 		ifMatch = &v
 	}
-	n, err := h.notes.Update(ctx, params.Slug, optPtr(req.Title), optPtr(req.Content), ifMatch)
+	n, err := h.notes.Update(ctx, params.Slug, optPtr(req.Title), optPtr(req.Content), optTagsPtr(req.Tags), ifMatch)
 	if errors.Is(err, service.ErrVersionMismatch) {
 		return &api.Error{Error: err.Error()}, nil
 	}
@@ -108,6 +134,27 @@ func (h *Handler) UpdateNote(ctx context.Context, req *api.UpdateNoteRequest, pa
 
 func (h *Handler) DeleteNote(ctx context.Context, params api.DeleteNoteParams) error {
 	return h.notes.Delete(ctx, params.Slug)
+}
+
+func (h *Handler) ListTags(ctx context.Context) (*api.TagList, error) {
+	tags, err := h.tags.List(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return &api.TagList{Tags: toAPITags(tags)}, nil
+}
+
+func (h *Handler) CreateTag(ctx context.Context, req *api.CreateTagRequest) (*api.Tag, error) {
+	t, err := h.tags.Create(ctx, req.Name, optPtr(req.Slug))
+	if err != nil {
+		return nil, err
+	}
+	out := toAPITag(t)
+	return &out, nil
+}
+
+func (h *Handler) DeleteTag(ctx context.Context, params api.DeleteTagParams) error {
+	return h.tags.Delete(ctx, params.Slug)
 }
 
 func (h *Handler) ImportNote(ctx context.Context, req api.ImportNoteReq) (*api.Note, error) {

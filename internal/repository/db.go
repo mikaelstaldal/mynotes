@@ -14,6 +14,7 @@ var migrations = [][]string{
 	schemaV1,
 	schemaV2,
 	schemaV3,
+	schemaV4,
 }
 
 // OpenDB opens (creating if absent) the SQLite database at path, applies the
@@ -33,6 +34,26 @@ func InitSchema(db *sql.DB) error {
 // CreateDataDir ensures the directory holding the database file exists.
 func CreateDataDir(dbPath string) error {
 	return sqlite.CreateDataDir(dbPath)
+}
+
+var schemaV4 = []string{
+	`CREATE TABLE IF NOT EXISTS tags (
+		id         INTEGER PRIMARY KEY AUTOINCREMENT,
+		slug       TEXT NOT NULL UNIQUE,
+		name       TEXT NOT NULL,
+		created_at TEXT NOT NULL
+	)`,
+
+	`CREATE TABLE IF NOT EXISTS note_tags (
+		note_id INTEGER NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
+		tag_id  INTEGER NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
+		PRIMARY KEY (note_id, tag_id)
+	)`,
+
+	// The composite PK (note_id, tag_id) already indexes the "tags of note N"
+	// direction (note_id is the leading column). "notes with tag N" needs its
+	// own index since tag_id is not a PK prefix.
+	`CREATE INDEX IF NOT EXISTS idx_note_tags_tag_id ON note_tags(tag_id)`,
 }
 
 var schemaV3 = []string{

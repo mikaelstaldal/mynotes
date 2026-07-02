@@ -21,7 +21,7 @@ built. Implementation choices live in `ARCHITECTURE.md`; the build plan lives in
 
 - Real-time collaboration / concurrent multi-user editing (beyond simple optimistic locking).
 - Version history / revisions (beyond version number).
-- Folders, tags, or hierarchical organization.
+- Folders or hierarchical organization (tags are supported — see below).
 - Any public publishing workflow beyond the stable URL existing.
 
 ## Domain — a Note
@@ -92,29 +92,62 @@ Artifacts are stored as BLOBs in the same SQLite database as notes, in a separat
 
 The "embed image" toolbar button in the note editor uploads the selected file as an artifact and inserts a standard Markdown image reference `![alt](/api/v1/artifacts/{sha256})` at the cursor. SVG and MathML files continue to be embedded inline as before. There is no hard file-size limit on upload (the global 10 MiB request body cap applies).
 
+## Tags
+
+Notes may be categorized with tags in a many-to-many relationship: a note can
+carry any number of tags, and a tag can be attached to any number of notes.
+
+A tag has a **name** (1–100 characters) and a unique, URL-safe **slug**
+(same character rules as note slugs: lowercase ASCII letters, digits, and
+hyphens, 1–100 characters).
+
+- **Tags are created explicitly**, via their own API call, before they can be
+  attached to a note — a note write never silently creates a new tag.
+  Referencing an unknown tag slug on a note create/update is a validation
+  error (400).
+- If the client does not supply a slug when creating a tag, one is derived
+  from the name using the same rules as note slug derivation, auto-suffixed
+  on collision. An explicit slug that collides with an existing tag is an
+  error (409), never silently suffixed.
+- Deleting a tag detaches it from every note that had it; there is no
+  orphan-prevention (mirrors artifact deletion).
+- Notes reference tags by slug in create/update requests; `Note` and
+  `NoteSummary` API responses embed the full tag (slug + name) so the client
+  does not need extra round-trips to display them.
+- Notes can be listed filtered to a single tag (by slug), combinable with a
+  full-text search query.
+
 ## REST behavior (user-observable)
 
 The API manages notes keyed by slug. Operations:
 
-- **List/search notes** — optional query `q`, plus paging (`limit`, `offset`).
-  Returns a page of summaries (slug, title, updated time, excerpt) and the total
-  match count.
+- **List/search notes** — optional query `q`, an optional `tag` filter (by
+  tag slug, combinable with `q`), plus paging (`limit`, `offset`).
+  Returns a page of summaries (slug, title, updated time, excerpt, tags) and
+  the total match count.
   - Absent, empty, or whitespace-only `q` = browse (no filter), ordered most
     recently updated first.
   - Present `q` = full-text search over title and body, ordered by relevance,
     with a match-centred excerpt that highlights matched terms. A match found
     only in the title falls back to a plain content prefix excerpt.
+  - Present `tag` restricts results to notes carrying that tag; an unknown
+    tag slug simply matches no notes (not an error).
   - `total` reflects all matching rows, independent of the page window. Paging
     past the end returns an empty page, not an error.
 - **Create a note** — title (required), content (optional, defaults empty), slug
-  (optional, auto-generated if absent). Returns the full created note.
-- **Fetch a note** by slug — returns the full note (Markdown content), plus a
-  `version` integer and an `ETag` response header quoting the version (e.g.
-  `"1"`).
-- **Update a note** (partial) — any of title, content; absent fields are
+  (optional, auto-generated if absent), tags (optional array of existing tag
+  slugs, defaults to none — an unknown slug is a validation error). Returns
+  the full created note.
+- **Fetch a note** by slug — returns the full note (Markdown content, tags),
+  plus a `version` integer and an `ETag` response header quoting the version
+  (e.g. `"1"`).
+- **Update a note** (partial) — any of title, content, tags; absent fields are
   left unchanged. Returns the full updated note. An update that changes nothing
-  does not bump the updated timestamp or version; an update with no recognized
-  fields is an error. Supports optimistic locking via the `If-Match` request
+  does not bump the updated timestamp or version — this includes replacing
+  `tags` with the same set the note already has. A present `tags` array
+  (including an empty one) replaces the note's full tag set; an unknown slug
+  is a validation error. An update with no recognized fields is an error.
+  Supports optimistic locking via the `If-Match` request
   header: if provided, the update is rejected with 412 Precondition Failed when
   the note's current version does not match. The response includes the new
   `version` and `ETag`.
@@ -148,15 +181,20 @@ found; 409 conflict on an explicit slug; 412 version mismatch on update.
 a right main panel shows the selected note or editor. URLs are real paths
 (bookmarkable), not hash routes.
 
-Routes: no-note-selected (`/`), new-note editor (`/new`), read view of a note
+Routes: no-note-selected (`/`, optionally tag-filtered via `?tag={slug}`),
+new-note editor (`/new`), read view of a note
 (`/notes/{slug}`), and existing-note editor (`/notes/{slug}/edit`).
 
 - **Sidebar (always visible):** debounced search box, results showing title,
-  updated time, and excerpt with highlights when searching. Empty and loading
-  states. A "Load more" button pages through results (accumulating and
-  de-duplicating rows by slug); resets on query change. Shows the total count.
-  "New note" and "Upload note" actions. The currently open note is
-  highlighted in the list.
+  updated time, excerpt with highlights when searching, and tags. A tag
+  filter dropdown lists every tag that exists (not just tags visible in the
+  currently loaded notes), so a tag can be selected to filter even when no
+  matching note is currently on screen; selecting "All tags" clears the
+  filter. Empty and
+  loading states. A "Load more" button pages through results (accumulating and
+  de-duplicating rows by slug); resets on query or tag-filter change. Shows
+  the total count. "New note" and "Upload note" actions. The currently open
+  note is highlighted in the list.
 - **Upload Markdown or HTML:** pick a single `.md`/`.markdown`/text or
   `.html`/`.htm` file. For Markdown files, the title is derived client-side (first
   heading, else filename without extension, else "Untitled") and the note is created
@@ -165,12 +203,16 @@ Routes: no-note-selected (`/`), new-note editor (`/new`), read view of a note
   rejected before/from the server with a clear message.
 - **Read view (main panel):** renders the note's Markdown safely into a styled
   container. The stored title is used as the browser tab title (not duplicated as
-  a body heading). "Edit", "Delete", "Download Markdown", and "Download HTML"
-  actions. A 404 (or a
+  a body heading). The note's tags are shown as chips; clicking one filters the
+  sidebar list to that tag. "Edit", "Delete", "Download Markdown", and "Download
+  HTML" actions. A 404 (or a
   malformed-slug deep link) shows a not-found message.
 - **Editor (main panel, new/edit):** title input (with auto-derive-from-heading
   until edited); slug field (suggested for new notes, editable-with-warning when
-  editing); a Markdown source editor with a live local preview; a "Link to note"
+  editing); a tag picker (autocomplete over existing tags, plus an explicit
+  "create tag" action for a name with no match — nudging toward reusing
+  existing tags over creating near-duplicates); a Markdown source editor with a
+  live local preview; a "Link to note"
   picker that searches notes and inserts a Markdown link to the chosen note's
   stable URL; Save and Cancel.
   - Cancel returns to the note's read view (when editing) or the list (when new),

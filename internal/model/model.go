@@ -7,7 +7,8 @@ import "time"
 
 // Note is the single domain entity. Content is verbatim Markdown source. ID is
 // the internal SQLite primary key; the API addresses notes by Slug and never
-// exposes ID.
+// exposes ID. Tags is populated by the repository (batched, never lazy-loaded
+// per row) and is []Tag{} rather than nil when the note has no tags.
 type Note struct {
 	ID        int64
 	Slug      string
@@ -16,12 +17,13 @@ type Note struct {
 	CreatedAt time.Time
 	UpdatedAt time.Time
 	Version   int
+	Tags      []Tag
 }
 
 // NoteSummary is the list/search projection of a note: the addressable Slug, the
 // display Title and UpdatedAt, plus a repository-built Excerpt (a plain prefix
 // when browsing, an FTS snippet when searching). Excerpt is "" when empty, never
-// absent.
+// absent. Tags mirrors Note.Tags (never nil).
 type NoteSummary struct {
 	Slug      string
 	Title     string
@@ -29,6 +31,16 @@ type NoteSummary struct {
 	CreatedAt time.Time
 	UpdatedAt time.Time
 	Version   int
+	Tags      []Tag
+}
+
+// Tag is a label attachable to notes many-to-many. Slug is the addressable,
+// unique key; Name is the display label.
+type Tag struct {
+	ID        int64
+	Slug      string
+	Name      string
+	CreatedAt time.Time
 }
 
 // Artifact is a binary blob stored content-addressed by SHA-256. SHA256 is the

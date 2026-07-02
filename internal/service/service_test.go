@@ -23,7 +23,21 @@ func newTestService(t *testing.T) *NoteService {
 	db.SetMaxOpenConns(1) // keep the shared in-memory DB alive for the whole test
 	require.NoError(t, repository.InitSchema(db))
 	t.Cleanup(func() { _ = db.Close() })
-	return NewNoteService(repository.NewNoteRepository(db))
+	return NewNoteService(repository.NewNoteRepository(db), repository.NewTagRepository(db))
+}
+
+// newTestServiceWithTags is like newTestService but also returns the
+// TagRepository backing the same DB, for tests that need to pre-create tags
+// (which happens through TagService/handler in production, not NoteService).
+func newTestServiceWithTags(t *testing.T) (*NoteService, *repository.TagRepository) {
+	t.Helper()
+	db, err := sql.Open("sqlite", "file::memory:?cache=shared&_pragma=foreign_keys(on)")
+	require.NoError(t, err)
+	db.SetMaxOpenConns(1)
+	require.NoError(t, repository.InitSchema(db))
+	t.Cleanup(func() { _ = db.Close() })
+	tagRepo := repository.NewTagRepository(db)
+	return NewNoteService(repository.NewNoteRepository(db), tagRepo), tagRepo
 }
 
 func ptr(s string) *string { return &s }
@@ -89,15 +103,15 @@ func TestCreate_AutoSlugCollisionSuffixes(t *testing.T) {
 	ctx := context.Background()
 	svc := newTestService(t)
 
-	first, err := svc.Create(ctx, "Hello World", nil, nil)
+	first, err := svc.Create(ctx, "Hello World", nil, nil, nil)
 	require.NoError(t, err)
 	assert.Equal(t, "hello-world", first.Slug)
 
-	second, err := svc.Create(ctx, "Hello World", nil, nil)
+	second, err := svc.Create(ctx, "Hello World", nil, nil, nil)
 	require.NoError(t, err)
 	assert.Equal(t, "hello-world-2", second.Slug)
 
-	third, err := svc.Create(ctx, "Hello World", nil, nil)
+	third, err := svc.Create(ctx, "Hello World", nil, nil, nil)
 	require.NoError(t, err)
 	assert.Equal(t, "hello-world-3", third.Slug)
 }
@@ -108,11 +122,11 @@ func TestCreate_EmptyTitleSlugFallbackCollides(t *testing.T) {
 
 	// Titles that yield no slug-safe characters fall back to "note" and then
 	// de-conflict like any other auto slug.
-	a, err := svc.Create(ctx, "日本語", nil, nil)
+	a, err := svc.Create(ctx, "日本語", nil, nil, nil)
 	require.NoError(t, err)
 	assert.Equal(t, fallbackSlug, a.Slug)
 
-	b, err := svc.Create(ctx, "！！！", nil, nil)
+	b, err := svc.Create(ctx, "！！！", nil, nil, nil)
 	require.NoError(t, err)
 	assert.Equal(t, fallbackSlug+"-2", b.Slug)
 }
@@ -123,7 +137,7 @@ func TestCreate_ExplicitSlugUsedVerbatim(t *testing.T) {
 	ctx := context.Background()
 	svc := newTestService(t)
 
-	note, err := svc.Create(ctx, "Some Title", nil, ptr("my-custom-slug"))
+	note, err := svc.Create(ctx, "Some Title", nil, ptr("my-custom-slug"), nil)
 	require.NoError(t, err)
 	assert.Equal(t, "my-custom-slug", note.Slug)
 }
@@ -132,18 +146,18 @@ func TestCreate_ExplicitSlugCollisionIsConflict(t *testing.T) {
 	ctx := context.Background()
 	svc := newTestService(t)
 
-	_, err := svc.Create(ctx, "First", nil, ptr("taken"))
+	_, err := svc.Create(ctx, "First", nil, ptr("taken"), nil)
 	require.NoError(t, err)
 
 	// An explicit slug collision is a 409 — never silently suffixed.
-	_, err = svc.Create(ctx, "Second", nil, ptr("taken"))
+	_, err = svc.Create(ctx, "Second", nil, ptr("taken"), nil)
 	assert.ErrorIs(t, err, ErrConflict)
 }
 
 func TestCreate_InvalidExplicitSlugRejected(t *testing.T) {
 	ctx := context.Background()
 	svc := newTestService(t)
-	_, err := svc.Create(ctx, "Title", nil, ptr("Bad Slug!"))
+	_, err := svc.Create(ctx, "Title", nil, ptr("Bad Slug!"), nil)
 	assert.ErrorIs(t, err, ErrValidation)
 }
 
@@ -217,26 +231,26 @@ func TestCreate_TrimsTitleAndRejectsBlank(t *testing.T) {
 	ctx := context.Background()
 	svc := newTestService(t)
 
-	note, err := svc.Create(ctx, "  Spaced Title  ", nil, nil)
+	note, err := svc.Create(ctx, "  Spaced Title  ", nil, nil, nil)
 	require.NoError(t, err)
 	assert.Equal(t, "Spaced Title", note.Title)
 	assert.Equal(t, "spaced-title", note.Slug)
 
-	_, err = svc.Create(ctx, "   ", nil, nil)
+	_, err = svc.Create(ctx, "   ", nil, nil, nil)
 	assert.ErrorIs(t, err, ErrValidation, "whitespace-only title rejected after trim")
 }
 
 func TestCreate_RejectsUnsafeContent(t *testing.T) {
 	ctx := context.Background()
 	svc := newTestService(t)
-	_, err := svc.Create(ctx, "Title", ptr("ok <script>alert(1)</script>"), nil)
+	_, err := svc.Create(ctx, "Title", ptr("ok <script>alert(1)</script>"), nil, nil)
 	assert.ErrorIs(t, err, ErrValidation)
 }
 
 func TestCreate_NilContentCoalescesToEmpty(t *testing.T) {
 	ctx := context.Background()
 	svc := newTestService(t)
-	note, err := svc.Create(ctx, "Title", nil, nil)
+	note, err := svc.Create(ctx, "Title", nil, nil, nil)
 	require.NoError(t, err)
 	assert.Equal(t, "", note.Content)
 }
@@ -246,35 +260,35 @@ func TestCreate_NilContentCoalescesToEmpty(t *testing.T) {
 func TestUpdate_RejectsEmptyPatch(t *testing.T) {
 	ctx := context.Background()
 	svc := newTestService(t)
-	created, err := svc.Create(ctx, "Title", nil, nil)
+	created, err := svc.Create(ctx, "Title", nil, nil, nil)
 	require.NoError(t, err)
 
-	_, err = svc.Update(ctx, created.Slug, nil, nil, nil)
+	_, err = svc.Update(ctx, created.Slug, nil, nil, nil, nil)
 	assert.ErrorIs(t, err, ErrValidation, "all-fields-absent patch rejected")
 }
 
 func TestUpdate_ValidatesPresentFields(t *testing.T) {
 	ctx := context.Background()
 	svc := newTestService(t)
-	created, err := svc.Create(ctx, "Title", nil, nil)
+	created, err := svc.Create(ctx, "Title", nil, nil, nil)
 	require.NoError(t, err)
 
-	_, err = svc.Update(ctx, created.Slug, ptr("   "), nil, nil)
+	_, err = svc.Update(ctx, created.Slug, ptr("   "), nil, nil, nil)
 	assert.ErrorIs(t, err, ErrValidation, "blank title rejected on update")
 
-	_, err = svc.Update(ctx, created.Slug, nil, ptr("<iframe></iframe>"), nil)
+	_, err = svc.Update(ctx, created.Slug, nil, ptr("<iframe></iframe>"), nil, nil)
 	assert.ErrorIs(t, err, ErrValidation, "unsafe content rejected on update")
 }
 
 func TestUpdate_NoOpWhenNothingChanges(t *testing.T) {
 	ctx := context.Background()
 	svc := newTestService(t)
-	created, err := svc.Create(ctx, "Title", ptr("body"), nil)
+	created, err := svc.Create(ctx, "Title", ptr("body"), nil, nil)
 	require.NoError(t, err)
 
 	// Re-supplying the existing values (title post-trim) changes nothing, so no
 	// UPDATE runs and updated_at is left untouched.
-	got, err := svc.Update(ctx, created.Slug, ptr("Title"), ptr("body"), nil)
+	got, err := svc.Update(ctx, created.Slug, ptr("Title"), ptr("body"), nil, nil)
 	require.NoError(t, err)
 	assert.Equal(t, created.UpdatedAt, got.UpdatedAt, "no-op update must not bump updated_at")
 }
@@ -282,10 +296,10 @@ func TestUpdate_NoOpWhenNothingChanges(t *testing.T) {
 func TestUpdate_AppliesChanges(t *testing.T) {
 	ctx := context.Background()
 	svc := newTestService(t)
-	created, err := svc.Create(ctx, "Title", ptr("body"), nil)
+	created, err := svc.Create(ctx, "Title", ptr("body"), nil, nil)
 	require.NoError(t, err)
 
-	got, err := svc.Update(ctx, created.Slug, ptr("New Title"), ptr("new body"), nil)
+	got, err := svc.Update(ctx, created.Slug, ptr("New Title"), ptr("new body"), nil, nil)
 	require.NoError(t, err)
 	assert.Equal(t, "New Title", got.Title)
 	assert.Equal(t, "new body", got.Content)
@@ -295,6 +309,108 @@ func TestUpdate_AppliesChanges(t *testing.T) {
 func TestUpdate_MissingNoteIsNotFound(t *testing.T) {
 	ctx := context.Background()
 	svc := newTestService(t)
-	_, err := svc.Update(ctx, "does-not-exist", ptr("X"), nil, nil)
+	_, err := svc.Update(ctx, "does-not-exist", ptr("X"), nil, nil, nil)
 	assert.ErrorIs(t, err, ErrNotFound)
+}
+
+// --- tags --------------------------------------------------------------
+
+func TestCreate_WithKnownTagsAttachesThem(t *testing.T) {
+	ctx := context.Background()
+	svc, tagRepo := newTestServiceWithTags(t)
+
+	work, err := tagRepo.Create(ctx, "work", "Work")
+	require.NoError(t, err)
+
+	note, err := svc.Create(ctx, "Title", nil, nil, []string{work.Slug})
+	require.NoError(t, err)
+	require.Len(t, note.Tags, 1)
+	assert.Equal(t, "work", note.Tags[0].Slug)
+}
+
+func TestCreate_UnknownTagSlugIsValidationError(t *testing.T) {
+	ctx := context.Background()
+	svc := newTestService(t)
+
+	_, err := svc.Create(ctx, "Title", nil, nil, []string{"does-not-exist"})
+	assert.ErrorIs(t, err, ErrValidation)
+}
+
+func TestCreate_DuplicateTagSlugsAreDeduped(t *testing.T) {
+	ctx := context.Background()
+	svc, tagRepo := newTestServiceWithTags(t)
+
+	work, err := tagRepo.Create(ctx, "work", "Work")
+	require.NoError(t, err)
+
+	note, err := svc.Create(ctx, "Title", nil, nil, []string{work.Slug, work.Slug})
+	require.NoError(t, err)
+	assert.Len(t, note.Tags, 1, "repeated tag slugs collapse to one attachment")
+}
+
+func TestUpdate_TagsAbsentLeavesUnchanged(t *testing.T) {
+	ctx := context.Background()
+	svc, tagRepo := newTestServiceWithTags(t)
+
+	work, err := tagRepo.Create(ctx, "work", "Work")
+	require.NoError(t, err)
+	created, err := svc.Create(ctx, "Title", nil, nil, []string{work.Slug})
+	require.NoError(t, err)
+
+	updated, err := svc.Update(ctx, created.Slug, ptr("New Title"), nil, nil, nil)
+	require.NoError(t, err)
+	require.Len(t, updated.Tags, 1, "tags nil means unchanged")
+}
+
+func TestUpdate_TagsEmptySliceClears(t *testing.T) {
+	ctx := context.Background()
+	svc, tagRepo := newTestServiceWithTags(t)
+
+	work, err := tagRepo.Create(ctx, "work", "Work")
+	require.NoError(t, err)
+	created, err := svc.Create(ctx, "Title", nil, nil, []string{work.Slug})
+	require.NoError(t, err)
+
+	updated, err := svc.Update(ctx, created.Slug, nil, nil, &[]string{}, nil)
+	require.NoError(t, err)
+	assert.Empty(t, updated.Tags)
+}
+
+func TestUpdate_SameTagSetIsNoOp(t *testing.T) {
+	ctx := context.Background()
+	svc, tagRepo := newTestServiceWithTags(t)
+
+	work, err := tagRepo.Create(ctx, "work", "Work")
+	require.NoError(t, err)
+	created, err := svc.Create(ctx, "Title", nil, nil, []string{work.Slug})
+	require.NoError(t, err)
+
+	updated, err := svc.Update(ctx, created.Slug, nil, nil, &[]string{work.Slug}, nil)
+	require.NoError(t, err)
+	assert.Equal(t, created.Version, updated.Version, "replacing with an identical tag set must not bump version")
+	assert.Equal(t, created.UpdatedAt, updated.UpdatedAt)
+}
+
+func TestUpdate_TagsUnknownSlugIsValidationError(t *testing.T) {
+	ctx := context.Background()
+	svc := newTestService(t)
+	created, err := svc.Create(ctx, "Title", nil, nil, nil)
+	require.NoError(t, err)
+
+	_, err = svc.Update(ctx, created.Slug, nil, nil, &[]string{"does-not-exist"}, nil)
+	assert.ErrorIs(t, err, ErrValidation)
+}
+
+func TestUpdate_TagsOnlyFieldIsSufficientToNotBeEmptyPatch(t *testing.T) {
+	ctx := context.Background()
+	svc, tagRepo := newTestServiceWithTags(t)
+
+	work, err := tagRepo.Create(ctx, "work", "Work")
+	require.NoError(t, err)
+	created, err := svc.Create(ctx, "Title", nil, nil, nil)
+	require.NoError(t, err)
+
+	updated, err := svc.Update(ctx, created.Slug, nil, nil, &[]string{work.Slug}, nil)
+	require.NoError(t, err)
+	require.Len(t, updated.Tags, 1)
 }

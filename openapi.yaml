@@ -28,6 +28,16 @@ paths:
           schema:
             type: string
             maxLength: 200
+        - name: tag
+          in: query
+          description: >
+            Optional tag slug filter. When combined with `q`, both filters
+            apply (AND semantics).
+          required: false
+          schema:
+            type: string
+            maxLength: 100
+            pattern: "^[a-z0-9]+(?:-[a-z0-9]+)*$"
         - name: limit
           in: query
           required: false
@@ -148,6 +158,66 @@ paths:
       responses:
         "204":
           description: Note deleted.
+        default:
+          $ref: "#/components/responses/Error"
+
+  /tags:
+    get:
+      operationId: listTags
+      summary: List all tags
+      description: Returns all tags sorted by name. Powers client-side autocomplete.
+      responses:
+        "200":
+          description: All tags.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TagList"
+        default:
+          $ref: "#/components/responses/Error"
+    post:
+      operationId: createTag
+      summary: Create a tag
+      description: >
+        Tags must be created explicitly before being attached to a note (see
+        the `tags` field on CreateNoteRequest/UpdateNoteRequest). An explicit
+        `slug` that collides with an existing tag is a 409, never silently
+        suffixed. When `slug` is absent, one is derived from `name` using the
+        same rules as note slugs and auto-suffixed on collision.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTagRequest"
+      responses:
+        "201":
+          description: The created tag.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Tag"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /tags/{slug}:
+    parameters:
+      - name: slug
+        in: path
+        required: true
+        schema:
+          type: string
+          maxLength: 100
+          pattern: "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+    delete:
+      operationId: deleteTag
+      summary: Delete a tag
+      description: >
+        Removes the tag and detaches it from every note that had it. No
+        orphan-prevention; deleting an unknown slug is a 404.
+      responses:
+        "204":
+          description: Tag deleted.
         default:
           $ref: "#/components/responses/Error"
 
@@ -385,7 +455,7 @@ components:
   schemas:
     Note:
       type: object
-      required: [slug, title, content, created_at, updated_at, version]
+      required: [slug, title, content, created_at, updated_at, version, tags]
       properties:
         slug:
           type: string
@@ -412,10 +482,15 @@ components:
             Monotonically increasing edit counter. Starts at 1 on creation and
             increments by 1 on each write. No-op PATCHes do not increment it.
             Use with If-Match for optimistic locking.
+        tags:
+          type: array
+          items:
+            $ref: "#/components/schemas/Tag"
+          description: Tags attached to this note; empty array when none, never absent.
 
     NoteSummary:
       type: object
-      required: [slug, title, created_at, updated_at, excerpt, version]
+      required: [slug, title, created_at, updated_at, excerpt, version, tags]
       properties:
         slug:
           type: string
@@ -437,6 +512,11 @@ components:
         version:
           type: integer
           minimum: 1
+        tags:
+          type: array
+          items:
+            $ref: "#/components/schemas/Tag"
+          description: Tags attached to this note; empty array when none, never absent.
 
     NoteList:
       type: object
@@ -466,6 +546,16 @@ components:
           type: string
           maxLength: 100
           pattern: "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+        tags:
+          type: array
+          items:
+            type: string
+            maxLength: 100
+            pattern: "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+          description: >
+            Slugs of existing tags to attach. Tags must already exist (create
+            via POST /tags first) — an unknown slug is a 400. Absent or
+            omitted defaults to no tags.
 
     UpdateNoteRequest:
       type: object
@@ -477,6 +567,17 @@ components:
         content:
           type: string
           maxLength: 1000000
+        tags:
+          type: array
+          items:
+            type: string
+            maxLength: 100
+            pattern: "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+          description: >
+            Slugs of existing tags. Absent leaves the note's tags unchanged;
+            present (including an empty array) replaces the full set. An
+            unknown slug is a 400. Replacing with the same set as before is a
+            no-op (does not bump `version`).
 
     Artifact:
       type: object
@@ -492,6 +593,41 @@ components:
         created_at:
           type: string
           format: date-time
+
+    Tag:
+      type: object
+      required: [slug, name]
+      properties:
+        slug:
+          type: string
+          maxLength: 100
+          pattern: "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+
+    TagList:
+      type: object
+      required: [tags]
+      properties:
+        tags:
+          type: array
+          items:
+            $ref: "#/components/schemas/Tag"
+
+    CreateTagRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        slug:
+          type: string
+          maxLength: 100
+          pattern: "^[a-z0-9]+(?:-[a-z0-9]+)*$"
 
     Error:
       type: object

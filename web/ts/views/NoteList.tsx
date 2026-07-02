@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'preact/hooks';
-import { api, type NoteSummary } from '../api/client.js';
+import { api, type NoteSummary, type Tag } from '../api/client.js';
 import { navigate } from '../router.js';
 import { base } from '../basepath.js';
 import { showToast } from '../util/toast.js';
@@ -41,11 +41,12 @@ function formatDate(iso: string): string {
 
 interface Props {
   activeSlug?: string;
+  activeTag?: string;
   listKey?: number;
   onMutate?: () => void;
 }
 
-export function NoteList({ activeSlug, listKey, onMutate }: Props) {
+export function NoteList({ activeSlug, activeTag, listKey, onMutate }: Props) {
   const [inputQuery, setInputQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
   const [rows, setRows] = useState<NoteSummary[]>([]);
@@ -53,6 +54,7 @@ export function NoteList({ activeSlug, listKey, onMutate }: Props) {
   const [total, setTotal] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const [exhausted, setExhausted] = useState(false);
+  const [allTags, setAllTags] = useState<Tag[]>([]);
   const shownRef = useRef(new Set<string>());
   const genRef = useRef(0);
   const uploadRef = useRef<HTMLInputElement>(null);
@@ -63,7 +65,22 @@ export function NoteList({ activeSlug, listKey, onMutate }: Props) {
     return () => clearTimeout(id);
   }, [inputQuery]);
 
-  const loadPage = useCallback(async (q: string, pageOffset: number, gen: number) => {
+  // Load the full tag list (independent of which notes are currently shown)
+  // so the filter dropdown can offer every tag, not just ones visible in the
+  // loaded page. Re-fetched on listKey change so a tag created elsewhere
+  // (e.g. in the editor) shows up after the next note-list refresh.
+  useEffect(() => {
+    (async () => {
+      try {
+        const list = await api.tags.list();
+        setAllTags(list.tags);
+      } catch (e) {
+        showToast(`Failed to load tags: ${(e as Error).message}`);
+      }
+    })();
+  }, [listKey]);
+
+  const loadPage = useCallback(async (q: string, tag: string | undefined, pageOffset: number, gen: number) => {
     setLoading(true);
     const cappedQ = capRunes(q, MAX_Q_RUNES);
     // Clamp limit/offset to the ranges declared in openapi.yaml.
@@ -72,6 +89,7 @@ export function NoteList({ activeSlug, listKey, onMutate }: Props) {
     try {
       const res = await api.notes.list({
         q: cappedQ || undefined,
+        tag,
         limit: safeLimit,
         offset: safeOffset,
       });
@@ -95,7 +113,8 @@ export function NoteList({ activeSlug, listKey, onMutate }: Props) {
     }
   }, []);
 
-  // Reset accumulated rows and offset whenever the debounced query or listKey changes.
+  // Reset accumulated rows and offset whenever the debounced query, tag filter,
+  // or listKey changes.
   useEffect(() => {
     const gen = ++genRef.current;
     shownRef.current = new Set();
@@ -103,8 +122,8 @@ export function NoteList({ activeSlug, listKey, onMutate }: Props) {
     setOffset(0);
     setTotal(null);
     setExhausted(false);
-    void loadPage(debouncedQuery, 0, gen);
-  }, [debouncedQuery, loadPage, listKey]);
+    void loadPage(debouncedQuery, activeTag, 0, gen);
+  }, [debouncedQuery, activeTag, loadPage, listKey]);
 
   async function handleUpload(e: Event) {
     const file = (e.target as HTMLInputElement).files?.[0];
@@ -157,6 +176,33 @@ export function NoteList({ activeSlug, listKey, onMutate }: Props) {
         />
       </div>
 
+      {allTags.length > 0 && (
+        <div class="tag-filter-row">
+          <label class="tag-filter-label">
+            Tag
+            <select
+              class="tag-filter-select"
+              value={activeTag ?? ''}
+              onChange={(e) => {
+                const slug = (e.target as HTMLSelectElement).value;
+                navigate(slug ? `/?tag=${slug}` : '/');
+              }}
+            >
+              <option value="">All tags</option>
+              {allTags.map(t => (
+                <option key={t.slug} value={t.slug}>{t.name}</option>
+              ))}
+              {/* A filter active for a tag that has since been deleted: keep it
+                  selectable (as its slug) so the dropdown reflects reality
+                  instead of silently snapping back to "All tags". */}
+              {activeTag && !allTags.some(t => t.slug === activeTag) && (
+                <option value={activeTag}>{activeTag}</option>
+              )}
+            </select>
+          </label>
+        </div>
+      )}
+
       {total !== null && (
         <p class="result-count muted">{total} {total === 1 ? 'note' : 'notes'}</p>
       )}
@@ -182,6 +228,14 @@ export function NoteList({ activeSlug, listKey, onMutate }: Props) {
                     dangerouslySetInnerHTML={{ __html: renderExcerpt(n.excerpt) }}
                   />
                 )}
+                {n.tags.length > 0 && (
+                  <div class="tag-chips">
+                    {n.tags.map(t => (
+                      <a key={t.slug} class="tag-chip" href={`${base}/?tag=${t.slug}`}
+                        onClick={(e) => e.stopPropagation()}>{t.name}</a>
+                    ))}
+                  </div>
+                )}
                 <span class="note-info" tabIndex={0} aria-label="Note metadata">
                   ⓘ
                   <div class="note-meta-popup" role="tooltip">
@@ -201,7 +255,7 @@ export function NoteList({ activeSlug, listKey, onMutate }: Props) {
 
       {showLoadMore && (
         <div class="load-more">
-          <button onClick={() => void loadPage(debouncedQuery, offset, genRef.current)}>
+          <button onClick={() => void loadPage(debouncedQuery, activeTag, offset, genRef.current)}>
             Load more
           </button>
         </div>
