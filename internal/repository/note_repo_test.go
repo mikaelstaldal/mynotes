@@ -239,6 +239,39 @@ func TestBrowseExcerptTruncation(t *testing.T) {
 		"cut at a word boundary, no dangling partial word handling artifacts")
 }
 
+func TestBrowseExcerptIgnoresRawHTML(t *testing.T) {
+	ctx := context.Background()
+	repo := NewNoteRepository(newTestDB(t))
+
+	svg := "<svg width=\"10\" height=\"10\">\n<text>not the excerpt</text>\n</svg>\n\nActual text paragraph."
+	_, err := repo.Create(ctx, "svg-note", "SVG", svg)
+	require.NoError(t, err)
+
+	mathml := "<math>\n<mi>x</mi>\n</math>\n\nAnother real paragraph."
+	_, err = repo.Create(ctx, "mathml-note", "MathML", mathml)
+	require.NoError(t, err)
+
+	div := "<div class=\"card\">\nignored HTML content\n</div>\nPlain text after a div."
+	_, err = repo.Create(ctx, "div-note", "Div", div)
+	require.NoError(t, err)
+
+	voidTag := "<hr>\nText right after a void element."
+	_, err = repo.Create(ctx, "void-note", "Void", voidTag)
+	require.NoError(t, err)
+
+	bySlug := map[string]string{}
+	notes, _, err := repo.List(ctx, "", "", 50, 0)
+	require.NoError(t, err)
+	for _, n := range notes {
+		bySlug[n.Slug] = n.Excerpt
+	}
+
+	assert.Equal(t, "Actual text paragraph.", bySlug["svg-note"])
+	assert.Equal(t, "Another real paragraph.", bySlug["mathml-note"])
+	assert.Equal(t, "Plain text after a div.", bySlug["div-note"])
+	assert.Equal(t, "Text right after a void element.", bySlug["void-note"])
+}
+
 func TestSearchMatchesAndSnippet(t *testing.T) {
 	ctx := context.Background()
 	repo := NewNoteRepository(newTestDB(t))

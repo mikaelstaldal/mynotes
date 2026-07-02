@@ -20,6 +20,15 @@ var (
 	mdStrikeRE      = regexp.MustCompile(`~~([^~]*)~~`)
 	mdOrderedListRE = regexp.MustCompile(`^\d+\.\s+`)
 	mdHRuleRE       = regexp.MustCompile(`^[-*_]{3,}\s*$`)
+	// mdHTMLTagRE matches a line starting with a raw HTML/SVG/MathML tag
+	// (opening, closing, or self-closing).
+	mdHTMLTagRE = regexp.MustCompile(`^<(/?)([a-zA-Z][a-zA-Z0-9-]*)\b[^>]*?(/?)>`)
+	// voidHTMLTags never require a matching closing tag.
+	voidHTMLTags = map[string]bool{
+		"area": true, "base": true, "br": true, "col": true, "embed": true,
+		"hr": true, "img": true, "input": true, "link": true, "meta": true,
+		"param": true, "source": true, "track": true, "wbr": true,
+	}
 )
 
 // NoteRepository is the storage gateway for notes. One repository struct per
@@ -483,11 +492,24 @@ func (r *NoteRepository) search(ctx context.Context, q, tagSlug string, limit, o
 }
 
 // plainExcerpt finds the first non-heading, non-blank line in the Markdown
-// probe, strips inline Markdown syntax, and truncates at ~120 runes.
+// probe, ignoring raw HTML blocks (including SVG and MathML), strips inline
+// Markdown syntax, and truncates at ~120 runes.
 func plainExcerpt(probe string) string {
-	for line := range strings.SplitSeq(probe, "\n") {
-		line = strings.TrimSpace(line)
+	lines := strings.Split(probe, "\n")
+	for i := 0; i < len(lines); i++ {
+		line := strings.TrimSpace(lines[i])
 		if line == "" || strings.HasPrefix(line, "#") || mdHRuleRE.MatchString(line) {
+			continue
+		}
+		if m := mdHTMLTagRE.FindStringSubmatch(line); m != nil {
+			closing, tag, selfClosing := m[1] == "/", strings.ToLower(m[2]), m[3] == "/"
+			if !closing && !selfClosing && !voidHTMLTags[tag] {
+				closeTag := "</" + tag
+				if !strings.Contains(strings.ToLower(line), closeTag) {
+					for i++; i < len(lines) && !strings.Contains(strings.ToLower(lines[i]), closeTag); i++ {
+					}
+				}
+			}
 			continue
 		}
 		// Strip blockquote markers
