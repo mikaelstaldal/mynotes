@@ -11,7 +11,6 @@ import (
 	"log"
 	"net/http"
 	"strings"
-	"time"
 
 	"github.com/mikaelstaldal/mynotes/internal/api"
 	"github.com/mikaelstaldal/mynotes/internal/model"
@@ -295,7 +294,7 @@ func (h *Handler) ServeArtifact(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", a.ContentType)
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Cache-Control", "private, max-age=31536000, immutable")
-	w.Header().Set("Last-Modified", a.CreatedAt.UTC().Format(time.RFC1123))
+	w.Header().Set("Last-Modified", a.CreatedAt.UTC().Format(http.TimeFormat))
 	// SVG and MathML are active content: if navigated to directly on the app
 	// origin they could execute scripts. A sandboxed CSP prevents that without
 	// breaking <img src> rendering (response headers are not applied in image
