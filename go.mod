@@ -6,7 +6,7 @@ require (
 	github.com/go-faster/errors v0.7.1
 	github.com/go-faster/jx v1.2.0
 	github.com/microcosm-cc/bluemonday v1.0.27
-	github.com/mikaelstaldal/go-server-common v1.8.0
+	github.com/mikaelstaldal/go-server-common v1.8.1
 	github.com/ogen-go/ogen v1.22.0
 	github.com/stretchr/testify v1.11.1
 	github.com/yuin/goldmark v1.8.2
