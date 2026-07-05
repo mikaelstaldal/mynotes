@@ -78,15 +78,16 @@ func NewNoteService(repo *repository.NoteRepository, tags *repository.TagReposit
 
 // List returns a page of note summaries and the total matching count. limit and
 // offset are clamped to a sane window. tagSlug, when non-empty, restricts
-// results to notes carrying that tag.
-func (s *NoteService) List(ctx context.Context, query, tagSlug string, limit, offset int) ([]model.NoteSummary, int, error) {
+// results to notes carrying that tag. titleOnly, when set, restricts the
+// full-text query to note titles.
+func (s *NoteService) List(ctx context.Context, query, tagSlug string, titleOnly bool, limit, offset int) ([]model.NoteSummary, int, error) {
 	if limit <= 0 || limit > 200 {
 		limit = 50
 	}
 	if offset < 0 {
 		offset = 0
 	}
-	return s.repo.List(ctx, query, tagSlug, limit, offset)
+	return s.repo.List(ctx, query, tagSlug, titleOnly, limit, offset)
 }
 
 // resolveTagIDs de-dupes tagSlugs, resolves them to ids in one query, and

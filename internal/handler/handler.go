@@ -77,7 +77,7 @@ func optPtr(o api.OptString) *string {
 }
 
 func (h *Handler) ListNotes(ctx context.Context, params api.ListNotesParams) (*api.NoteList, error) {
-	notes, total, err := h.notes.List(ctx, params.Q.Or(""), params.Tag.Or(""), params.Limit.Or(50), params.Offset.Or(0))
+	notes, total, err := h.notes.List(ctx, params.Q.Or(""), params.Tag.Or(""), params.TitleOnly.Or(false), params.Limit.Or(50), params.Offset.Or(0))
 	if err != nil {
 		return nil, err
 	}

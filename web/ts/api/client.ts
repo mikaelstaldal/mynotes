@@ -114,10 +114,11 @@ async function request<T>(
 
 export const api = {
   notes: {
-    list: (opts: { q?: string; tag?: string; limit?: number; offset?: number } = {}) => {
+    list: (opts: { q?: string; tag?: string; titleOnly?: boolean; limit?: number; offset?: number } = {}) => {
       const p = new URLSearchParams();
       if (opts.q) p.set('q', opts.q);
       if (opts.tag) p.set('tag', opts.tag);
+      if (opts.titleOnly) p.set('titleOnly', 'true');
       if (opts.limit != null) p.set('limit', String(opts.limit));
       if (opts.offset != null) p.set('offset', String(opts.offset));
       const qs = p.toString();

@@ -106,6 +106,15 @@ paths:
             type: string
             maxLength: 100
             pattern: "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+        - name: titleOnly
+          in: query
+          description: >
+            When true and `q` is supplied, the full-text search is restricted to
+            note titles (content is not matched). Ignored when `q` is empty.
+          required: false
+          schema:
+            type: boolean
+            default: false
         - name: limit
           in: query
           required: false

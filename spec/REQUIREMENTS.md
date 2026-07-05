@@ -134,7 +134,8 @@ hyphens, 1–100 characters).
 The API manages notes keyed by slug. Operations:
 
 - **List/search notes** — optional query `q`, an optional `tag` filter (by
-  tag slug, combinable with `q`), plus paging (`limit`, `offset`).
+  tag slug, combinable with `q`), an optional `titleOnly` flag, plus paging
+  (`limit`, `offset`).
   Returns a page of summaries (slug, title, updated time, excerpt, tags) and
   the total match count.
   - Absent, empty, or whitespace-only `q` = browse (no filter), ordered most
@@ -142,6 +143,8 @@ The API manages notes keyed by slug. Operations:
   - Present `q` = full-text search over title and body, ordered by relevance,
     with a match-centred excerpt that highlights matched terms. A match found
     only in the title falls back to a plain content prefix excerpt.
+  - `titleOnly` (default false) restricts the full-text search to note titles;
+    body content is not matched. Ignored when `q` is empty.
   - Present `tag` restricts results to notes carrying that tag; an unknown
     tag slug simply matches no notes (not an error).
   - `total` reflects all matching rows, independent of the page window. Paging
@@ -225,8 +228,8 @@ existing-note editor (`/notes/{slug}/edit`).
   "create tag" action for a name with no match — nudging toward reusing
   existing tags over creating near-duplicates); a Markdown source editor with a
   live local preview; a "Link to note"
-  picker that searches notes and inserts a Markdown link to the chosen note's
-  stable URL; Save and Cancel.
+  picker that searches notes by title (not body content) and inserts a Markdown
+  link to the chosen note's stable URL; Save and Cancel.
   - Cancel returns to the note's read view (when editing) or the list (when new),
     computed from the route, and is subject to the unsaved-changes guard.
   - An unsaved-changes guard covers both in-app navigation and browser

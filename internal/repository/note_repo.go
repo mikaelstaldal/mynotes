@@ -307,8 +307,8 @@ func (r *NoteRepository) Delete(ctx context.Context, slug string) error {
 // List returns a page of note summaries and the total matching count. tagSlug,
 // when non-empty, restricts results to notes carrying that tag (combined with
 // the FTS filter via AND when both are present).
-func (r *NoteRepository) List(ctx context.Context, query, tagSlug string, limit, offset int) ([]model.NoteSummary, int, error) {
-	if q := sanitizeFTSQuery(query); q != "" {
+func (r *NoteRepository) List(ctx context.Context, query, tagSlug string, titleOnly bool, limit, offset int) ([]model.NoteSummary, int, error) {
+	if q := sanitizeFTSQuery(query, titleOnly); q != "" {
 		return r.search(ctx, q, tagSlug, limit, offset)
 	}
 	return r.browse(ctx, tagSlug, limit, offset)
@@ -554,12 +554,22 @@ func plainExcerpt(probe string) string {
 // (with internal quotes doubled), so FTS5 operators like AND/OR/NEAR and
 // special characters cannot break out. Returns "" when there is nothing to
 // match, signalling the caller to fall back to an unfiltered browse list.
-func sanitizeFTSQuery(query string) string {
+//
+// When titleOnly is set, the resulting expression is wrapped in an FTS5 column
+// filter ({title} : (...)) so matches are restricted to the title column.
+func sanitizeFTSQuery(query string, titleOnly bool) string {
 	fields := strings.Fields(query)
 	tokens := make([]string, 0, len(fields))
 	for _, f := range fields {
 		f = strings.ReplaceAll(f, `"`, `""`)
 		tokens = append(tokens, `"`+f+`"`)
 	}
-	return strings.Join(tokens, " ")
+	if len(tokens) == 0 {
+		return ""
+	}
+	joined := strings.Join(tokens, " ")
+	if titleOnly {
+		return "{title} : (" + joined + ")"
+	}
+	return joined
 }
