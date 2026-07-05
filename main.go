@@ -24,6 +24,7 @@ import (
 	"github.com/mikaelstaldal/go-server-common/httputil"
 	commonweb "github.com/mikaelstaldal/go-server-common/web"
 	"github.com/mikaelstaldal/mynotes/internal/api"
+	"github.com/mikaelstaldal/mynotes/internal/demo"
 	"github.com/mikaelstaldal/mynotes/internal/gdocs"
 	"github.com/mikaelstaldal/mynotes/internal/handler"
 	"github.com/mikaelstaldal/mynotes/internal/repository"
@@ -47,10 +48,18 @@ func main() {
 	basicAuthRealm := flag.String("basic-auth-realm", "MyNotes", "realm for HTTP basic auth")
 	gdocsClientID := flag.String("gdocs-client-id", "", "Google OAuth 2.0 Client ID; when set (with -gdocs-client-secret) runs a bulk Google Docs import instead of the server")
 	gdocsClientSecret := flag.String("gdocs-client-secret", "", "Google OAuth 2.0 Client Secret")
+	demoData := flag.Bool("demo", false, "fill the database with demo notes, artifacts, and tags, then exit")
 	flag.Parse()
 
 	if *version {
 		printVersion()
+		return
+	}
+
+	if *demoData {
+		if err := runDemo(context.Background(), *dataDir); err != nil {
+			log.Fatalf("%v", err)
+		}
 		return
 	}
 
@@ -113,6 +122,30 @@ func runGDocsImport(ctx context.Context, clientID, clientSecret, dataDir string,
 	}
 	fmt.Println()
 	return nil
+}
+
+// runDemo opens (creating if necessary) the database and fills it with a
+// curated set of demo notes, artifacts, and tags, then returns. Like the Google
+// Docs importer it is a one-shot batch mode that runs instead of the server.
+func runDemo(ctx context.Context, dataDir string) error {
+	dbPath := filepath.Join(dataDir, databaseName)
+	if err := repository.CreateDataDir(dbPath); err != nil {
+		return err
+	}
+	db, err := repository.OpenDB(dbPath, 5000, "synchronous=NORMAL")
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+
+	noteRepo := repository.NewNoteRepository(db)
+	tagRepo := repository.NewTagRepository(db)
+	artifactRepo := repository.NewArtifactRepository(db)
+	noteSvc := service.NewNoteService(noteRepo, tagRepo)
+	artifactSvc := service.NewArtifactService(artifactRepo)
+	tagSvc := service.NewTagService(tagRepo)
+
+	return demo.Run(ctx, noteSvc, artifactSvc, tagSvc, os.Stdout)
 }
 
 func run(addr string, port int, dataDir, publicURL, basicAuthFile, basicAuthRealm string) error {

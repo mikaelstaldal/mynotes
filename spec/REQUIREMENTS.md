@@ -305,6 +305,44 @@ Imported 41 note(s). 1 failed:
 
 Exit code is 0 on full success, 1 if any document failed to import.
 
+## Demo Data
+
+A one-shot batch mode that fills the database with a curated set of notes,
+tags, and artifacts so a fresh install can showcase the product's features
+without manual data entry.
+
+### Invocation
+
+```
+./mynotes -demo [-data <dir>]
+```
+
+When `-demo` is present the binary seeds the database and exits instead of
+starting the HTTP server. All other flags except `-data` (which controls the
+database path) are ignored. The database is created if it does not yet exist.
+
+### What is seeded
+
+- A handful of **tags** (e.g. Getting Started, Reference, Personal, Work,
+  Recipes, Travel).
+- A few **artifacts** — generated images (PNG) and an inline SVG logo — stored
+  through the normal artifact pipeline so they are content-addressed and
+  content-validated.
+- Several **notes** that between them exercise the supported Markdown features:
+  headings, emphasis, strikethrough, ordered/nested lists, tables, fenced code,
+  blockquotes, horizontal rules, autolinks, inter-note links, embedded images
+  (referencing the seeded artifacts), and inline SVG and MathML. Each note
+  carries one or more of the seeded tags.
+
+### Validation and behavior
+
+Demo content is written through the same service layer (and therefore the same
+validation) as any note, tag, or artifact created via the REST API. Seeding is
+additive and not deduplicated: re-running the command adds another copy of the
+demo data (tags get auto-suffixed slugs, notes get auto-suffixed slugs), so it
+is intended for a fresh or throwaway database. Progress is printed to stdout;
+exit code is 0 on success.
+
 ## Security (user-facing guarantees)
 
 - The app must not execute scripts or active content embedded in note bodies;
