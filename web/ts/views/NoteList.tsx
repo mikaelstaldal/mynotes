@@ -185,7 +185,7 @@ export function NoteList({ activeSlug, activeTag, listKey, onMutate }: Props) {
               value={activeTag ?? ''}
               onChange={(e) => {
                 const slug = (e.target as HTMLSelectElement).value;
-                navigate(slug ? `/?tag=${slug}` : '/');
+                navigate(slug ? `/tags/${slug}` : '/');
               }}
             >
               <option value="">All tags</option>
@@ -231,7 +231,7 @@ export function NoteList({ activeSlug, activeTag, listKey, onMutate }: Props) {
                 {n.tags.length > 0 && (
                   <div class="tag-chips">
                     {n.tags.map(t => (
-                      <a key={t.slug} class="tag-chip" href={`${base}/?tag=${t.slug}`}
+                      <a key={t.slug} class="tag-chip" href={`${base}/tags/${t.slug}`}
                         onClick={(e) => e.stopPropagation()}>{t.name}</a>
                     ))}
                   </div>

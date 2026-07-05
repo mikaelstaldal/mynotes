@@ -70,6 +70,14 @@ identity exists but is never exposed as the URL key.
 - Inline SVG and MathML embedded directly in Markdown HTML blocks are allowed;
   scripts, event handlers, `<foreignObject>`, `<use>`, `<style>`, and other
   unsafe constructs are rejected at write time.
+- **Tag links:** the non-standard syntax `[[#slug]]` links to a tag's note list
+  (`/tags/{slug}`); `[[#slug|Display text]]` overrides the shown text (default is
+  `#slug`). `slug` must match the tag-slug pattern (`^[a-z0-9]+(?:-[a-z0-9]+)*$`);
+  anything else is left as literal text. This is a client render-time transform
+  only — the reference is stored verbatim in the Markdown, is not validated
+  against existing tags (a link to a non-existent tag simply lists no notes), and
+  the `[[`/`]]` delimiters do not collide with CommonMark, raw HTML, SVG, or
+  MathML. The editor offers a toolbar button to insert one from the tag list.
 - Both the read view and the editor's live preview render the same way and must
   be safe against XSS (see Security).
 - Content is bounded at 1,000,000 characters; empty content is valid.
@@ -181,9 +189,9 @@ found; 409 conflict on an explicit slug; 412 version mismatch on update.
 a right main panel shows the selected note or editor. URLs are real paths
 (bookmarkable), not hash routes.
 
-Routes: no-note-selected (`/`, optionally tag-filtered via `?tag={slug}`),
-new-note editor (`/new`), read view of a note
-(`/notes/{slug}`), and existing-note editor (`/notes/{slug}/edit`).
+Routes: no-note-selected (`/`), tag-filtered note list (`/tags/{slug}`),
+new-note editor (`/new`), read view of a note (`/notes/{slug}`), and
+existing-note editor (`/notes/{slug}/edit`).
 
 - **Sidebar (always visible):** debounced search box, results showing title,
   updated time, excerpt with highlights when searching, and tags. A tag

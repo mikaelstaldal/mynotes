@@ -140,8 +140,9 @@ A reliable everyday loaf with a crisp crust and open crumb.
 
 > Keep a little water in the dough — a wetter dough gives a more open crumb.
 
-Tagged for the *Recipes* collection. Pairs well with the **Weekend in Lisbon**
-note's pastéis de nata.
+Pairs well with the **Weekend in Lisbon** note's pastéis de nata.
+
+Filed under [[#recipes]] and [[#personal]].
 `
 
 // roadmapNote takes the bar-chart image artifact SHA.
@@ -202,7 +203,7 @@ A two-day itinerary for a first visit.
 > Buy a rechargeable *Viva Viagem* card for the trams and metro — it pays for
 > itself within a day.
 
-Full trip is tagged *Travel* and *Personal*.
+Full trip is tagged [[#travel]] and [[#personal]].
 `
 
 const mathNote = "# Math & Diagrams\n" + `

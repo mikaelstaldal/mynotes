@@ -16,19 +16,20 @@ function stripBase(pathname: string): string {
   return pathname.startsWith(base) ? pathname.slice(base.length) || '/' : pathname;
 }
 
-function parseRoute(pathname: string, search: string): Route {
+function parseRoute(pathname: string): Route {
   const parts = stripBase(pathname).split('/').filter(Boolean);
   if (parts[0] === 'new') return { type: 'new' };
   if (parts[0] === 'notes' && parts[1]) {
     if (parts[2] === 'edit') return { type: 'edit', slug: parts[1] };
     return { type: 'view', slug: parts[1] };
   }
-  const tag = new URLSearchParams(search).get('tag');
-  return tag ? { type: 'list', tag } : { type: 'list' };
+  // Tag permalink: /tags/<slug>.
+  if (parts[0] === 'tags' && parts[1]) return { type: 'list', tag: parts[1] };
+  return { type: 'list' };
 }
 
 export function currentRoute(): Route {
-  return parseRoute(window.location.pathname, window.location.search);
+  return parseRoute(window.location.pathname);
 }
 
 // A navigation guard returns true to allow the navigation, false to block it.

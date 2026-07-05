@@ -1,11 +1,48 @@
 import MarkdownIt from 'markdown-it';
 import DOMPurify from 'dompurify';
+import { base } from '../basepath.js';
 
 const DATA_IMAGE_RE = /^data:image\/(gif|png|jpeg|webp);/;
 
 const md = new MarkdownIt({ html: true, linkify: true });
 // maxNesting is not in @types/markdown-it Options but IS read at runtime from md.options.
 (md.options as Record<string, unknown>).maxNesting = 100;
+
+// Internal tag links: [[#slug]] or [[#slug|Display text]] render to a link to
+// the tag's note list (/tags/<slug>). The slug charset is the same as the API
+// tag-slug pattern (^[a-z0-9]+(?:-[a-z0-9]+)*$); the label may be any run of
+// characters except ']' and newline. Anything not matching is left as literal
+// text, so the [[ / ]] delimiters never collide with Markdown, raw HTML, SVG or
+// MathML (none of which use them). The '#' sigil reserves the plain [[slug]]
+// space for a possible future note wikilink.
+const TAG_LINK_RE = /^\[\[#([a-z0-9]+(?:-[a-z0-9]+)*)(?:\|([^\]\n]+))?\]\]/;
+
+// Registered before 'link' so it consumes [[#…]] before the standard link rule
+// sees the leading '['. Inline rules do not run inside code spans/fences or raw
+// HTML blocks, so [[#x]] there stays literal.
+md.inline.ruler.before('link', 'tag_link', (state, silent) => {
+  const start = state.pos;
+  // Fast path: only proceed when the next three chars are exactly "[[#".
+  if (
+    state.src.charCodeAt(start) !== 0x5b /* [ */ ||
+    state.src.charCodeAt(start + 1) !== 0x5b /* [ */ ||
+    state.src.charCodeAt(start + 2) !== 0x23 /* # */
+  ) {
+    return false;
+  }
+  const match = TAG_LINK_RE.exec(state.src.slice(start));
+  if (!match) return false;
+  const [full, slug, label] = match;
+  if (!silent) {
+    const open = state.push('link_open', 'a', 1);
+    open.attrs = [['href', `${base}/tags/${slug}`]];
+    const text = state.push('text', '', 0);
+    text.content = label ?? `#${slug}`;
+    state.push('link_close', 'a', -1);
+  }
+  state.pos += full.length;
+  return true;
+});
 
 // Broad safe-HTML allow-list matching the server bluemonday UGCPolicy profile.
 // Excludes script/style/iframe/object/embed/form-controls/raw-media and all on* handlers.

@@ -15,6 +15,7 @@ import { renderNote, sanitizeSVGOrMathML } from '../util/markdown.js';
 import { titleFromContent } from '../util/title.js';
 import { slugFromTitle } from '../util/slug.js';
 import { LinkPicker } from '../components/LinkPicker.js';
+import { TagLinkPicker } from '../components/TagLinkPicker.js';
 import { TagPicker } from '../components/TagPicker.js';
 
 const DATA_URL_RE = /data:([^;,\s]+);base64,[A-Za-z0-9+/]+=*/g;
@@ -91,6 +92,7 @@ export function NoteEditor({ slug, onSave }: Props) {
   const [layout, setLayout] = useState<Layout>('split');
   const [previewHtml, setPreviewHtml] = useState('');
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [tagLinkPickerOpen, setTagLinkPickerOpen] = useState(false);
   const [uploading, setUploading] = useState(false);
 
   const editorContainerRef = useRef<HTMLDivElement>(null);
@@ -285,6 +287,23 @@ export function NoteEditor({ slug, onSave }: Props) {
     if (!view) return;
     const { from } = view.state.selection.main;
     const text = `[${escapeLinkText(noteTitle)}](/notes/${noteSlug})`;
+    view.dispatch({
+      changes: { from, insert: text },
+      selection: EditorSelection.cursor(from + text.length),
+    });
+    view.focus();
+  }
+
+  function insertTagLink(tagSlug: string, tagName: string) {
+    setTagLinkPickerOpen(false);
+    const view = viewRef.current;
+    if (!view) return;
+    const { from } = view.state.selection.main;
+    // Add an alias ([[#slug|Name]]) only when the display name adds information
+    // over the default "#slug" text and is representable in the syntax (the
+    // label may not contain ']' or a newline).
+    const useAlias = tagName !== tagSlug && !/[\]\n]/.test(tagName);
+    const text = useAlias ? `[[#${tagSlug}|${tagName}]]` : `[[#${tagSlug}]]`;
     view.dispatch({
       changes: { from, insert: text },
       selection: EditorSelection.cursor(from + text.length),
@@ -541,6 +560,12 @@ export function NoteEditor({ slug, onSave }: Props) {
               <path class="fmt-even fmt-stroke" d="M13.423,9.1a3.476,3.476,0,0,0-4.679-.36,3.476,3.476,0,0,0,.36,4.679c1.392,1.392,2.5,2.542,4.679.36S14.815,10.5,13.423,9.1Z"/>
             </svg>
           </button>
+          <button type="button" class="btn-icon" title="Tag link" aria-label="Tag link" onClick={() => setTagLinkPickerOpen(true)}>
+            <svg viewBox="0 0 18 18">
+              <path class="fmt-even fmt-stroke" d="M8.5,3H4A1,1,0,0,0,3,4V8.5a1,1,0,0,0,.293.707l6,6a1,1,0,0,0,1.414,0l4.5-4.5a1,1,0,0,0,0-1.414l-6-6A1,1,0,0,0,8.5,3Z"/>
+              <circle class="fmt-fill" cx="6" cy="6" r="1"/>
+            </svg>
+          </button>
           <button type="button" class="btn-icon" title="External link" aria-label="External link" onClick={insertExternalLink}>
             <svg viewBox="0 0 18 18">
               <line class="fmt-stroke" x1="9" y1="9" x2="15" y2="3"/>
@@ -572,6 +597,13 @@ export function NoteEditor({ slug, onSave }: Props) {
           currentSlug={slug}
           onSelect={insertLink}
           onClose={() => setPickerOpen(false)}
+        />
+      )}
+
+      {tagLinkPickerOpen && (
+        <TagLinkPicker
+          onSelect={insertTagLink}
+          onClose={() => setTagLinkPickerOpen(false)}
         />
       )}
     </form>

@@ -289,3 +289,64 @@ for (const { label, md, absent, present } of PARITY_VECTORS) {
     for (const pat of present) assertPresent(out, pat, label);
   });
 }
+
+// ---------------------------------------------------------------------------
+// Internal tag links — [[#slug]] / [[#slug|label]]
+// ---------------------------------------------------------------------------
+// base resolves to '' under jsdom (no <base href>), so hrefs are /tags/<slug>.
+
+test('[[#slug]] renders a link to /tags/<slug> with #slug text', () => {
+  const out = renderNote('See [[#work]] for details.');
+  assertPresent(out, 'href="/tags/work"', 'tag link href');
+  assertPresent(out, '>#work<', 'default #slug text');
+});
+
+test('[[#slug]] accepts hyphenated slugs', () => {
+  const out = renderNote('[[#project-x]]');
+  assertPresent(out, 'href="/tags/project-x"', 'hyphenated slug href');
+});
+
+test('[[#slug|label]] uses the alias as the link text', () => {
+  const out = renderNote('[[#work|My Work]]');
+  assertPresent(out, 'href="/tags/work"', 'aliased href');
+  assertPresent(out, '>My Work<', 'alias text');
+  assertAbsent(out, '#work', 'default text replaced by alias');
+});
+
+test('non-matching [[#…]] is left as literal text (uppercase, spaces)', () => {
+  const upper = renderNote('[[#UPPER]]');
+  assertAbsent(upper, 'href="/tags', 'uppercase slug not linked');
+  assertPresent(upper, '[[#UPPER]]', 'uppercase left literal');
+
+  const spaced = renderNote('[[#Foo Bar]]');
+  assertAbsent(spaced, 'href="/tags', 'spaced slug not linked');
+  assertPresent(spaced, '[[#Foo Bar]]', 'spaced left literal');
+});
+
+test('[[#slug]] inside a code span stays literal (no link)', () => {
+  const out = renderNote('`[[#work]]`');
+  assertAbsent(out, 'href="/tags/work"', 'no link inside code span');
+  assertPresent(out, '[[#work]]', 'literal text inside code');
+});
+
+test('invalid slug is not turned into a tag link, and DOMPurify still gates raw HTML', () => {
+  // The '"' breaks the slug charset, so the tag rule declines to match and the
+  // input is processed as ordinary Markdown/HTML. The rule itself never emits
+  // anything but a link_open with an href attr, so it can't inject markup; the
+  // <img> here is authored raw HTML (allowed) with onerror stripped by DOMPurify.
+  const out = renderNote('[[#a"><img src=x onerror=alert(1)>]]');
+  assertAbsent(out, 'href="/tags', 'no tag link created from an invalid slug');
+  assertAbsent(out, 'onerror', 'event handler stripped');
+});
+
+test('#fragment refs in SVG are unaffected by the tag rule', () => {
+  const out = renderNote('<svg><rect fill="url(#grad)"/></svg>');
+  assertPresent(out, 'url(#grad)', 'svg fragment ref preserved');
+  assertAbsent(out, 'href="/tags', 'no spurious tag link');
+});
+
+test('ATX heading starting with # is unaffected', () => {
+  const out = renderNote('# Heading');
+  assertPresent(out, '<h1>', 'heading rendered');
+  assertAbsent(out, 'href="/tags', 'no spurious tag link');
+});
