@@ -1,12 +1,80 @@
 openapi: 3.0.3
 info:
   title: MyNotes API
-  description: >
+  description: |
     REST API for the mynotes application. A `notes` resource demonstrates the
     full stack: OpenAPI → ogen server stubs → handler → service → repository →
     SQLite. Endpoints are served under the `/api/v1` base path (applied via the
     server URL and ogen's path prefix). Timestamps use RFC 3339 (UTC). Errors
     return `{"error": "message"}`.
+
+    # Markdown dialect
+
+    A note's `content` is stored and returned as verbatim Markdown. Consumers
+    that render notes (the embedded web UI, the native mobile app, HTML export)
+    should interpret it as follows.
+
+    ## Base and extensions
+
+    The base syntax is [CommonMark](https://spec.commonmark.org/) plus a small,
+    fixed subset of
+    [GitHub Flavored Markdown](https://github.github.com/gfm/) extensions:
+
+    - **Tables** — GFM [§4.10 Tables](https://github.github.com/gfm/#tables-extension-).
+    - **Strikethrough** — GFM [§6.5](https://github.github.com/gfm/#strikethrough-extension-),
+      `~~deleted~~`.
+    - **Autolinks** — bare URLs and email addresses are linkified, GFM
+      [§6.9](https://github.github.com/gfm/#autolinks-extension-).
+
+    No other extensions are part of the dialect. In particular, **GFM task
+    lists are NOT supported**: `- [ ]` renders as an ordinary list item, not a
+    checkbox. Footnotes, definition lists, YAML front matter and math are also
+    not interpreted.
+
+    ## Raw HTML
+
+    Raw inline and block HTML is permitted but restricted to a safe subset
+    (broadly the bluemonday UGC / DOMPurify allow-list: common prose, table,
+    figure and media elements, plus inline SVG and MathML). Disallowed
+    constructs — `script`, `style`, `iframe`, `object`, form controls, `on*`
+    event-handler attributes, and any URL whose scheme is not `http`, `https`
+    or `mailto` — are rejected at write time (`400`), so stored content is
+    always safe. Renderers should still sanitize with an equivalent allow-list
+    as defense in depth.
+
+    ## Images and artifacts
+
+    Images use standard Markdown image syntax, `![alt](url)`. Binary images
+    uploaded via `POST /artifacts` are content-addressed and referenced by
+    their SHA-256, e.g. `![diagram](/api/v1/artifacts/<sha256>)`. Inline
+    `data:` image URIs are also allowed for the `gif`, `png`, `jpeg` and
+    `webp` types.
+
+    ## Internal wikilinks (application-specific)
+
+    A `[[...]]` syntax — modelled on the wiki-link convention — links to other 
+    notes and tags **within the app**. It is not part of CommonMark or GFM, 
+    so consumers must implement it themselves.
+
+    Grammar: the target slug must match `^[a-z0-9]+(?:-[a-z0-9]+)*$` (the same
+    pattern as note/tag slugs). An optional leading `#` sigil selects a tag
+    instead of a note. An optional `|` introduces display text, which may be
+    any run of characters except `]` and newline. Any `[[...]]` that does not
+    match these forms is left as literal text.
+
+    | Syntax | Target | Default display text |
+    | --- | --- | --- |
+    | `[[slug]]` | note with that slug | `slug` |
+    | `[[slug\|Display text]]` | note with that slug | `Display text` |
+    | `[[#slug]]` | the tag's note list | `#slug` |
+    | `[[#slug\|Display text]]` | the tag's note list | `Display text` |
+
+    Renderers should resolve note wikilinks to their own note-view route and
+    tag wikilinks to their tag/filter view (the web UI uses `/notes/<slug>` and
+    `/tags/<slug>`). Wikilinks are stored verbatim in `content`; they are a
+    render-time convention and are **not** expanded by the
+    `GET /notes/{slug}/export` HTML endpoint, which targets standalone viewing
+    outside the app.
   version: 1.0.0
 servers:
   - url: http://localhost:8080/api/v1
@@ -468,7 +536,10 @@ components:
         content:
           type: string
           maxLength: 1000000
-          description: Verbatim Markdown content.
+          description: >
+            Verbatim Markdown content of the note. See the "Markdown dialect"
+            section in the API info description for how consumers (web UI,
+            native app) should interpret and render it.
         created_at:
           type: string
           format: date-time
@@ -542,6 +613,10 @@ components:
           type: string
           maxLength: 1000000
           default: ""
+          description: >
+            Markdown content; see the "Markdown dialect" section in the API
+            info description. HTML carrying disallowed constructs is rejected
+            (400).
         slug:
           type: string
           maxLength: 100
@@ -567,6 +642,10 @@ components:
         content:
           type: string
           maxLength: 1000000
+          description: >
+            Markdown content; see the "Markdown dialect" section in the API
+            info description. HTML carrying disallowed constructs is rejected
+            (400).
         tags:
           type: array
           items:
