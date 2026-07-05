@@ -3,6 +3,7 @@ import { useState, useEffect, useCallback } from 'preact/hooks';
 import { currentRoute, onRouteChange, type Route } from './router.js';
 import { getConfig } from './util/config.js';
 import { NoteList } from './views/NoteList.js';
+import { NotesOverview } from './views/NotesOverview.js';
 import { NoteEditor } from './views/NoteEditor.js';
 import { NoteView } from './views/NoteView.js';
 import { Toast } from './components/Toast.js';
@@ -35,7 +36,7 @@ function App() {
           />
         </aside>
         <main>
-          {route.type === 'list' && <p class="muted select-prompt">Select a note or create a new one.</p>}
+          {route.type === 'list' && <NotesOverview activeTag={route.tag} listKey={listKey} />}
           {route.type === 'new' && <NoteEditor onSave={refreshList} />}
           {route.type === 'view' && <NoteView slug={route.slug} onDelete={refreshList} />}
           {route.type === 'edit' && <NoteEditor slug={route.slug} onSave={refreshList} />}

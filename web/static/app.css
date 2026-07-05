@@ -196,6 +196,8 @@ mark { background: #fef08a; color: var(--fg); border-radius: 2px; padding: 0 1px
 .result-count { margin: 0 0 0.5rem; font-size: 0.875rem; }
 .load-more { margin-top: 1rem; }
 
+.overview-heading { margin-bottom: 0.75rem; }
+
 .item-form { display: flex; flex-direction: column; gap: 1rem; }
 .item-form label { display: flex; flex-direction: column; gap: 0.3rem; font-weight: 500; }
 .form-actions { display: flex; gap: 0.5rem; justify-content: flex-end; }
