@@ -166,7 +166,7 @@ The API manages notes keyed by slug. Operations:
 - **Delete a note** by slug — deleting an unknown note is a not-found error
   (delete is not idempotent).
 - **Download Markdown** — `GET /notes/{slug}/download-markdown` returns the raw Markdown as a `.md` file (filename derived from slug).
-- **Download HTML** — `GET /notes/{slug}/download-html` converts the note to HTML on the server and returns a complete HTML document as a `.html` file.
+- **Download HTML** — `GET /notes/{slug}/download-html` converts the note to HTML on the server and returns a complete HTML document as a `.html` file. Internal artifact image references (`![alt](/api/v1/artifacts/{sha256})`) are inlined so the downloaded document renders standalone, without a live server: bitmap artifacts (PNG, JPEG, GIF, WebP) become base64 `data:` URLs, while SVG and MathML artifacts are spliced in as inline `<svg>`/`<math>` elements (a `data:` URL for SVG is disallowed by the sanitize policy). The spliced markup passes through the same render-time sanitization as the rest of the document. Unknown or unresolvable references are left as-is.
 - **Import HTML** — `POST /import-html` accepts a `text/html` request body
   and converts it to Markdown server-side. The title is taken from the HTML
   `<title>` element; if absent, the plain text of the first `h1`–`h6` element is

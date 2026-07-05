@@ -1,12 +1,137 @@
 package service
 
 import (
+	"encoding/base64"
 	"errors"
 	"strings"
 	"testing"
 
 	"github.com/mikaelstaldal/mynotes/internal/sanitize"
 )
+
+// sha64 is a valid-looking 64-char hex SHA-256 digest for tests.
+const sha64 = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+
+func TestRenderToHTML_InlinesBitmapArtifacts(t *testing.T) {
+	content := []byte("\x89PNG\r\n\x1a\nfake-png")
+	resolve := func(hex string) ([]byte, string, bool) {
+		if hex == sha64 {
+			return content, "image/png", true
+		}
+		return nil, "", false
+	}
+	want := "data:image/png;base64," + base64.StdEncoding.EncodeToString(content)
+
+	// Root-relative, basepath-prefixed, and absolute artifact URLs all inline.
+	for _, src := range []string{
+		"/api/v1/artifacts/" + sha64,
+		"/notes/api/v1/artifacts/" + sha64,
+		"https://example.com/api/v1/artifacts/" + sha64,
+	} {
+		md := "![alt](" + src + ")"
+		doc, err := RenderToHTML("T", md, resolve)
+		if err != nil {
+			t.Fatalf("src %q: %v", src, err)
+		}
+		if !strings.Contains(doc, want) {
+			t.Errorf("src %q: expected inlined data URL, got:\n%s", src, doc)
+		}
+		if strings.Contains(doc, "/artifacts/"+sha64) {
+			t.Errorf("src %q: original artifact URL should be gone, got:\n%s", src, doc)
+		}
+	}
+}
+
+func TestRenderToHTML_LeavesNonArtifactAndUnknownAlone(t *testing.T) {
+	resolve := func(string) ([]byte, string, bool) { return nil, "", false }
+
+	// External image: not an artifact URL, untouched.
+	doc, err := RenderToHTML("T", "![x](https://example.com/pic.png)", resolve)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(doc, "https://example.com/pic.png") {
+		t.Errorf("external image should be preserved, got:\n%s", doc)
+	}
+
+	// Unknown artifact (resolver says not found): reference left as relative URL.
+	doc, err = RenderToHTML("T", "![x](/api/v1/artifacts/"+sha64+")", resolve)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(doc, "/api/v1/artifacts/"+sha64) {
+		t.Errorf("unknown artifact reference should be preserved, got:\n%s", doc)
+	}
+	if strings.Contains(doc, "data:") {
+		t.Errorf("unknown artifact must not be inlined, got:\n%s", doc)
+	}
+}
+
+func TestRenderToHTML_InlinesSVGArtifact(t *testing.T) {
+	svg := `<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><rect width="10" height="10"/></svg>`
+	resolve := func(string) ([]byte, string, bool) {
+		return []byte(svg), "image/svg+xml", true
+	}
+	doc, err := RenderToHTML("T", "![x](/api/v1/artifacts/"+sha64+")", resolve)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(doc, "<svg") || !strings.Contains(doc, "<rect") {
+		t.Errorf("SVG artifact should be spliced in as inline markup, got:\n%s", doc)
+	}
+	if strings.Contains(doc, "<img") {
+		t.Errorf("the <img> reference should be replaced, got:\n%s", doc)
+	}
+	if strings.Contains(doc, "/api/v1/artifacts/"+sha64) {
+		t.Errorf("original artifact URL should be gone, got:\n%s", doc)
+	}
+	if strings.Contains(doc, "data:") {
+		t.Errorf("SVG must not be inlined as a data: URL, got:\n%s", doc)
+	}
+}
+
+func TestRenderToHTML_InlinesMathMLArtifact(t *testing.T) {
+	math := `<math xmlns="http://www.w3.org/1998/Math/MathML"><mi>x</mi></math>`
+	resolve := func(string) ([]byte, string, bool) {
+		return []byte(math), "application/mathml+xml", true
+	}
+	doc, err := RenderToHTML("T", "![x](/api/v1/artifacts/"+sha64+")", resolve)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(doc, "<math") || !strings.Contains(doc, "<mi>") {
+		t.Errorf("MathML artifact should be spliced in as inline markup, got:\n%s", doc)
+	}
+	if strings.Contains(doc, "<img") {
+		t.Errorf("the <img> reference should be replaced, got:\n%s", doc)
+	}
+}
+
+// A malicious SVG artifact is still cleaned by the sanitize pass that runs after
+// splicing, so no script survives in the exported document.
+func TestRenderToHTML_SanitizesInlinedSVG(t *testing.T) {
+	svg := `<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script><rect/></svg>`
+	resolve := func(string) ([]byte, string, bool) {
+		return []byte(svg), "image/svg+xml", true
+	}
+	doc, err := RenderToHTML("T", "![x](/api/v1/artifacts/"+sha64+")", resolve)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(doc, "<script") || strings.Contains(doc, "alert(1)") {
+		t.Errorf("script in a spliced SVG must be sanitized away, got:\n%s", doc)
+	}
+}
+
+func TestRenderToHTML_NilResolverSkipsInlining(t *testing.T) {
+	doc, err := RenderToHTML("T", "![x](/api/v1/artifacts/"+sha64+")", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(doc, "/api/v1/artifacts/"+sha64) {
+		t.Errorf("nil resolver should leave references untouched, got:\n%s", doc)
+	}
+}
 
 func TestValidateMarkdownStructure_Accepts(t *testing.T) {
 	cases := map[string]string{

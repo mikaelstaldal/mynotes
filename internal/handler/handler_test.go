@@ -1,8 +1,10 @@
 package handler_test
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
+	"encoding/base64"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -293,6 +295,63 @@ func TestDownloadNoteHtml(t *testing.T) {
 	assert.Contains(t, bodyStr, "<title>My Note</title>")
 	assert.Contains(t, bodyStr, "<h1>Heading</h1>")
 	assert.Contains(t, bodyStr, "<p>body</p>")
+}
+
+func TestDownloadNoteHtmlInlinesArtifacts(t *testing.T) {
+	srv := newServer(t)
+
+	// Upload a minimal PNG artifact.
+	pngBytes := []byte("\x89PNG\r\n\x1a\nfake-png-body")
+	res, err := http.Post(srv.URL+"/api/v1/artifacts", "image/png", bytes.NewReader(pngBytes))
+	require.NoError(t, err)
+	defer res.Body.Close()
+	require.Equal(t, http.StatusCreated, res.StatusCode)
+	var art api.Artifact
+	require.NoError(t, json.NewDecoder(res.Body).Decode(&art))
+
+	// A note referencing the artifact by its API URL.
+	created := createNote(t, srv, `{"title":"Pics","content":"![alt](/api/v1/artifacts/`+art.SHA256+`)"}`)
+
+	res, err = http.Get(srv.URL + "/api/v1/notes/" + created.Slug + "/download-html")
+	require.NoError(t, err)
+	defer res.Body.Close()
+	require.Equal(t, http.StatusOK, res.StatusCode)
+	body, err := io.ReadAll(res.Body)
+	require.NoError(t, err)
+	bodyStr := string(body)
+
+	want := "data:image/png;base64," + base64.StdEncoding.EncodeToString(pngBytes)
+	assert.Contains(t, bodyStr, want, "artifact should be inlined as a data URL")
+	assert.NotContains(t, bodyStr, "/api/v1/artifacts/"+art.SHA256,
+		"original artifact URL should be replaced")
+}
+
+func TestDownloadNoteHtmlInlinesSVGArtifact(t *testing.T) {
+	srv := newServer(t)
+
+	svg := `<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><rect width="10" height="10"/></svg>`
+	res, err := http.Post(srv.URL+"/api/v1/artifacts", "image/svg+xml", strings.NewReader(svg))
+	require.NoError(t, err)
+	defer res.Body.Close()
+	require.Equal(t, http.StatusCreated, res.StatusCode)
+	var art api.Artifact
+	require.NoError(t, json.NewDecoder(res.Body).Decode(&art))
+
+	created := createNote(t, srv, `{"title":"Vec","content":"![alt](/api/v1/artifacts/`+art.SHA256+`)"}`)
+
+	res, err = http.Get(srv.URL + "/api/v1/notes/" + created.Slug + "/download-html")
+	require.NoError(t, err)
+	defer res.Body.Close()
+	require.Equal(t, http.StatusOK, res.StatusCode)
+	body, err := io.ReadAll(res.Body)
+	require.NoError(t, err)
+	bodyStr := string(body)
+
+	assert.Contains(t, bodyStr, "<svg", "SVG artifact should be inlined as markup")
+	assert.Contains(t, bodyStr, "<rect", "SVG child elements should survive")
+	assert.NotContains(t, bodyStr, "<img", "the <img> reference should be replaced")
+	assert.NotContains(t, bodyStr, "/api/v1/artifacts/"+art.SHA256,
+		"original artifact URL should be gone")
 }
 
 func TestDownloadHtmlUnknownReturns404(t *testing.T) {

@@ -208,7 +208,16 @@ func (h *Handler) DownloadNoteHtml(ctx context.Context, params api.DownloadNoteH
 		}
 		return nil, err
 	}
-	htmlDoc, err := service.RenderToHTML(n.Title, n.Content)
+	// Inline internal bitmap artifacts as data: URLs so the downloaded document
+	// renders standalone, without a live server to serve the artifact endpoint.
+	resolve := func(sha256hex string) ([]byte, string, bool) {
+		a, err := h.artifacts.Get(ctx, sha256hex)
+		if err != nil {
+			return nil, "", false
+		}
+		return a.Content, a.ContentType, true
+	}
+	htmlDoc, err := service.RenderToHTML(n.Title, n.Content, resolve)
 	if err != nil {
 		return nil, err
 	}

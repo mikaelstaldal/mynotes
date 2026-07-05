@@ -2,6 +2,7 @@ package service
 
 import (
 	"bytes"
+	"encoding/base64"
 	"fmt"
 	"html/template"
 	"io"
@@ -58,16 +59,32 @@ var htmlDocTemplate = template.Must(template.New("doc").Parse(`<!DOCTYPE html>
 </html>
 `))
 
+// ArtifactResolver returns the raw bytes and content type of the artifact with
+// the given hex SHA-256 digest. ok is false when the artifact is unknown or
+// unavailable, in which case the referencing image is left untouched.
+type ArtifactResolver func(sha256hex string) (content []byte, contentType string, ok bool)
+
 // RenderToHTML converts Markdown content to a complete HTML document with the
 // given title. The rendered HTML fragment is sanitized with the same bluemonday
 // policy used at write time before being embedded in the document, providing
 // defense-in-depth against any divergence between validation and render output.
-func RenderToHTML(title, content string) (string, error) {
+//
+// When resolve is non-nil, internal artifact image references
+// (<img src=".../api/v1/artifacts/<sha256>">) are inlined so the exported
+// document renders standalone: bitmap (raster) artifacts become base64 data:
+// URLs, while SVG and MathML artifacts are spliced in as inline <svg>/<math>
+// elements (a data: URL for SVG is disallowed by the sanitize policy). Unknown
+// or unresolvable references are left as-is.
+func RenderToHTML(title, content string, resolve ArtifactResolver) (string, error) {
 	var body bytes.Buffer
 	if err := markdownRenderer.Convert([]byte(content), &body); err != nil {
 		return "", fmt.Errorf("render markdown: %w", err)
 	}
-	safe := sanitize.HTML(body.String())
+	rendered := body.String()
+	if resolve != nil {
+		rendered = inlineArtifactImages(rendered, resolve)
+	}
+	safe := sanitize.HTML(rendered)
 	var doc bytes.Buffer
 	if err := htmlDocTemplate.Execute(&doc, struct {
 		Title string
@@ -79,6 +96,100 @@ func RenderToHTML(title, content string) (string, error) {
 		return "", fmt.Errorf("render html template: %w", err)
 	}
 	return doc.String(), nil
+}
+
+// artifactSrcPattern matches an internal artifact image URL and captures its hex
+// SHA-256 digest. It anchors on the `/api/v1/artifacts/<sha256>` path suffix so
+// it matches whether the reference is root-relative (`/api/v1/...`),
+// basepath-prefixed (`/notes/api/v1/...`), or absolute
+// (`https://host/api/v1/...`); any query string or fragment is trimmed first.
+var artifactSrcPattern = regexp.MustCompile(`(?:^|/)api/v1/artifacts/([0-9a-f]{64})$`)
+
+// inlineArtifactImages rewrites internal artifact <img> references so a
+// downloaded document renders without a live server. Each token is re-emitted
+// via the same golang.org/x/net/html tokenizer bluemonday drives; the sanitize
+// pass in RenderToHTML runs afterwards over the result, so any unsafe markup
+// spliced in from an artifact is stripped there (defense-in-depth). A raster
+// artifact's <img src> is rewritten to a base64 data: URL — gated on
+// sanitize.DataImageRaster so the emitted scheme is one the render-time policy
+// keeps. An SVG or MathML artifact's <img> is replaced outright by the raw
+// <svg>/<math> markup. Unknown or unresolvable references are left untouched.
+// On any tokenizer error the original fragment is returned unchanged.
+func inlineArtifactImages(fragment string, resolve ArtifactResolver) string {
+	z := html.NewTokenizer(strings.NewReader(fragment))
+	var b strings.Builder
+	for {
+		if z.Next() == html.ErrorToken {
+			if z.Err() == io.EOF {
+				return b.String()
+			}
+			return fragment
+		}
+		tok := z.Token()
+		if repl, ok := inlineArtifactImg(&tok, resolve); ok {
+			b.WriteString(repl)
+			continue
+		}
+		b.WriteString(tok.String())
+	}
+}
+
+// inlineArtifactImg inspects one token and, when it is an <img> referencing an
+// internal artifact, returns the markup that should replace it plus true. For a
+// raster artifact it mutates tok's src to a data: URL and returns the re-emitted
+// tag; for an SVG/MathML artifact it returns the raw <svg>/<math> content in
+// place of the <img>. It returns ("", false) — meaning "emit the token
+// unchanged" — for any non-<img> token, a non-artifact src, an unresolved
+// artifact, or an artifact whose type is neither raster nor SVG/MathML.
+func inlineArtifactImg(tok *html.Token, resolve ArtifactResolver) (string, bool) {
+	if tok.Type != html.StartTagToken && tok.Type != html.SelfClosingTagToken {
+		return "", false
+	}
+	if tok.Data != "img" {
+		return "", false
+	}
+	srcIdx := -1
+	for i := range tok.Attr {
+		if strings.EqualFold(tok.Attr[i].Key, "src") {
+			srcIdx = i
+			break
+		}
+	}
+	if srcIdx < 0 {
+		return "", false
+	}
+	sha, ok := artifactSHA(tok.Attr[srcIdx].Val)
+	if !ok {
+		return "", false
+	}
+	content, contentType, ok := resolve(sha)
+	if !ok {
+		return "", false
+	}
+	switch {
+	case sanitize.DataImageRaster.MatchString("data:" + contentType + ";"):
+		tok.Attr[srcIdx].Val = "data:" + contentType + ";base64," + base64.StdEncoding.EncodeToString(content)
+		return tok.String(), true
+	case contentType == "image/svg+xml", contentType == "application/mathml+xml":
+		return string(content), true
+	default:
+		return "", false
+	}
+}
+
+// artifactSHA extracts the hex SHA-256 digest from an internal artifact image
+// src, or returns ok=false when src is not such a reference. Any query string or
+// fragment is trimmed before matching.
+func artifactSHA(src string) (string, bool) {
+	path := src
+	if i := strings.IndexAny(path, "?#"); i >= 0 {
+		path = path[:i]
+	}
+	m := artifactSrcPattern.FindStringSubmatch(path)
+	if m == nil {
+		return "", false
+	}
+	return m[1], true
 }
 
 // schemePattern matches a leading RFC 3986 URI scheme ("scheme:"). A
