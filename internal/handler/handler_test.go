@@ -293,6 +293,7 @@ func TestDownloadNoteHtml(t *testing.T) {
 	bodyStr := string(body)
 	assert.Contains(t, bodyStr, "<!DOCTYPE html>")
 	assert.Contains(t, bodyStr, "<title>My Note</title>")
+	assert.Contains(t, bodyStr, "<style>", "exported HTML embeds a stylesheet")
 	assert.Contains(t, bodyStr, "<h1>Heading</h1>")
 	assert.Contains(t, bodyStr, "<p>body</p>")
 }

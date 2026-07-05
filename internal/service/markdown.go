@@ -51,9 +51,94 @@ var markdownRenderer = goldmark.New(
 	),
 )
 
+// exportStylesheet is a small, self-contained stylesheet embedded in every
+// exported HTML document so a downloaded note renders close to the web UI's note
+// view (app.css `.note-content`) without a live server. It is intentionally a
+// best-effort visual match, not a byte-for-byte copy: the palette and typography
+// mirror app.css's :root variables and note-content rules, but colours are wired
+// to prefers-color-scheme (the app toggles a data-theme attribute at runtime,
+// which a standalone file cannot). Styling stays element-level (no class names)
+// because the exported body is the raw rendered Markdown fragment.
+const exportStylesheet = `
+:root {
+  --bg: #ffffff;
+  --fg: #1f2937;
+  --muted: #6b7280;
+  --border: #e5e7eb;
+  --primary: #2563eb;
+  --surface: #f9fafb;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #111827;
+    --fg: #f3f4f6;
+    --muted: #9ca3af;
+    --border: #374151;
+    --primary: #3b82f6;
+    --surface: #1f2937;
+  }
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0 auto;
+  max-width: 65ch;
+  padding: 2rem 1.25rem;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--fg);
+  line-height: 1.7;
+}
+body > :first-child { margin-top: 0; }
+h1, h2, h3, h4, h5, h6 { margin: 1.25em 0 0.5em; line-height: 1.3; }
+h1 { font-size: 1.75rem; }
+h2 { font-size: 1.4rem; }
+h3 { font-size: 1.15rem; }
+p { margin: 0.75em 0; }
+ul, ol { padding-left: 1.5rem; margin: 0.75em 0; }
+li + li { margin-top: 0.25em; }
+a { color: var(--primary); }
+a[href*="/tags/"] {
+  text-decoration: none;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0 0.5em;
+  font-size: 0.9em;
+  white-space: nowrap;
+}
+pre {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.9rem 1rem;
+  overflow-x: auto;
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+code {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 0.1em 0.35em;
+  font-size: 0.875em;
+}
+pre code { background: none; border: none; padding: 0; font-size: inherit; }
+blockquote {
+  margin: 0.75em 0;
+  padding: 0.5em 1em;
+  border-left: 3px solid var(--border);
+  color: var(--muted);
+}
+table { border-collapse: collapse; width: 100%; margin: 0.75em 0; }
+th, td { border: 1px solid var(--border); padding: 0.4rem 0.7rem; text-align: left; }
+th { background: var(--surface); font-weight: 600; }
+img { max-width: 100%; height: auto; }
+hr { border: none; border-top: 1px solid var(--border); margin: 1.5em 0; }
+`
+
 var htmlDocTemplate = template.Must(template.New("doc").Parse(`<!DOCTYPE html>
 <html lang="en">
-<head><meta charset="utf-8"><title>{{.Title}}</title></head>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>{{.Title}}</title><style>{{.Style}}</style></head>
 <body>
 {{.Body}}</body>
 </html>
@@ -88,10 +173,12 @@ func RenderToHTML(title, content string, resolve ArtifactResolver) (string, erro
 	var doc bytes.Buffer
 	if err := htmlDocTemplate.Execute(&doc, struct {
 		Title string
+		Style template.CSS
 		Body  template.HTML
 	}{
 		Title: title,
-		Body:  template.HTML(safe), //nolint:gosec // sanitized by bluemonday immediately above
+		Style: template.CSS(exportStylesheet), // trusted static constant
+		Body:  template.HTML(safe),            //nolint:gosec // sanitized by bluemonday immediately above
 	}); err != nil {
 		return "", fmt.Errorf("render html template: %w", err)
 	}
