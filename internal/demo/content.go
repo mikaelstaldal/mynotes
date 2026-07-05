@@ -106,8 +106,10 @@ func main() {
 
 ## Links & rules
 
-Link to [another note](/notes/welcome-to-mynotes) using its stable URL, or to an
-[external site](https://commonmark.org/help/).
+Link to [[welcome-to-mynotes|another note]] with the ` + "`[[slug]]`" + ` wikilink
+syntax (use ` + "`[[slug|label]]`" + ` for custom text), or to an
+[external site](https://commonmark.org/help/). Link to a tag's notes with
+` + "`[[#slug]]`" + `, like [[#personal]].
 
 ---
 
@@ -140,7 +142,7 @@ A reliable everyday loaf with a crisp crust and open crumb.
 
 > Keep a little water in the dough — a wetter dough gives a more open crumb.
 
-Pairs well with the **Weekend in Lisbon** note's pastéis de nata.
+Pairs well with the [[weekend-in-lisbon|Weekend in Lisbon]] note's pastéis de nata.
 
 Filed under [[#recipes]] and [[#personal]].
 `
@@ -171,7 +173,7 @@ Planning notes for the third quarter. Status is tracked per workstream below.
 > We agreed to defer the analytics rebuild to Q4 so the team can focus on the
 > onboarding launch.
 
-See the [Markdown Formatting Guide](/notes/markdown-formatting-guide) for how
+See the [[markdown-formatting-guide|Markdown Formatting Guide]] for how
 these tables are written.
 `
 

@@ -60,10 +60,6 @@ const dataUrlCollapse = ViewPlugin.fromClass(
   { decorations: v => v.decorations },
 );
 
-function escapeLinkText(s: string): string {
-  return s.replace(/[\\[\]]/g, '\\$&');
-}
-
 function sortedSlugs(tags: Tag[]): string[] {
   return tags.map(t => t.slug).sort();
 }
@@ -286,7 +282,11 @@ export function NoteEditor({ slug, onSave }: Props) {
     const view = viewRef.current;
     if (!view) return;
     const { from } = view.state.selection.main;
-    const text = `[${escapeLinkText(noteTitle)}](/notes/${noteSlug})`;
+    // Add an alias ([[slug|Title]]) only when the title adds information over the
+    // default slug text and is representable in the syntax (the label may not
+    // contain ']' or a newline).
+    const useAlias = noteTitle !== noteSlug && !/[\]\n]/.test(noteTitle);
+    const text = useAlias ? `[[${noteSlug}|${noteTitle}]]` : `[[${noteSlug}]]`;
     view.dispatch({
       changes: { from, insert: text },
       selection: EditorSelection.cursor(from + text.length),

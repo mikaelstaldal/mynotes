@@ -291,6 +291,45 @@ for (const { label, md, absent, present } of PARITY_VECTORS) {
 }
 
 // ---------------------------------------------------------------------------
+// Internal note wikilinks — [[slug]] / [[slug|label]]
+// ---------------------------------------------------------------------------
+// base resolves to '' under jsdom (no <base href>), so hrefs are /notes/<slug>.
+
+test('[[slug]] renders a link to /notes/<slug> with slug text', () => {
+  const out = renderNote('See [[my-note]] for details.');
+  assertPresent(out, 'href="/notes/my-note"', 'note link href');
+  assertPresent(out, '>my-note<', 'default slug text');
+});
+
+test('[[slug|label]] uses the alias as the link text', () => {
+  const out = renderNote('[[my-note|My Note]]');
+  assertPresent(out, 'href="/notes/my-note"', 'aliased href');
+  assertPresent(out, '>My Note<', 'alias text');
+});
+
+test('[[slug]] does not link to /tags', () => {
+  const out = renderNote('[[work]]');
+  assertPresent(out, 'href="/notes/work"', 'note href');
+  assertAbsent(out, 'href="/tags', 'no tag link for note wikilink');
+});
+
+test('non-matching [[…]] is left as literal text (uppercase, spaces)', () => {
+  const upper = renderNote('[[UPPER]]');
+  assertAbsent(upper, 'href="/notes', 'uppercase slug not linked');
+  assertPresent(upper, '[[UPPER]]', 'uppercase left literal');
+
+  const spaced = renderNote('[[Foo Bar]]');
+  assertAbsent(spaced, 'href="/notes', 'spaced slug not linked');
+  assertPresent(spaced, '[[Foo Bar]]', 'spaced left literal');
+});
+
+test('[[slug]] inside a code span stays literal (no link)', () => {
+  const out = renderNote('`[[my-note]]`');
+  assertAbsent(out, 'href="/notes/my-note"', 'no link inside code span');
+  assertPresent(out, '[[my-note]]', 'literal text inside code');
+});
+
+// ---------------------------------------------------------------------------
 // Internal tag links — [[#slug]] / [[#slug|label]]
 // ---------------------------------------------------------------------------
 // base resolves to '' under jsdom (no <base href>), so hrefs are /tags/<slug>.

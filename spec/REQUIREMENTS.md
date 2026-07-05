@@ -70,14 +70,18 @@ identity exists but is never exposed as the URL key.
 - Inline SVG and MathML embedded directly in Markdown HTML blocks are allowed;
   scripts, event handlers, `<foreignObject>`, `<use>`, `<style>`, and other
   unsafe constructs are rejected at write time.
-- **Tag links:** the non-standard syntax `[[#slug]]` links to a tag's note list
-  (`/tags/{slug}`); `[[#slug|Display text]]` overrides the shown text (default is
-  `#slug`). `slug` must match the tag-slug pattern (`^[a-z0-9]+(?:-[a-z0-9]+)*$`);
-  anything else is left as literal text. This is a client render-time transform
-  only — the reference is stored verbatim in the Markdown, is not validated
-  against existing tags (a link to a non-existent tag simply lists no notes), and
-  the `[[`/`]]` delimiters do not collide with CommonMark, raw HTML, SVG, or
-  MathML. The editor offers a toolbar button to insert one from the tag list.
+- **Wikilinks:** the non-standard `[[…]]` syntax links to another note or a tag's
+  note list. `[[slug]]` links to a note (`/notes/{slug}`); `[[#slug]]` (with a `#`
+  sigil) links to a tag's note list (`/tags/{slug}`). `[[slug|Display text]]` (or
+  `[[#slug|Display text]]`) overrides the shown text; the default is the `slug`
+  itself (tag links prefix it with `#`). `slug` must match the slug pattern
+  (`^[a-z0-9]+(?:-[a-z0-9]+)*$`); anything else is left as literal text. This is a
+  client render-time transform only — the reference is stored verbatim in the
+  Markdown, is not validated against existing notes/tags (a link to a non-existent
+  note 404s when followed; a link to a non-existent tag simply lists no notes),
+  and the `[[`/`]]` delimiters do not collide with CommonMark, raw HTML, SVG, or
+  MathML. The editor offers toolbar buttons to insert a note link (from the note
+  list) or a tag link (from the tag list).
 - Both the read view and the editor's live preview render the same way and must
   be safe against XSS (see Security).
 - Content is bounded at 1,000,000 characters; empty content is valid.
