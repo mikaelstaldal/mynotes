@@ -32,7 +32,7 @@ export function LinkPicker({ currentSlug, onSelect, onClose }: Props) {
     setSearching(true);
     debounceRef.current = setTimeout(async () => {
       try {
-        const list = await api.notes.list({ q: query || undefined, titleOnly: true, limit: 50 });
+        const list = await api.notes.list({ q: query || undefined, titlePrefix: true, limit: 50 });
         setResults(list.notes.filter(n => n.slug !== currentSlug));
       } catch {
         setResults([]);

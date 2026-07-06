@@ -8,7 +8,8 @@ interface Props {
 
 // Modal picker for inserting a tag link ([[#slug]]) into a note. Tags are a
 // small dataset, so the full list is loaded once and filtered client-side
-// (same approach as TagPicker). Selecting a tag inserts a link to /tags/<slug>.
+// (same approach as TagPicker) with a case-insensitive prefix match on the tag
+// name (autocomplete style). Selecting a tag inserts a link to /tags/<slug>.
 export function TagLinkPicker({ onSelect, onClose }: Props) {
   const [query, setQuery] = useState('');
   const [allTags, setAllTags] = useState<Tag[]>([]);
@@ -43,7 +44,7 @@ export function TagLinkPicker({ onSelect, onClose }: Props) {
 
   const trimmed = query.trim().toLowerCase();
   const results = trimmed
-    ? allTags.filter(t => t.name.toLowerCase().includes(trimmed) || t.slug.includes(trimmed))
+    ? allTags.filter(t => t.name.toLowerCase().startsWith(trimmed))
     : allTags;
 
   return (

@@ -292,7 +292,7 @@ func TestSearchMatchesAndSnippet(t *testing.T) {
 	assert.NotContains(t, hits[0].Excerpt, "<")
 }
 
-func TestSearchTitleOnly(t *testing.T) {
+func TestSearchTitlePrefix(t *testing.T) {
 	ctx := context.Background()
 	repo := NewNoteRepository(newTestDB(t))
 
@@ -308,12 +308,27 @@ func TestSearchTitleOnly(t *testing.T) {
 	assert.Equal(t, 2, total)
 	assert.Len(t, all, 2)
 
-	// Title-only search matches just the note whose title contains the term.
+	// Title-prefix search matches just the note whose title starts with the
+	// term, case-insensitively.
 	titleHits, total, err := repo.List(ctx, "revenue", "", true, 50, 0)
 	require.NoError(t, err)
 	assert.Equal(t, 1, total)
 	require.Len(t, titleHits, 1)
 	assert.Equal(t, "revenue-report", titleHits[0].Slug)
+
+	// A partial prefix (mid-word) still matches from the start of the title.
+	partial, total, err := repo.List(ctx, "Grocery l", "", true, 50, 0)
+	require.NoError(t, err)
+	assert.Equal(t, 1, total)
+	require.Len(t, partial, 1)
+	assert.Equal(t, "grocery-list", partial[0].Slug)
+
+	// A term that appears only mid-title (not as a prefix) does not match,
+	// unlike a full-text search.
+	none, total, err := repo.List(ctx, "report", "", true, 50, 0)
+	require.NoError(t, err)
+	assert.Equal(t, 0, total)
+	assert.Empty(t, none)
 }
 
 func TestSearchRankingOrder(t *testing.T) {
@@ -389,6 +404,29 @@ func TestSearchTitleOnlyMatchFallsBackToPrefix(t *testing.T) {
 	// Title-only match: no content sentinel, so excerpt falls back to the prefix.
 	assert.NotContains(t, hits[0].Excerpt, "\x02")
 	assert.Equal(t, "no match in body", hits[0].Excerpt)
+}
+
+func TestSearchTitlePrefixTreatsWildcardsLiterally(t *testing.T) {
+	ctx := context.Background()
+	repo := NewNoteRepository(newTestDB(t))
+
+	_, err := repo.Create(ctx, "discount", "50% off sale", "body")
+	require.NoError(t, err)
+	_, err = repo.Create(ctx, "other", "Other note", "body")
+	require.NoError(t, err)
+
+	// A bare "%" must not act as a LIKE wildcard matching every title.
+	none, total, err := repo.List(ctx, "%", "", true, 50, 0)
+	require.NoError(t, err)
+	assert.Equal(t, 0, total)
+	assert.Empty(t, none)
+
+	// A literal "%" in the prefix matches the title that actually contains it.
+	hits, total, err := repo.List(ctx, "50%", "", true, 50, 0)
+	require.NoError(t, err)
+	assert.Equal(t, 1, total)
+	require.Len(t, hits, 1)
+	assert.Equal(t, "discount", hits[0].Slug)
 }
 
 func TestSearchTreatsInputAsLiteral(t *testing.T) {

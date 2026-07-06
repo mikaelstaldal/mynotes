@@ -307,8 +307,14 @@ func (r *NoteRepository) Delete(ctx context.Context, slug string) error {
 // List returns a page of note summaries and the total matching count. tagSlug,
 // when non-empty, restricts results to notes carrying that tag (combined with
 // the FTS filter via AND when both are present).
-func (r *NoteRepository) List(ctx context.Context, query, tagSlug string, titleOnly bool, limit, offset int) ([]model.NoteSummary, int, error) {
-	if q := sanitizeFTSQuery(query, titleOnly); q != "" {
+func (r *NoteRepository) List(ctx context.Context, query, tagSlug string, titlePrefix bool, limit, offset int) ([]model.NoteSummary, int, error) {
+	if titlePrefix {
+		if prefix := strings.TrimSpace(query); prefix != "" {
+			return r.searchTitlePrefix(ctx, prefix, tagSlug, limit, offset)
+		}
+		return r.browse(ctx, tagSlug, limit, offset)
+	}
+	if q := sanitizeFTSQuery(query); q != "" {
 		return r.search(ctx, q, tagSlug, limit, offset)
 	}
 	return r.browse(ctx, tagSlug, limit, offset)
@@ -332,7 +338,6 @@ func attachTags(ctx context.Context, db *sql.DB, notes []model.NoteSummary, ids 
 }
 
 func (r *NoteRepository) browse(ctx context.Context, tagSlug string, limit, offset int) ([]model.NoteSummary, int, error) {
-	var total int
 	var countQuery, listQuery string
 	var countArgs, listArgs []any
 
@@ -362,6 +367,56 @@ func (r *NoteRepository) browse(ctx context.Context, tagSlug string, limit, offs
 		listArgs = []any{tagSlug, limit, offset}
 	}
 
+	return r.querySummaries(ctx, countQuery, countArgs, listQuery, listArgs)
+}
+
+// searchTitlePrefix returns notes whose title begins with prefix, matched
+// case-insensitively (autocomplete style) via a LIKE anchored at the start;
+// LIKE wildcards in the input are escaped so they match literally. Results are
+// ordered by title. tagSlug, when non-empty, restricts to notes carrying that
+// tag.
+func (r *NoteRepository) searchTitlePrefix(ctx context.Context, prefix, tagSlug string, limit, offset int) ([]model.NoteSummary, int, error) {
+	pattern := escapeLike(prefix) + "%"
+	var countQuery, listQuery string
+	var countArgs, listArgs []any
+
+	if tagSlug == "" {
+		countQuery = `SELECT COUNT(*) FROM notes WHERE title LIKE ? ESCAPE '\'`
+		countArgs = []any{pattern}
+		listQuery = `
+			SELECT id, slug, title, created_at, updated_at, substr(content, 1, 501), version
+			FROM notes
+			WHERE title LIKE ? ESCAPE '\'
+			ORDER BY title ASC, id DESC
+			LIMIT ? OFFSET ?`
+		listArgs = []any{pattern, limit, offset}
+	} else {
+		countQuery = `
+			SELECT COUNT(*) FROM notes n
+			JOIN note_tags nt ON nt.note_id = n.id
+			JOIN tags t ON t.id = nt.tag_id
+			WHERE t.slug = ? AND n.title LIKE ? ESCAPE '\'`
+		countArgs = []any{tagSlug, pattern}
+		listQuery = `
+			SELECT n.id, n.slug, n.title, n.created_at, n.updated_at, substr(n.content, 1, 501), n.version
+			FROM notes n
+			JOIN note_tags nt ON nt.note_id = n.id
+			JOIN tags t ON t.id = nt.tag_id
+			WHERE t.slug = ? AND n.title LIKE ? ESCAPE '\'
+			ORDER BY n.title ASC, n.id DESC
+			LIMIT ? OFFSET ?`
+		listArgs = []any{tagSlug, pattern, limit, offset}
+	}
+
+	return r.querySummaries(ctx, countQuery, countArgs, listQuery, listArgs)
+}
+
+// querySummaries runs a COUNT + page query pair whose list columns are, in
+// order, (id, slug, title, created_at, updated_at, content-probe, version) and
+// assembles the page (excerpt from the probe, tags attached). Shared by the
+// browse and title-prefix paths, which differ only in their predicates.
+func (r *NoteRepository) querySummaries(ctx context.Context, countQuery string, countArgs []any, listQuery string, listArgs []any) ([]model.NoteSummary, int, error) {
+	var total int
 	if err := r.db.QueryRowContext(ctx, countQuery, countArgs...).Scan(&total); err != nil {
 		return nil, 0, err
 	}
@@ -554,22 +609,21 @@ func plainExcerpt(probe string) string {
 // (with internal quotes doubled), so FTS5 operators like AND/OR/NEAR and
 // special characters cannot break out. Returns "" when there is nothing to
 // match, signalling the caller to fall back to an unfiltered browse list.
-//
-// When titleOnly is set, the resulting expression is wrapped in an FTS5 column
-// filter ({title} : (...)) so matches are restricted to the title column.
-func sanitizeFTSQuery(query string, titleOnly bool) string {
+func sanitizeFTSQuery(query string) string {
 	fields := strings.Fields(query)
 	tokens := make([]string, 0, len(fields))
 	for _, f := range fields {
 		f = strings.ReplaceAll(f, `"`, `""`)
 		tokens = append(tokens, `"`+f+`"`)
 	}
-	if len(tokens) == 0 {
-		return ""
-	}
-	joined := strings.Join(tokens, " ")
-	if titleOnly {
-		return "{title} : (" + joined + ")"
-	}
-	return joined
+	return strings.Join(tokens, " ")
+}
+
+// escapeLike escapes the LIKE wildcards (% and _) and the escape character
+// itself so a user string is matched literally under `LIKE ? ESCAPE '\'`.
+func escapeLike(s string) string {
+	s = strings.ReplaceAll(s, `\`, `\\`)
+	s = strings.ReplaceAll(s, "%", `\%`)
+	s = strings.ReplaceAll(s, "_", `\_`)
+	return s
 }

@@ -80,8 +80,9 @@ identity exists but is never exposed as the URL key.
   Markdown, is not validated against existing notes/tags (a link to a non-existent
   note 404s when followed; a link to a non-existent tag simply lists no notes),
   and the `[[`/`]]` delimiters do not collide with CommonMark, raw HTML, SVG, or
-  MathML. The editor offers toolbar buttons to insert a note link (from the note
-  list) or a tag link (from the tag list).
+  MathML. The editor offers toolbar buttons to insert a note link or a tag link;
+  each opens a picker that autocompletes by case-insensitive prefix match on the
+  note title / tag name.
 - Both the read view and the editor's live preview render the same way and must
   be safe against XSS (see Security).
 - Content is bounded at 1,000,000 characters; empty content is valid.
@@ -134,7 +135,7 @@ hyphens, 1–100 characters).
 The API manages notes keyed by slug. Operations:
 
 - **List/search notes** — optional query `q`, an optional `tag` filter (by
-  tag slug, combinable with `q`), an optional `titleOnly` flag, plus paging
+  tag slug, combinable with `q`), an optional `titlePrefix` flag, plus paging
   (`limit`, `offset`).
   Returns a page of summaries (slug, title, updated time, excerpt, tags) and
   the total match count.
@@ -143,8 +144,10 @@ The API manages notes keyed by slug. Operations:
   - Present `q` = full-text search over title and body, ordered by relevance,
     with a match-centred excerpt that highlights matched terms. A match found
     only in the title falls back to a plain content prefix excerpt.
-  - `titleOnly` (default false) restricts the full-text search to note titles;
-    body content is not matched. Ignored when `q` is empty.
+  - `titlePrefix` (default false) matches `q` as a case-insensitive prefix of
+    the note title (autocomplete style, ordered by title) instead of a
+    full-text search; body content is not matched. Ignored when `q` is empty.
+    Used by the web UI's internal-link picker.
   - Present `tag` restricts results to notes carrying that tag; an unknown
     tag slug simply matches no notes (not an error).
   - `total` reflects all matching rows, independent of the page window. Paging
