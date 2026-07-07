@@ -84,6 +84,18 @@ func TestTagService_CreateTrimsNameAndRejectsBlank(t *testing.T) {
 	assert.ErrorIs(t, err, ErrValidation, "whitespace-only name rejected after trim")
 }
 
+func TestTagService_CreateRejectsControlChars(t *testing.T) {
+	ctx := context.Background()
+	svc := newTestTagService(t)
+
+	// Any Unicode Cc control char is rejected — tab/newline/CR, DEL, and the C1
+	// controls included (a tag name is a single line, mirroring validateTitle).
+	for _, r := range []rune{'\t', '\n', '\r', '\x00', '\x02', '\x1f', '\x7f', '\u0080', '\u0085', '\u009f'} {
+		_, err := svc.Create(ctx, "a"+string(r)+"b", nil)
+		assert.ErrorIs(t, err, ErrValidation, "control char %#x", r)
+	}
+}
+
 func TestTagService_ListAndDelete(t *testing.T) {
 	ctx := context.Background()
 	svc := newTestTagService(t)

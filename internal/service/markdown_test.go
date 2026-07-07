@@ -233,6 +233,10 @@ func TestValidateMarkdownStructure_Rejects(t *testing.T) {
 		"sentinel 3": "a\x03b",
 		"form feed":  "a\x0cb",
 		"vtab":       "a\x0bb",
+		"del":        "a\x7fb",
+		"c1 nel":     "a\u0085b",
+		"c1 low":     "a\u0080b",
+		"c1 high":    "a\u009fb",
 	}
 	for name, content := range cases {
 		t.Run(name, func(t *testing.T) {

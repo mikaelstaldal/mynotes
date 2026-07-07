@@ -484,8 +484,8 @@ func generateSlug(title string) string {
 }
 
 // validateTitle assumes a pre-trimmed title. It rejects an empty (i.e.
-// whitespace-only) title, invalid UTF-8, any C0 control char (tab/newline/CR
-// included), and titles past maxTitleLen.
+// whitespace-only) title, invalid UTF-8, any Unicode Cc control char
+// (tab/newline/CR included), and titles past maxTitleLen.
 func validateTitle(title string) error {
 	if title == "" {
 		return validationError("title is required")
@@ -494,7 +494,7 @@ func validateTitle(title string) error {
 		return validationError("title is not valid UTF-8")
 	}
 	for _, r := range title {
-		if r < 0x20 {
+		if unicode.IsControl(r) {
 			return validationError("title must not contain control characters")
 		}
 	}
@@ -507,7 +507,7 @@ func validateTitle(title string) error {
 // validateContent checks verbatim Markdown content: valid UTF-8, within
 // maxContentLen, and structurally safe (no disallowed embedded HTML, no
 // link/image destination with a disallowed scheme, no excessive nesting, no
-// stray C0 control characters — see validateMarkdownStructure). Content is never
+// stray control characters — see validateMarkdownStructure). Content is never
 // trimmed or otherwise mutated; this only accepts or rejects.
 func validateContent(content string) error {
 	if !utf8.ValidString(content) {

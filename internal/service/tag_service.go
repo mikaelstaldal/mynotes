@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/mikaelstaldal/mynotes/internal/model"
@@ -87,7 +88,7 @@ func (s *TagService) Delete(ctx context.Context, slug string) error {
 }
 
 // validateTagName mirrors validateTitle: non-empty (post-trim), valid UTF-8,
-// no C0 control characters, bounded length.
+// no Unicode Cc control characters, bounded length.
 func validateTagName(name string) error {
 	if name == "" {
 		return validationError("name is required")
@@ -96,7 +97,7 @@ func validateTagName(name string) error {
 		return validationError("name is not valid UTF-8")
 	}
 	for _, r := range name {
-		if r < 0x20 {
+		if unicode.IsControl(r) {
 			return validationError("name must not contain control characters")
 		}
 	}

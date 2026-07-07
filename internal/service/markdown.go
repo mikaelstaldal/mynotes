@@ -8,6 +8,7 @@ import (
 	"io"
 	"regexp"
 	"strings"
+	"unicode"
 
 	"github.com/mikaelstaldal/mynotes/internal/sanitize"
 	"github.com/yuin/goldmark"
@@ -285,17 +286,18 @@ var schemePattern = regexp.MustCompile(`^([a-zA-Z][a-zA-Z0-9+.\-]*):`)
 
 // validateMarkdownStructure is the write-time structural gate over note content.
 // It accepts or rejects only — content is never mutated. It rejects (with
-// ErrValidation) content that contains a C0 control character other than
-// tab/newline/CR, embedded HTML outside the safe allow-list, a Markdown-native
-// link/image destination with a disallowed scheme, or nesting deeper than
-// maxNestingDepth.
+// ErrValidation) content that contains a Unicode Cc control character other
+// than tab/newline/CR, embedded HTML outside the safe allow-list, a
+// Markdown-native link/image destination with a disallowed scheme, or nesting
+// deeper than maxNestingDepth.
 func validateMarkdownStructure(content string) error {
-	// Flat byte scan for C0 control characters, independent of the parse. Every
-	// C0 control is < 0x80 and so is never part of a UTF-8 multi-byte sequence;
-	// the scan catches a raw sentinel (U+0002/U+0003, §8) even on otherwise
-	// malformed input, so it does not depend on the UTF-8 check running first.
-	for i := 0; i < len(content); i++ {
-		if c := content[i]; c < 0x20 && c != '\t' && c != '\n' && c != '\r' {
+	// Rune scan for control characters (Unicode Cc: C0, DEL, and C1),
+	// independent of the parse. A raw C0 sentinel (U+0002/U+0003, §8) is < 0x80,
+	// so range iteration always decodes it as a standalone rune even amid
+	// otherwise malformed input; the scan does not depend on the UTF-8 check
+	// running first.
+	for _, r := range content {
+		if unicode.IsControl(r) && r != '\t' && r != '\n' && r != '\r' {
 			return validationError("content must not contain control characters")
 		}
 	}

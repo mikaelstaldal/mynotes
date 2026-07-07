@@ -200,9 +200,10 @@ func TestValidateTitle(t *testing.T) {
 	assert.ErrorIs(t, validateTitle(strings.Repeat("x", maxTitleLen+1)), ErrValidation, "too long")
 	assert.ErrorIs(t, validateTitle("bad\xff utf8"), ErrValidation, "invalid utf-8")
 
-	// Any C0 control char in a title is rejected — tab/newline/CR included (a title
-	// is a single line), unlike content which permits those three.
-	for _, r := range []rune{'\t', '\n', '\r', '\x00', '\x02', '\x03', '\x1f'} {
+	// Any Unicode Cc control char in a title is rejected — tab/newline/CR included
+	// (a title is a single line), unlike content which permits those three, plus
+	// DEL and the C1 controls.
+	for _, r := range []rune{'\t', '\n', '\r', '\x00', '\x02', '\x03', '\x1f', '\x7f', '\u0080', '\u0085', '\u009f'} {
 		assert.ErrorIs(t, validateTitle("a"+string(r)+"b"), ErrValidation, "control char %#x", r)
 	}
 }
