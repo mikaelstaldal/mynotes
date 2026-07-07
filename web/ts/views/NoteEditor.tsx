@@ -610,7 +610,7 @@ export function NoteEditor({ slug, onSave }: Props) {
       <div class="editor-toolbar">
         <div class="layout-btns">
           <button type="button" class={layout === 'editor' ? 'active btn-icon' : 'btn-icon'} title="Editor" aria-label="Editor" onClick={() => setLayout('editor')}>✎</button>
-          <button type="button" class={layout === 'split' ? 'active btn-icon' : 'btn-icon'} title="Split" aria-label="Split" onClick={() => setLayout('split')}>⊞</button>
+          <button type="button" class={layout === 'split' ? 'active btn-icon' : 'btn-icon'} title="Split" aria-label="Split" onClick={() => setLayout('split')}>◫</button>
           <button type="button" class={layout === 'preview' ? 'active btn-icon' : 'btn-icon'} title="Preview" aria-label="Preview" onClick={() => setLayout('preview')}>◉</button>
         </div>
         <span class="toolbar-spacer" />
