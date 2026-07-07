@@ -17,6 +17,7 @@ import { slugFromTitle } from '../util/slug.js';
 import { LinkPicker } from '../components/LinkPicker.js';
 import { TagLinkPicker } from '../components/TagLinkPicker.js';
 import { TagPicker } from '../components/TagPicker.js';
+import { saveDraft, loadDraft, clearDraft, type Draft } from '../util/draft.js';
 
 const DATA_URL_RE = /data:([^;,\s]+);base64,[A-Za-z0-9+/]+=*/g;
 
@@ -104,6 +105,9 @@ export function NoteEditor({ slug, onSave }: Props) {
   // Synchronous mirror of `dirty` state for the navigation guard closure.
   const dirtyRef = useRef(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // A localStorage draft awaiting load into the CodeMirror editor once it's
+  // created (set during the restore decision, consumed by the editor effect).
+  const pendingDraftRef = useRef<Draft | null>(null);
 
   // Diffs (title, content, slug, tags) against the last-saved/loaded snapshot
   // and updates both the dirty state and its synchronous ref mirror.
@@ -122,6 +126,35 @@ export function NoteEditor({ slug, onSave }: Props) {
     applyDirty(title, content, currentSlug, next);
   }
 
+  // True when a restored draft actually diverges from the last-saved/loaded
+  // baseline — used to skip a pointless "restore?" prompt for a stale but
+  // identical draft.
+  function draftDiffersFromBaseline(d: Draft): boolean {
+    const snap = snapshotRef.current;
+    return d.title !== snap.title
+      || d.content !== snap.content
+      || !sameSlugs(sortedSlugs(d.tags), snap.tags)
+      || (!editing && (d.slugOverride ?? '') !== (slugOverrideActive ? slugOverride : ''));
+  }
+
+  function restorePrompt(savedAt: string): string {
+    const when = savedAt ? `from ${new Date(savedAt).toLocaleString()}` : 'from a previous session';
+    return `You have unsaved changes ${when}. Restore them?`;
+  }
+
+  // Writes the current edit to localStorage. Kept in a ref so the 30s interval
+  // and the submit path always see current state without re-registering timers.
+  const persistDraftRef = useRef<() => void>(() => {});
+  persistDraftRef.current = () => {
+    saveDraft(slug, {
+      title,
+      content: viewRef.current?.state.doc.toString() ?? '',
+      tags,
+      slugOverride: !editing && slugOverrideActive && slugOverride ? slugOverride : undefined,
+      savedAt: new Date().toISOString(),
+    });
+  };
+
   // Register a navigation guard while this form is mounted so in-app link clicks
   // and the Cancel button ask for confirmation when there are unsaved changes.
   useEffect(() => {
@@ -132,16 +165,42 @@ export function NoteEditor({ slug, onSave }: Props) {
     return () => setNavigationGuard(null);
   }, []);
 
-  // Prevent browser refresh/tab-close when dirty.
+  // Prevent browser refresh/tab-close when dirty, flushing the draft first so the
+  // very latest keystrokes survive (localStorage writes are synchronous, so they
+  // complete before the page is torn down).
   useEffect(() => {
     if (!dirty) return;
     const handler = (e: BeforeUnloadEvent) => {
+      persistDraftRef.current();
       e.preventDefault();
       e.returnValue = '';
     };
     window.addEventListener('beforeunload', handler);
     return () => window.removeEventListener('beforeunload', handler);
   }, [dirty]);
+
+  // Flush the draft whenever the tab becomes hidden (backgrounded, switched away,
+  // or on mobile where the OS may discard the page without ever firing
+  // beforeunload). Registered once; gated on the synchronous dirty mirror.
+  useEffect(() => {
+    const handler = () => {
+      if (document.visibilityState === 'hidden' && dirtyRef.current) {
+        persistDraftRef.current();
+      }
+    };
+    document.addEventListener('visibilitychange', handler);
+    return () => document.removeEventListener('visibilitychange', handler);
+  }, []);
+
+  // Auto-save the in-progress edit to localStorage every 30 seconds while there
+  // are unsaved changes, so work survives an unexpected browser close. The draft
+  // is only cleared on a successful submit (see handleSubmit).
+  useEffect(() => {
+    const id = setInterval(() => {
+      if (dirtyRef.current) persistDraftRef.current();
+    }, 30000);
+    return () => clearInterval(id);
+  }, []);
 
   // Kept current every render so the CM updateListener never captures stale state.
   const handleDocChangeRef = useRef<(doc: string) => void>(() => {});
@@ -176,6 +235,19 @@ export function NoteEditor({ slug, onSave }: Props) {
         snapshotRef.current = { title: note.title, content: note.content, slug: note.slug, tags: sortedSlugs(note.tags) };
         titleTouchedRef.current = true; // suppress auto-sync in edit mode
         setPreviewHtml(renderNote(note.content));
+
+        // Offer to restore any unsaved work from a previous session. The editor
+        // isn't mounted yet, so stash the draft for the editor-creation effect.
+        const draft = loadDraft(slug);
+        if (draft && draftDiffersFromBaseline(draft)) {
+          if (confirm(restorePrompt(draft.savedAt))) {
+            pendingDraftRef.current = draft;
+            setTitle(draft.title);
+            setTags(draft.tags);
+          } else {
+            clearDraft(slug);
+          }
+        }
       } catch (e) {
         if (cancelled) return;
         if (e instanceof NotFoundError) { showToast('Note not found'); navigate('/'); }
@@ -187,14 +259,37 @@ export function NoteEditor({ slug, onSave }: Props) {
     return () => { cancelled = true; };
   }, [slug, editing]);
 
+  // For a new note, decide whether to restore an unsaved draft before the editor
+  // is created. Runs synchronously on mount, ahead of the editor-creation effect,
+  // so the stashed draft is in place when the editor initializes.
+  useEffect(() => {
+    if (editing) return;
+    const draft = loadDraft(undefined);
+    if (draft && draftDiffersFromBaseline(draft)) {
+      if (confirm(restorePrompt(draft.savedAt))) {
+        pendingDraftRef.current = draft;
+        setTitle(draft.title);
+        setTags(draft.tags);
+        titleTouchedRef.current = true; // preserve the restored title
+        if (draft.slugOverride) {
+          setSlugOverride(draft.slugOverride);
+          setSlugOverrideActive(true);
+        }
+      } else {
+        clearDraft(undefined);
+      }
+    }
+  }, []);
+
   // Create CodeMirror editor once content is available.
   // For /new: runs on mount (loading is already false).
   // For edit: runs after loading becomes false and the editor container appears in DOM.
   useEffect(() => {
     if (!editorContainerRef.current) return;
 
+    const pending = pendingDraftRef.current;
     const view = new EditorView({
-      doc: snapshotRef.current.content,
+      doc: pending ? pending.content : snapshotRef.current.content,
       extensions: [
         history(),
         keymap.of([...defaultKeymap, ...historyKeymap]),
@@ -209,6 +304,17 @@ export function NoteEditor({ slug, onSave }: Props) {
       parent: editorContainerRef.current,
     });
     viewRef.current = view;
+
+    // A restored draft was loaded as the initial doc; mark dirty and render its
+    // preview (setting the initial doc doesn't fire the updateListener).
+    if (pending) {
+      const restoredSlug = editing
+        ? snapshotRef.current.slug
+        : (pending.slugOverride || undefined);
+      applyDirty(pending.title, pending.content, restoredSlug, pending.tags);
+      setPreviewHtml(renderNote(pending.content));
+      pendingDraftRef.current = null;
+    }
 
     return () => {
       view.destroy();
@@ -237,6 +343,9 @@ export function NoteEditor({ slug, onSave }: Props) {
   async function handleSubmit(e: SubmitEvent) {
     e.preventDefault();
     const content = viewRef.current?.state.doc.toString() ?? '';
+    // Persist once more right before submitting, so the draft survives a failure
+    // or crash mid-request. It's cleared only after the backend confirms the save.
+    persistDraftRef.current();
     setSaving(true);
     try {
       const tagSlugs = tags.map(t => t.slug);
@@ -248,6 +357,7 @@ export function NoteEditor({ slug, onSave }: Props) {
         const note = await api.notes.update(slug, body, ifMatch);
         versionRef.current = note.version;
         snapshotRef.current = { title, content, slug: note.slug, tags: sortedSlugs(tags) };
+        clearDraft(slug);
         dirtyRef.current = false;
         setDirty(false);
         onSave?.();
@@ -256,6 +366,7 @@ export function NoteEditor({ slug, onSave }: Props) {
         const body: CreateNoteRequest = { title, content, tags: tagSlugs };
         if (slugOverrideActive && slugOverride) body.slug = slugOverride;
         const note = await api.notes.create(body);
+        clearDraft(undefined);
         dirtyRef.current = false;
         setDirty(false);
         onSave?.();

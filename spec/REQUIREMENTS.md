@@ -238,6 +238,15 @@ existing-note editor (`/notes/{slug}/edit`).
   - An unsaved-changes guard covers both in-app navigation and browser
     unload/reload. "Dirty" is a value comparison against the last-saved snapshot
     (reverting to saved values clears dirty).
+  - The in-progress edit is auto-saved to browser Local Storage every 30 seconds
+    while dirty, whenever the page is unloaded or the tab is hidden
+    (`beforeunload`/`visibilitychange`), and once more right before submitting to
+    the backend, so unsaved work survives an unexpected browser close. The stored
+    draft is cleared only
+    after the backend confirms the save. On reopening the editor (keyed by note
+    slug, or a single shared bucket for a new note), if a stored draft differs
+    from the loaded/blank baseline the user is offered a one-time prompt to
+    restore it.
   - On successful save, navigate to the saved note's read view using the slug
     from the response (which may have been auto-generated, suffixed, or renamed).
   - A 404 on save/delete from a stale tab shows a toast and navigates to the
