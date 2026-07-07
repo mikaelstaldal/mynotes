@@ -119,7 +119,7 @@ export function NoteView({ slug, onDelete }: Props) {
           <button class="btn-icon" title="Edit" aria-label="Edit" onClick={() => navigate(`/notes/${note.slug}/edit`)}>✎</button>
           <button class="danger btn-icon" onClick={handleDelete} disabled={deleting}
             title={deleting ? 'Deleting…' : 'Delete'} aria-label={deleting ? 'Deleting…' : 'Delete'}>
-            🗑
+            {'✖︎'}
           </button>
         </div>
       </div>
