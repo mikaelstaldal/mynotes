@@ -64,6 +64,7 @@ export function NoteView({ slug, onDelete }: Props) {
 
   async function handleDelete() {
     if (!note) return;
+    if (!confirm(`Delete “${note.title}”? This cannot be undone.`)) return;
     setDeleting(true);
     try {
       await api.notes.delete(note.slug);
