@@ -20,6 +20,9 @@ var (
 	mdStrikeRE      = regexp.MustCompile(`~~([^~]*)~~`)
 	mdOrderedListRE = regexp.MustCompile(`^\d+\.\s+`)
 	mdHRuleRE       = regexp.MustCompile(`^[-*_]{3,}\s*$`)
+	// mdTableCellRE matches a single GFM table delimiter cell (e.g. "---",
+	// ":--", ":-:"); used by isTableDelimiter to skip whole tables.
+	mdTableCellRE = regexp.MustCompile(`^:?-+:?$`)
 	// mdHTMLTagRE matches a line starting with a raw HTML/SVG/MathML tag
 	// (opening, closing, or self-closing).
 	mdHTMLTagRE = regexp.MustCompile(`^<(/?)([a-zA-Z][a-zA-Z0-9-]*)\b[^>]*?(/?)>`)
@@ -603,6 +606,14 @@ func plainExcerpt(probe string) string {
 			}
 			continue
 		}
+		// Skip GFM tables: a header row immediately followed by a delimiter
+		// row (e.g. "| --- | :-: |"). Advance past the delimiter and every
+		// body row until the table ends (blank line or a line with no pipe).
+		if i+1 < len(lines) && isTableDelimiter(lines[i+1]) {
+			for i++; i+1 < len(lines) && strings.TrimSpace(lines[i+1]) != "" && strings.Contains(lines[i+1], "|"); i++ {
+			}
+			continue
+		}
 		// Strip blockquote markers
 		for strings.HasPrefix(line, ">") {
 			line = strings.TrimSpace(line[1:])
@@ -638,6 +649,25 @@ func plainExcerpt(probe string) string {
 		return line
 	}
 	return ""
+}
+
+// isTableDelimiter reports whether line is a GFM table delimiter row: the
+// second row of a table, made up solely of dash cells (optionally with
+// alignment colons) separated by pipes. A pipe is required, so a bare "---"
+// (a horizontal rule or setext heading underline) is not treated as a table.
+func isTableDelimiter(line string) bool {
+	line = strings.TrimSpace(line)
+	if !strings.Contains(line, "|") {
+		return false
+	}
+	line = strings.TrimPrefix(line, "|")
+	line = strings.TrimSuffix(line, "|")
+	for cell := range strings.SplitSeq(line, "|") {
+		if !mdTableCellRE.MatchString(strings.TrimSpace(cell)) {
+			return false
+		}
+	}
+	return true
 }
 
 // sanitizeFTSQuery turns arbitrary user input into a safe FTS5 MATCH string by

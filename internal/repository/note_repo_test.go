@@ -315,6 +315,36 @@ func TestBrowseExcerptIgnoresRawHTML(t *testing.T) {
 	assert.Equal(t, "Text right after a void element.", bySlug["void-note"])
 }
 
+func TestBrowseExcerptSkipsGFMTables(t *testing.T) {
+	ctx := context.Background()
+	repo := NewNoteRepository(newTestDB(t))
+
+	table := "| Name | Age |\n| --- | --- |\n| Bob | 30 |\n| Sue | 25 |\n\nParagraph after the table."
+	_, err := repo.Create(ctx, "table-note", "Table", table)
+	require.NoError(t, err)
+
+	aligned := "| A | B |\n|:---|---:|\n| 1 | 2 |\n\nAligned table paragraph."
+	_, err = repo.Create(ctx, "aligned-note", "Aligned", aligned)
+	require.NoError(t, err)
+
+	// A bare "---" underline (no pipes) is not a table delimiter, so the
+	// header text above it must NOT be skipped as if it were a table.
+	setext := "Heading text\n---\n\nSetext paragraph."
+	_, err = repo.Create(ctx, "setext-note", "Setext", setext)
+	require.NoError(t, err)
+
+	bySlug := map[string]string{}
+	notes, _, err := repo.List(ctx, "", "", false, "updated", "desc", 50, 0)
+	require.NoError(t, err)
+	for _, n := range notes {
+		bySlug[n.Slug] = n.Excerpt
+	}
+
+	assert.Equal(t, "Paragraph after the table.", bySlug["table-note"])
+	assert.Equal(t, "Aligned table paragraph.", bySlug["aligned-note"])
+	assert.Equal(t, "Heading text", bySlug["setext-note"])
+}
+
 func TestSearchMatchesAndSnippet(t *testing.T) {
 	ctx := context.Background()
 	repo := NewNoteRepository(newTestDB(t))
