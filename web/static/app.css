@@ -446,6 +446,10 @@ mark { background: #fef08a; color: var(--fg); border-radius: 2px; padding: 0 1px
   fill-rule: evenodd;
 }
 
+.fmt-transparent {
+  opacity: 0.4;
+}
+
 /* Meta bar: title + slug on one row */
 .editor-meta {
   display: flex;

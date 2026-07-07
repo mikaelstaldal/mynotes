@@ -548,6 +548,29 @@ export function NoteEditor({ slug, onSave }: Props) {
     view.focus();
   }
 
+  function insertTable() {
+    const view = viewRef.current;
+    if (!view) return;
+    const { from } = view.state.selection.main;
+    const line = view.state.doc.lineAt(from);
+    // A GFM table must start at the beginning of a line; prepend newlines when
+    // the cursor is mid-line so the table lands on its own block.
+    const prefix = from === line.from ? '' : '\n\n';
+    const body = '| Column 1 | Column 2 |\n| --- | --- |\n| Cell | Cell |\n';
+    // Ensure a blank line separates the table from any content that follows the
+    // cursor; the table itself already ends in a single newline.
+    const after = view.state.sliceDoc(from);
+    const suffix = after.length > 0 && !after.startsWith('\n') ? '\n' : '';
+    const insert = `${prefix}${body}${suffix}`;
+    // Select the first header label ("Column 1") so it can be typed over.
+    const headerStart = from + prefix.length + 2;
+    view.dispatch({
+      changes: { from, insert },
+      selection: EditorSelection.range(headerStart, headerStart + 8),
+    });
+    view.focus();
+  }
+
   async function handleFileEmbed(e: Event) {
     const input = e.target as HTMLInputElement;
     const file = input.files?.[0];
@@ -737,6 +760,19 @@ export function NoteEditor({ slug, onSave }: Props) {
               <line class="fmt-stroke" x1="3" x2="3" y1="4" y2="4"/>
               <line class="fmt-stroke" x1="3" x2="3" y1="9" y2="9"/>
               <line class="fmt-stroke" x1="3" x2="3" y1="14" y2="14"/>
+            </svg>
+          </button>
+          <button type="button" class="btn-icon" title="Table" aria-label="Table" onClick={insertTable}>
+            <svg viewBox="0 0 18 18">
+              <rect class="fmt-stroke" height="12" width="12" x="3" y="3"/>
+              <rect class="fmt-fill" height="2" width="3" x="5" y="5"/>
+              <rect class="fmt-fill" height="2" width="4" x="9" y="5"/>
+              <g class="fmt-fill fmt-transparent">
+              <rect height="2" width="3" x="5" y="8"/>
+              <rect height="2" width="4" x="9" y="8"/>
+              <rect height="2" width="3" x="5" y="11"/>
+              <rect height="2" width="4" x="9" y="11"/>
+              </g>
             </svg>
           </button>
           <span class="fmt-sep" role="separator" />
