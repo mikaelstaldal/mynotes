@@ -700,16 +700,23 @@ a.tag-chip:hover { border-color: var(--primary); color: var(--primary); }
 
 .meta-tags {
   display: flex;
-  align-items: flex-start;
+  align-items: baseline;
   gap: 0.4rem;
   font-weight: 500;
   flex: 1;
   min-width: 220px;
 }
 
-.tag-picker { flex: 1; min-width: 0; }
+.tag-picker {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.3rem;
+}
 
-.tag-picker-input-wrap { position: relative; }
+.tag-picker-input-wrap { position: relative; flex: 1; min-width: 160px; }
 
 .tag-picker-input {
   width: 100%;

@@ -65,17 +65,13 @@ export function TagPicker({ selected, onChange }: Props) {
 
   return (
     <div class="tag-picker">
-      {selected.length > 0 && (
-        <div class="tag-chips">
-          {selected.map(t => (
-            <span key={t.slug} class="tag-chip">
-              {t.name}
-              <button type="button" class="tag-chip-remove" aria-label={`Remove tag ${t.name}`}
-                onClick={() => removeTag(t.slug)}>×</button>
-            </span>
-          ))}
-        </div>
-      )}
+      {selected.map(t => (
+        <span key={t.slug} class="tag-chip">
+          {t.name}
+          <button type="button" class="tag-chip-remove" aria-label={`Remove tag ${t.name}`}
+            onClick={() => removeTag(t.slug)}>×</button>
+        </span>
+      ))}
       <div class="tag-picker-input-wrap">
         <input
           ref={inputRef}
