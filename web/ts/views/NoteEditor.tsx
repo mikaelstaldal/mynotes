@@ -17,6 +17,7 @@ import { slugFromTitle } from '../util/slug.js';
 import { LinkPicker } from '../components/LinkPicker.js';
 import { TagLinkPicker } from '../components/TagLinkPicker.js';
 import { TagPicker } from '../components/TagPicker.js';
+import { EmojiPicker } from '../components/EmojiPicker.js';
 import { ConflictDialog } from '../components/ConflictDialog.js';
 import { saveDraft, loadDraft, clearDraft, type Draft } from '../util/draft.js';
 
@@ -91,6 +92,7 @@ export function NoteEditor({ slug, onSave }: Props) {
   const [previewHtml, setPreviewHtml] = useState('');
   const [pickerOpen, setPickerOpen] = useState(false);
   const [tagLinkPickerOpen, setTagLinkPickerOpen] = useState(false);
+  const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [conflictOpen, setConflictOpen] = useState(false);
 
@@ -483,6 +485,18 @@ export function NoteEditor({ slug, onSave }: Props) {
     view.focus();
   }
 
+  function insertEmoji(emoji: string) {
+    setEmojiPickerOpen(false);
+    const view = viewRef.current;
+    if (!view) return;
+    const { from, to } = view.state.selection.main;
+    view.dispatch({
+      changes: { from, to, insert: emoji },
+      selection: EditorSelection.cursor(from + emoji.length),
+    });
+    view.focus();
+  }
+
   function insertWrap(marker: string) {
     const view = viewRef.current;
     if (!view) return;
@@ -757,6 +771,15 @@ export function NoteEditor({ slug, onSave }: Props) {
             )}
           </button>
           <input ref={imageInputRef} type="file" accept="image/gif,image/png,image/jpeg,image/webp,image/svg+xml,application/mathml+xml,.mml,.mathml" style={{ display: 'none' }} onChange={handleFileEmbed} />
+          <span class="fmt-sep" role="separator" />
+          <button type="button" class="btn-icon" title="Emoji" aria-label="Emoji" onClick={() => setEmojiPickerOpen(true)}>
+            <svg viewBox="0 0 18 18">
+              <circle class="fmt-fill" cx="7" cy="7" r="1"/>
+              <circle class="fmt-fill" cx="11" cy="7" r="1"/>
+              <path class="fmt-stroke" d="M7,10a2,2,0,0,0,4,0H7Z"/>
+              <circle class="fmt-stroke" cx="9" cy="9" r="6"/>
+            </svg>
+          </button>
           </div>
           )}
           <div class="editor-cm" ref={editorContainerRef} />
@@ -776,6 +799,13 @@ export function NoteEditor({ slug, onSave }: Props) {
         <TagLinkPicker
           onSelect={insertTagLink}
           onClose={() => setTagLinkPickerOpen(false)}
+        />
+      )}
+
+      {emojiPickerOpen && (
+        <EmojiPicker
+          onSelect={insertEmoji}
+          onClose={() => setEmojiPickerOpen(false)}
         />
       )}
 

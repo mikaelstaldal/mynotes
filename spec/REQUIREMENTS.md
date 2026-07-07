@@ -83,6 +83,10 @@ identity exists but is never exposed as the URL key.
   MathML. The editor offers toolbar buttons to insert a note link or a tag link;
   each opens a picker that autocompletes by case-insensitive prefix match on the
   note title / tag name.
+- The editor toolbar has an emoji button that opens a picker over the full
+  Unicode emoji set (from the vendored `emojibase-data`), browsable by category
+  and searchable by name/keyword; selecting one inserts the character at the
+  cursor.
 - Both the read view and the editor's live preview render the same way and must
   be safe against XSS (see Security).
 - Content is bounded at 1,000,000 characters; empty content is valid.

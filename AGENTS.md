@@ -28,8 +28,10 @@ The REST API is used by both the embedded web UI and an Android (Kotlin/Compose)
 supply-chain constraint: no package-manager install runs as part of the build or
 CI. `esbuild` and `npm` are required only by `web/ts/vendor/rebuild.sh`, a
 separate, manually-run maintainer script that pre-builds the vendored
-CodeMirror/markdown-it/DOMPurify bundles (and the test-only jsdom bundle) and
-commits the result; it is out-of-band, not invoked by `build.sh` or CI.
+CodeMirror/markdown-it/DOMPurify bundles, the emoji dataset
+(`web/static/vendor/emoji.js`, generated from `emojibase-data` by the committed
+`gen-emoji.mjs`), and the test-only jsdom bundle, and commits the result; it is
+out-of-band, not invoked by `build.sh` or CI.
 
 The database is created automatically on first start under `<data>/mynotes.sqlite`.
 
@@ -53,7 +55,7 @@ web/
   ts/                    # TypeScript sources (compiled to web/static by tsc)
     vendor/rebuild.sh    # maintainer-only: rebuilds the vendored bundles below
   static/                # embedded assets: index.html, app.css, vendored
-                          # preact/CodeMirror/markdown-it/DOMPurify, compiled JS
+                          # preact/CodeMirror/markdown-it/DOMPurify/emoji, compiled JS
 ```
 
 Request flow: `handler → service → repository → SQLite`. The handler is a thin

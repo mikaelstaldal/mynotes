@@ -24,9 +24,11 @@ TEST_DIR="$VENDOR_DIR/test"
 
 # --- 1. Browser bundles: CodeMirror, markdown-it, DOMPurify -----------------
 
-if [ ! -f package-lock.json ]; then
-  npm install --package-lock-only --ignore-scripts
-fi
+# Reconcile package-lock.json with package.json first (a no-op producing no diff
+# when they're already in sync, so unchanged runs stay deterministic; it adds
+# the missing entries after a dependency is added/bumped). Then do a clean,
+# lock-pinned install. `npm ci` alone aborts on an out-of-sync lock.
+npm install --package-lock-only --ignore-scripts
 npm ci --ignore-scripts
 
 WORK_DIR="$(mktemp -d)"
@@ -74,6 +76,19 @@ esbuild "$WORK_DIR/dompurify-entry.mjs" \
   --outfile="$BROWSER_OUT/dompurify.js"
 
 echo "Wrote $BROWSER_OUT/{codemirror,markdown-it,dompurify}.js"
+
+# --- 1b. Emoji dataset for the editor's emoji picker ------------------------
+#
+# emojibase-data ships the CLDR emoji list with per-emoji labels + keyword
+# tags and standard group numbers. gen-emoji.mjs (committed, fs-only, no
+# network) transforms its en/data.json + en/messages.json into the compact
+# EMOJI_CATEGORIES bundle the picker imports as "emoji-data". No esbuild needed
+# — the generator emits a plain ESM module directly.
+
+node "$VENDOR_DIR/gen-emoji.mjs" \
+  "$VENDOR_DIR/node_modules/emojibase-data/en/data.json" \
+  "$VENDOR_DIR/node_modules/emojibase-data/en/messages.json" \
+  "$BROWSER_OUT/emoji.js"
 
 # --- 2. Test-only jsdom bundle (never shipped to the browser) ---------------
 #
