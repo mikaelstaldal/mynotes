@@ -382,14 +382,13 @@ mark { background: #fef08a; color: var(--fg); border-radius: 2px; padding: 0 1px
 
 .toolbar-spacer { flex: 1; }
 
-/* Format toolbar above the editor */
+/* Format toolbar attached to the top of the editor pane */
 .format-toolbar {
   display: flex;
   align-items: center;
   gap: 0;
   flex-shrink: 0;
-  border: 1px solid var(--border);
-  border-radius: 4px;
+  border-bottom: 1px solid var(--border);
   padding: 3px 6px;
   background: var(--bg);
 }
@@ -495,8 +494,17 @@ mark { background: #fef08a; color: var(--fg); border-radius: 2px; padding: 0 1px
 .editor-pane {
   flex: 1;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
   border: 1px solid var(--border);
   border-radius: 6px;
+  overflow: hidden;
+}
+
+/* CodeMirror mount point: fills the pane below the format toolbar */
+.editor-cm {
+  flex: 1;
+  min-height: 0;
   overflow: hidden;
 }
 

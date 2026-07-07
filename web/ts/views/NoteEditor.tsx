@@ -679,8 +679,10 @@ export function NoteEditor({ slug, onSave }: Props) {
         </div>
       </div>
 
-      {layout !== 'preview' && (
-        <div class="format-toolbar">
+      <div class={`editor-layout editor-layout--${layout}`}>
+        <div class="editor-pane">
+          {layout !== 'preview' && (
+          <div class="format-toolbar">
           <button type="button" class="btn-icon" title="Bold" aria-label="Bold" onClick={() => insertWrap('**')}>
             <svg viewBox="0 0 18 18">
               <path class="fmt-stroke" d="M5,4H9.5A2.5,2.5,0,0,1,12,6.5v0A2.5,2.5,0,0,1,9.5,9H5A0,0,0,0,1,5,9V4A0,0,0,0,1,5,4Z"></path>
@@ -755,11 +757,10 @@ export function NoteEditor({ slug, onSave }: Props) {
             )}
           </button>
           <input ref={imageInputRef} type="file" accept="image/gif,image/png,image/jpeg,image/webp,image/svg+xml,application/mathml+xml,.mml,.mathml" style={{ display: 'none' }} onChange={handleFileEmbed} />
+          </div>
+          )}
+          <div class="editor-cm" ref={editorContainerRef} />
         </div>
-      )}
-
-      <div class={`editor-layout editor-layout--${layout}`}>
-        <div class="editor-pane" ref={editorContainerRef} />
         <div class="preview-pane note-content" dangerouslySetInnerHTML={{ __html: previewHtml }} />
       </div>
 
