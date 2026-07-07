@@ -380,7 +380,6 @@ mark { background: #fef08a; color: var(--fg); border-radius: 2px; padding: 0 1px
 .layout-btns button + button    { border-left: none; }
 .layout-btns button.active      { background: var(--primary); color: #fff; border-color: var(--primary); }
 
-.dirty-dot { color: var(--primary); font-size: 0.7rem; line-height: 1; }
 .toolbar-spacer { flex: 1; }
 
 /* Format toolbar above the editor */

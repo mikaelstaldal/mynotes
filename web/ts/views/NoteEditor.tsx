@@ -613,10 +613,9 @@ export function NoteEditor({ slug, onSave }: Props) {
           <button type="button" class={layout === 'split' ? 'active btn-icon' : 'btn-icon'} title="Split" aria-label="Split" onClick={() => setLayout('split')}>⊞</button>
           <button type="button" class={layout === 'preview' ? 'active btn-icon' : 'btn-icon'} title="Preview" aria-label="Preview" onClick={() => setLayout('preview')}>◉</button>
         </div>
-        {dirty && <span class="dirty-dot" title="Unsaved changes">●</span>}
         <span class="toolbar-spacer" />
         <button type="button" class="btn-icon" title="Cancel" aria-label="Cancel" onClick={() => navigate(editing ? `/notes/${slug}` : '/')}>✕</button>
-        <button type="submit" class="primary btn-icon" disabled={saving}
+        <button type="submit" class="primary btn-icon" disabled={saving || !dirty}
           title={saving ? 'Saving…' : 'Save'} aria-label={saving ? 'Saving…' : 'Save'}>✓</button>
       </div>
 
