@@ -2,9 +2,13 @@
 // untrusted (the user can edit localStorage), so getConfig() always re-validates
 // against DEFAULTS rather than trusting the parsed JSON shape.
 
+import type { SortField, SortOrder } from '../api/client.js';
+
 export interface AppConfig {
   theme: 'light' | 'dark';
   pageSize: number;
+  sortField: SortField;
+  sortOrder: SortOrder;
 }
 
 const STORAGE_KEY = 'mynotes-settings';
@@ -12,9 +16,13 @@ const STORAGE_KEY = 'mynotes-settings';
 const DEFAULTS: AppConfig = {
   theme: 'light',
   pageSize: 50,
+  sortField: 'updated',
+  sortOrder: 'desc',
 };
 
 const VALID_THEMES = ['light', 'dark'] as const;
+const VALID_SORT_FIELDS = ['updated', 'created', 'title'] as const;
+const VALID_SORT_ORDERS = ['asc', 'desc'] as const;
 
 function sanitize(parsed: unknown): AppConfig {
   if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
@@ -31,7 +39,15 @@ function sanitize(parsed: unknown): AppConfig {
     ? rawSize
     : DEFAULTS.pageSize;
 
-  return { theme, pageSize };
+  const sortField = VALID_SORT_FIELDS.includes(p.sortField as SortField)
+    ? (p.sortField as SortField)
+    : DEFAULTS.sortField;
+
+  const sortOrder = VALID_SORT_ORDERS.includes(p.sortOrder as SortOrder)
+    ? (p.sortOrder as SortOrder)
+    : DEFAULTS.sortOrder;
+
+  return { theme, pageSize, sortField, sortOrder };
 }
 
 export function getConfig(): AppConfig {

@@ -307,17 +307,53 @@ func (r *NoteRepository) Delete(ctx context.Context, slug string) error {
 // List returns a page of note summaries and the total matching count. tagSlug,
 // when non-empty, restricts results to notes carrying that tag (combined with
 // the FTS filter via AND when both are present).
-func (r *NoteRepository) List(ctx context.Context, query, tagSlug string, titlePrefix bool, limit, offset int) ([]model.NoteSummary, int, error) {
+// sort and order select the browse-list ordering (see browseOrderClause). They
+// only affect the browse branch: full-text search is always relevance-ordered
+// and the title-prefix autocomplete is always title-ordered.
+func (r *NoteRepository) List(ctx context.Context, query, tagSlug string, titlePrefix bool, sort, order string, limit, offset int) ([]model.NoteSummary, int, error) {
 	if titlePrefix {
 		if prefix := strings.TrimSpace(query); prefix != "" {
 			return r.searchTitlePrefix(ctx, prefix, tagSlug, limit, offset)
 		}
-		return r.browse(ctx, tagSlug, limit, offset)
+		return r.browse(ctx, tagSlug, sort, order, limit, offset)
 	}
 	if q := sanitizeFTSQuery(query); q != "" {
 		return r.search(ctx, q, tagSlug, limit, offset)
 	}
-	return r.browse(ctx, tagSlug, limit, offset)
+	return r.browse(ctx, tagSlug, sort, order, limit, offset)
+}
+
+// Browse sort fields and order directions. The service normalizes untrusted
+// input to exactly these values before it reaches the SQL builder, so the
+// strings are never interpolated from arbitrary user input.
+const (
+	SortUpdated = "updated"
+	SortCreated = "created"
+	SortTitle   = "title"
+
+	OrderAsc  = "asc"
+	OrderDesc = "desc"
+)
+
+// browseOrderClause builds the ORDER BY for the browse list from the normalized
+// sort field and order direction. colPrefix is "" for the unaliased notes table
+// and "n." for the tag-join query. An id tiebreak (same direction) keeps
+// pagination stable when the primary key column has ties.
+func browseOrderClause(sort, order, colPrefix string) string {
+	dir := "DESC"
+	if order == OrderAsc {
+		dir = "ASC"
+	}
+	var col string
+	switch sort {
+	case SortCreated:
+		col = colPrefix + "created_at"
+	case SortTitle:
+		col = colPrefix + "title COLLATE NOCASE"
+	default:
+		col = colPrefix + "updated_at"
+	}
+	return "ORDER BY " + col + " " + dir + ", " + colPrefix + "id " + dir
 }
 
 // attachTags batches a single tagsForNoteIDs lookup for the whole page (never
@@ -337,7 +373,7 @@ func attachTags(ctx context.Context, db *sql.DB, notes []model.NoteSummary, ids 
 	return nil
 }
 
-func (r *NoteRepository) browse(ctx context.Context, tagSlug string, limit, offset int) ([]model.NoteSummary, int, error) {
+func (r *NoteRepository) browse(ctx context.Context, tagSlug, sort, order string, limit, offset int) ([]model.NoteSummary, int, error) {
 	var countQuery, listQuery string
 	var countArgs, listArgs []any
 
@@ -346,7 +382,7 @@ func (r *NoteRepository) browse(ctx context.Context, tagSlug string, limit, offs
 		listQuery = `
 			SELECT id, slug, title, created_at, updated_at, substr(content, 1, 501), version
 			FROM notes
-			ORDER BY updated_at DESC, id DESC
+			` + browseOrderClause(sort, order, "") + `
 			LIMIT ? OFFSET ?`
 		listArgs = []any{limit, offset}
 	} else {
@@ -362,7 +398,7 @@ func (r *NoteRepository) browse(ctx context.Context, tagSlug string, limit, offs
 			JOIN note_tags nt ON nt.note_id = n.id
 			JOIN tags t ON t.id = nt.tag_id
 			WHERE t.slug = ?
-			ORDER BY n.updated_at DESC, n.id DESC
+			` + browseOrderClause(sort, order, "n.") + `
 			LIMIT ? OFFSET ?`
 		listArgs = []any{tagSlug, limit, offset}
 	}

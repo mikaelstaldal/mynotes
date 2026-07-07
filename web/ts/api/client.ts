@@ -4,7 +4,7 @@
 // from openapi.yaml by openapi-typescript (never edit it by hand).
 
 import { showNetworkErrorToast } from '../util/toast.js';
-import type { components } from './types.js';
+import type { components, operations } from './types.js';
 import { base } from '../basepath.js';
 
 export type Note = components['schemas']['Note'];
@@ -16,6 +16,12 @@ export type Artifact = components['schemas']['Artifact'];
 export type Tag = components['schemas']['Tag'];
 export type TagList = components['schemas']['TagList'];
 export type CreateTagRequest = components['schemas']['CreateTagRequest'];
+
+// Browse-list sort options, sourced from the generated listNotes query params
+// so they stay in lockstep with openapi.yaml.
+type ListNotesQuery = NonNullable<operations['listNotes']['parameters']['query']>;
+export type SortField = NonNullable<ListNotesQuery['sort']>;
+export type SortOrder = NonNullable<ListNotesQuery['order']>;
 
 const BASE = base + '/api/v1';
 
@@ -114,11 +120,13 @@ async function request<T>(
 
 export const api = {
   notes: {
-    list: (opts: { q?: string; tag?: string; titlePrefix?: boolean; limit?: number; offset?: number } = {}) => {
+    list: (opts: { q?: string; tag?: string; titlePrefix?: boolean; sort?: SortField; order?: SortOrder; limit?: number; offset?: number } = {}) => {
       const p = new URLSearchParams();
       if (opts.q) p.set('q', opts.q);
       if (opts.tag) p.set('tag', opts.tag);
       if (opts.titlePrefix) p.set('titlePrefix', 'true');
+      if (opts.sort) p.set('sort', opts.sort);
+      if (opts.order) p.set('order', opts.order);
       if (opts.limit != null) p.set('limit', String(opts.limit));
       if (opts.offset != null) p.set('offset', String(opts.offset));
       const qs = p.toString();

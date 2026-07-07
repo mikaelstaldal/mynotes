@@ -79,15 +79,39 @@ func NewNoteService(repo *repository.NoteRepository, tags *repository.TagReposit
 // List returns a page of note summaries and the total matching count. limit and
 // offset are clamped to a sane window. tagSlug, when non-empty, restricts
 // results to notes carrying that tag. titlePrefix, when set, matches query as a
-// case-insensitive prefix of the note title instead of a full-text search.
-func (s *NoteService) List(ctx context.Context, query, tagSlug string, titlePrefix bool, limit, offset int) ([]model.NoteSummary, int, error) {
+// case-insensitive prefix of the note title instead of a full-text search. sort
+// and order select the browse ordering (see repository.browseOrderClause) and
+// are normalized here so only known-safe values reach the SQL builder; they are
+// ignored for the search and title-prefix branches.
+func (s *NoteService) List(ctx context.Context, query, tagSlug string, titlePrefix bool, sort, order string, limit, offset int) ([]model.NoteSummary, int, error) {
 	if limit <= 0 || limit > 200 {
 		limit = 50
 	}
 	if offset < 0 {
 		offset = 0
 	}
-	return s.repo.List(ctx, query, tagSlug, titlePrefix, limit, offset)
+	return s.repo.List(ctx, query, tagSlug, titlePrefix, normalizeSort(sort), normalizeOrder(order), limit, offset)
+}
+
+// normalizeSort maps an untrusted sort field to a known value, defaulting to
+// "updated". The OpenAPI enum already restricts the HTTP surface; this is the
+// authoritative guard for direct service callers (and defense in depth).
+func normalizeSort(sort string) string {
+	switch sort {
+	case repository.SortCreated, repository.SortTitle, repository.SortUpdated:
+		return sort
+	default:
+		return repository.SortUpdated
+	}
+}
+
+// normalizeOrder maps an untrusted order direction to "asc" or "desc",
+// defaulting to "desc".
+func normalizeOrder(order string) string {
+	if order == repository.OrderAsc {
+		return repository.OrderAsc
+	}
+	return repository.OrderDesc
 }
 
 // resolveTagIDs de-dupes tagSlugs, resolves them to ids in one query, and

@@ -139,12 +139,15 @@ hyphens, 1–100 characters).
 The API manages notes keyed by slug. Operations:
 
 - **List/search notes** — optional query `q`, an optional `tag` filter (by
-  tag slug, combinable with `q`), an optional `titlePrefix` flag, plus paging
-  (`limit`, `offset`).
+  tag slug, combinable with `q`), an optional `titlePrefix` flag, optional
+  `sort`/`order` for the browse list, plus paging (`limit`, `offset`).
   Returns a page of summaries (slug, title, updated time, excerpt, tags) and
   the total match count.
-  - Absent, empty, or whitespace-only `q` = browse (no filter), ordered most
-    recently updated first.
+  - Absent, empty, or whitespace-only `q` = browse (no filter), ordered by the
+    `sort` field (`updated` default, `created`, or `title` case-insensitive)
+    and `order` direction (`desc` default, or `asc`). `sort`/`order` apply only
+    to browse; they are ignored for full-text search (relevance-ordered) and
+    for `titlePrefix` matching (title-ordered).
   - Present `q` = full-text search over title and body, ordered by relevance,
     with a match-centred excerpt that highlights matched terms. A match found
     only in the title falls back to a plain content prefix excerpt.
@@ -208,7 +211,11 @@ new-note editor (`/new`), read view of a note (`/notes/{slug}`), and
 existing-note editor (`/notes/{slug}/edit`).
 
 - **Sidebar (always visible):** debounced search box, results showing title,
-  updated time, excerpt with highlights when searching, and tags. A tag
+  updated time, excerpt with highlights when searching, and tags. A sort
+  dropdown selects the browse order — by updated time, created time, or title,
+  each ascending or descending; the choice is persisted (localStorage) and
+  drives both the sidebar and the main-panel overview. It has no effect while a
+  search query is active (results stay relevance-ordered). A tag
   filter dropdown lists every tag that exists (not just tags visible in the
   currently loaded notes), so a tag can be selected to filter even when no
   matching note is currently on screen; selecting "All tags" clears the

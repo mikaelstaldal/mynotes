@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/mikaelstaldal/mynotes/internal/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -78,7 +79,7 @@ func TestListIncludesVersion(t *testing.T) {
 	_, err := repo.Create(ctx, "note-a", "A", "body")
 	require.NoError(t, err)
 
-	notes, _, err := repo.List(ctx, "", "", false, 50, 0)
+	notes, _, err := repo.List(ctx, "", "", false, "updated", "desc", 50, 0)
 	require.NoError(t, err)
 	require.Len(t, notes, 1)
 	assert.Equal(t, 1, notes[0].Version)
@@ -193,7 +194,7 @@ func TestListBrowseOrderingAndTotal(t *testing.T) {
 	_, err = repo.Create(ctx, "third", "Third", "three")
 	require.NoError(t, err)
 
-	notes, total, err := repo.List(ctx, "", "", false, 50, 0)
+	notes, total, err := repo.List(ctx, "", "", false, "updated", "desc", 50, 0)
 	require.NoError(t, err)
 	assert.Equal(t, 3, total)
 	require.Len(t, notes, 3)
@@ -201,11 +202,53 @@ func TestListBrowseOrderingAndTotal(t *testing.T) {
 		[]string{notes[0].Slug, notes[1].Slug, notes[2].Slug}, "newest id first")
 
 	// total is independent of limit/offset.
-	page, total, err := repo.List(ctx, "", "", false, 1, 1)
+	page, total, err := repo.List(ctx, "", "", false, "updated", "desc", 1, 1)
 	require.NoError(t, err)
 	assert.Equal(t, 3, total)
 	require.Len(t, page, 1)
 	assert.Equal(t, "second", page[0].Slug, "offset into the id-DESC order")
+}
+
+func TestListBrowseSort(t *testing.T) {
+	ctx := context.Background()
+	repo := NewNoteRepository(newTestDB(t))
+
+	// Insertion order (id ASC) deliberately differs from title order so the
+	// title sort cannot accidentally pass on the id tiebreak alone.
+	_, err := repo.Create(ctx, "banana", "Banana", "b")
+	require.NoError(t, err)
+	_, err = repo.Create(ctx, "apple", "apple", "a") // lowercase: NOCASE collation
+	require.NoError(t, err)
+	_, err = repo.Create(ctx, "cherry", "Cherry", "c")
+	require.NoError(t, err)
+
+	slugs := func(notes []model.NoteSummary) []string {
+		out := make([]string, len(notes))
+		for i, n := range notes {
+			out[i] = n.Slug
+		}
+		return out
+	}
+
+	asc, _, err := repo.List(ctx, "", "", false, "title", "asc", 50, 0)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"apple", "banana", "cherry"}, slugs(asc), "title A→Z, case-insensitive")
+
+	desc, _, err := repo.List(ctx, "", "", false, "title", "desc", 50, 0)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"cherry", "banana", "apple"}, slugs(desc), "title Z→A")
+
+	// created shares the second-granular timestamp within the test, so ordering
+	// falls to the id tiebreak: ASC is insertion order, DESC is its reverse.
+	createdAsc, _, err := repo.List(ctx, "", "", false, "created", "asc", 50, 0)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"banana", "apple", "cherry"}, slugs(createdAsc), "created oldest first")
+
+	// An unknown sort/order is normalized by the service; the repository falls
+	// back to updated/DESC for anything unrecognized.
+	fallback, _, err := repo.List(ctx, "", "", false, "bogus", "sideways", 50, 0)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"cherry", "apple", "banana"}, slugs(fallback), "unknown → updated DESC (id tiebreak)")
 }
 
 func TestBrowseExcerptTruncation(t *testing.T) {
@@ -225,7 +268,7 @@ func TestBrowseExcerptTruncation(t *testing.T) {
 	require.NoError(t, err)
 
 	bySlug := map[string]string{}
-	notes, _, err := repo.List(ctx, "", "", false, 50, 0)
+	notes, _, err := repo.List(ctx, "", "", false, "updated", "desc", 50, 0)
 	require.NoError(t, err)
 	for _, n := range notes {
 		bySlug[n.Slug] = n.Excerpt
@@ -260,7 +303,7 @@ func TestBrowseExcerptIgnoresRawHTML(t *testing.T) {
 	require.NoError(t, err)
 
 	bySlug := map[string]string{}
-	notes, _, err := repo.List(ctx, "", "", false, 50, 0)
+	notes, _, err := repo.List(ctx, "", "", false, "updated", "desc", 50, 0)
 	require.NoError(t, err)
 	for _, n := range notes {
 		bySlug[n.Slug] = n.Excerpt
@@ -281,7 +324,7 @@ func TestSearchMatchesAndSnippet(t *testing.T) {
 	_, err = repo.Create(ctx, "grocery-list", "Grocery list", "milk and eggs")
 	require.NoError(t, err)
 
-	hits, total, err := repo.List(ctx, "revenue", "", false, 50, 0)
+	hits, total, err := repo.List(ctx, "revenue", "", false, "updated", "desc", 50, 0)
 	require.NoError(t, err)
 	assert.Equal(t, 1, total)
 	require.Len(t, hits, 1)
@@ -303,21 +346,21 @@ func TestSearchTitlePrefix(t *testing.T) {
 	require.NoError(t, err)
 
 	// Default (whole-note) search matches both the title and the content note.
-	all, total, err := repo.List(ctx, "revenue", "", false, 50, 0)
+	all, total, err := repo.List(ctx, "revenue", "", false, "updated", "desc", 50, 0)
 	require.NoError(t, err)
 	assert.Equal(t, 2, total)
 	assert.Len(t, all, 2)
 
 	// Title-prefix search matches just the note whose title starts with the
 	// term, case-insensitively.
-	titleHits, total, err := repo.List(ctx, "revenue", "", true, 50, 0)
+	titleHits, total, err := repo.List(ctx, "revenue", "", true, "updated", "desc", 50, 0)
 	require.NoError(t, err)
 	assert.Equal(t, 1, total)
 	require.Len(t, titleHits, 1)
 	assert.Equal(t, "revenue-report", titleHits[0].Slug)
 
 	// A partial prefix (mid-word) still matches from the start of the title.
-	partial, total, err := repo.List(ctx, "Grocery l", "", true, 50, 0)
+	partial, total, err := repo.List(ctx, "Grocery l", "", true, "updated", "desc", 50, 0)
 	require.NoError(t, err)
 	assert.Equal(t, 1, total)
 	require.Len(t, partial, 1)
@@ -325,7 +368,7 @@ func TestSearchTitlePrefix(t *testing.T) {
 
 	// A term that appears only mid-title (not as a prefix) does not match,
 	// unlike a full-text search.
-	none, total, err := repo.List(ctx, "report", "", true, 50, 0)
+	none, total, err := repo.List(ctx, "report", "", true, "updated", "desc", 50, 0)
 	require.NoError(t, err)
 	assert.Equal(t, 0, total)
 	assert.Empty(t, none)
@@ -345,7 +388,7 @@ func TestSearchRankingOrder(t *testing.T) {
 	_, err = repo.Create(ctx, "strong", "Apple", "apple apple apple")
 	require.NoError(t, err)
 
-	hits, total, err := repo.List(ctx, "apple", "", false, 50, 0)
+	hits, total, err := repo.List(ctx, "apple", "", false, "updated", "desc", 50, 0)
 	require.NoError(t, err)
 	assert.Equal(t, 2, total)
 	require.Len(t, hits, 2)
@@ -365,11 +408,11 @@ func TestSearchTriggerSyncOnTitleUpdate(t *testing.T) {
 
 	// The AFTER UPDATE trigger must reindex the title column too: the old title
 	// is gone from the index and the new one is searchable.
-	gone, _, err := repo.List(ctx, "Aardvark", "", false, 50, 0)
+	gone, _, err := repo.List(ctx, "Aardvark", "", false, "updated", "desc", 50, 0)
 	require.NoError(t, err)
 	assert.Empty(t, gone, "old title no longer indexed")
 
-	found, _, err := repo.List(ctx, "Zeppelin", "", false, 50, 0)
+	found, _, err := repo.List(ctx, "Zeppelin", "", false, "updated", "desc", 50, 0)
 	require.NoError(t, err)
 	require.Len(t, found, 1)
 	assert.Equal(t, "note", found[0].Slug)
@@ -384,7 +427,7 @@ func TestSearchEmptyContentMatchHasEmptyExcerpt(t *testing.T) {
 	_, err := repo.Create(ctx, "pineapple", "Pineapple", "")
 	require.NoError(t, err)
 
-	hits, _, err := repo.List(ctx, "Pineapple", "", false, 50, 0)
+	hits, _, err := repo.List(ctx, "Pineapple", "", false, "updated", "desc", 50, 0)
 	require.NoError(t, err)
 	require.Len(t, hits, 1)
 	assert.NotContains(t, hits[0].Excerpt, "\x02", "no content sentinel for a title-only match")
@@ -398,7 +441,7 @@ func TestSearchTitleOnlyMatchFallsBackToPrefix(t *testing.T) {
 	_, err := repo.Create(ctx, "widgets", "Widgets", "no match in body")
 	require.NoError(t, err)
 
-	hits, _, err := repo.List(ctx, "widgets", "", false, 50, 0)
+	hits, _, err := repo.List(ctx, "widgets", "", false, "updated", "desc", 50, 0)
 	require.NoError(t, err)
 	require.Len(t, hits, 1)
 	// Title-only match: no content sentinel, so excerpt falls back to the prefix.
@@ -416,13 +459,13 @@ func TestSearchTitlePrefixTreatsWildcardsLiterally(t *testing.T) {
 	require.NoError(t, err)
 
 	// A bare "%" must not act as a LIKE wildcard matching every title.
-	none, total, err := repo.List(ctx, "%", "", true, 50, 0)
+	none, total, err := repo.List(ctx, "%", "", true, "updated", "desc", 50, 0)
 	require.NoError(t, err)
 	assert.Equal(t, 0, total)
 	assert.Empty(t, none)
 
 	// A literal "%" in the prefix matches the title that actually contains it.
-	hits, total, err := repo.List(ctx, "50%", "", true, 50, 0)
+	hits, total, err := repo.List(ctx, "50%", "", true, "updated", "desc", 50, 0)
 	require.NoError(t, err)
 	assert.Equal(t, 1, total)
 	require.Len(t, hits, 1)
@@ -438,13 +481,13 @@ func TestSearchTreatsInputAsLiteral(t *testing.T) {
 	_, err = repo.Create(ctx, "grocery", "Grocery list", "milk and eggs")
 	require.NoError(t, err)
 
-	hits, _, err := repo.List(ctx, "report", "", false, 50, 0)
+	hits, _, err := repo.List(ctx, "report", "", false, "updated", "desc", 50, 0)
 	require.NoError(t, err)
 	require.Len(t, hits, 1)
 	assert.Equal(t, "Quarterly report", hits[0].Title)
 
 	// FTS operator keywords must be matched literally, not interpreted.
-	none, total, err := repo.List(ctx, "report OR grocery", "", false, 50, 0)
+	none, total, err := repo.List(ctx, "report OR grocery", "", false, "updated", "desc", 50, 0)
 	require.NoError(t, err)
 	assert.Empty(t, none)
 	assert.Equal(t, 0, total)
@@ -461,11 +504,11 @@ func TestSearchTriggerSyncOnUpdate(t *testing.T) {
 	require.NoError(t, err)
 
 	// The FTS index must reflect the new content (AFTER UPDATE trigger).
-	gone, _, err := repo.List(ctx, "original", "", false, 50, 0)
+	gone, _, err := repo.List(ctx, "original", "", false, "updated", "desc", 50, 0)
 	require.NoError(t, err)
 	assert.Empty(t, gone, "old content no longer indexed")
 
-	found, _, err := repo.List(ctx, "replacement", "", false, 50, 0)
+	found, _, err := repo.List(ctx, "replacement", "", false, "updated", "desc", 50, 0)
 	require.NoError(t, err)
 	require.Len(t, found, 1)
 	assert.Equal(t, "note", found[0].Slug)
@@ -614,7 +657,7 @@ func TestListFilteredByTag(t *testing.T) {
 	_, err = repo.CreateWithTime(ctx, "both", "Both", "c", time.Now().UTC(), []int64{work.ID, home.ID})
 	require.NoError(t, err)
 
-	notes, total, err := repo.List(ctx, "", "work", false, 50, 0)
+	notes, total, err := repo.List(ctx, "", "work", false, "updated", "desc", 50, 0)
 	require.NoError(t, err)
 	assert.Equal(t, 2, total)
 	slugs := []string{notes[0].Slug, notes[1].Slug}
@@ -637,7 +680,7 @@ func TestSearchFilteredByTag(t *testing.T) {
 	_, err = repo.CreateWithTime(ctx, "chores", "Chores", "quarterly cleanup list", time.Now().UTC(), []int64{home.ID})
 	require.NoError(t, err)
 
-	hits, total, err := repo.List(ctx, "quarterly", "work", false, 50, 0)
+	hits, total, err := repo.List(ctx, "quarterly", "work", false, "updated", "desc", 50, 0)
 	require.NoError(t, err)
 	assert.Equal(t, 1, total)
 	require.Len(t, hits, 1)

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'preact/hooks';
-import { api, type NoteSummary } from '../api/client.js';
+import { api, type NoteSummary, type SortField, type SortOrder } from '../api/client.js';
 import { showToast } from '../util/toast.js';
 import { NoteRows } from './NoteRows.js';
 
@@ -8,12 +8,14 @@ const LIMIT = 50;
 interface Props {
   activeTag?: string;
   listKey?: number;
+  sortField: SortField;
+  sortOrder: SortOrder;
 }
 
 // Main-panel overview shown when no note is selected. Lists every note (or every
 // note carrying the active tag). Falls back to a prompt only when the list is
 // genuinely empty.
-export function NotesOverview({ activeTag, listKey }: Props) {
+export function NotesOverview({ activeTag, listKey, sortField, sortOrder }: Props) {
   const [rows, setRows] = useState<NoteSummary[]>([]);
   const [offset, setOffset] = useState(0);
   const [total, setTotal] = useState<number | null>(null);
@@ -26,7 +28,7 @@ export function NotesOverview({ activeTag, listKey }: Props) {
     setLoading(true);
     const safeOffset = Math.max(0, pageOffset);
     try {
-      const res = await api.notes.list({ tag, limit: LIMIT, offset: safeOffset });
+      const res = await api.notes.list({ tag, sort: sortField, order: sortOrder, limit: LIMIT, offset: safeOffset });
       if (genRef.current !== gen) return;
       setTotal(res.total);
       if (res.notes.length === 0) {
@@ -45,7 +47,7 @@ export function NotesOverview({ activeTag, listKey }: Props) {
     } finally {
       if (genRef.current === gen) setLoading(false);
     }
-  }, []);
+  }, [sortField, sortOrder]);
 
   // Reset accumulated rows whenever the tag filter or listKey changes.
   useEffect(() => {

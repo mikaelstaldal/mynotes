@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'preact/hooks';
-import { api, type NoteSummary, type Tag } from '../api/client.js';
+import { api, type NoteSummary, type Tag, type SortField, type SortOrder } from '../api/client.js';
 import { navigate } from '../router.js';
 import { showToast } from '../util/toast.js';
 import { NoteRows } from './NoteRows.js';
@@ -11,14 +11,28 @@ function capRunes(s: string, max: number): string {
   return [...s].slice(0, max).join('');
 }
 
+// Combined "field:order" values for the single sort <select>, paired with the
+// label shown to the user. Order matters: this is the option list.
+const SORT_OPTIONS: { value: `${SortField}:${SortOrder}`; label: string }[] = [
+  { value: 'updated:desc', label: 'Updated (newest)' },
+  { value: 'updated:asc', label: 'Updated (oldest)' },
+  { value: 'created:desc', label: 'Created (newest)' },
+  { value: 'created:asc', label: 'Created (oldest)' },
+  { value: 'title:asc', label: 'Title (A–Z)' },
+  { value: 'title:desc', label: 'Title (Z–A)' },
+];
+
 interface Props {
   activeSlug?: string;
   activeTag?: string;
   listKey?: number;
   onMutate?: () => void;
+  sortField: SortField;
+  sortOrder: SortOrder;
+  onSortChange: (field: SortField, order: SortOrder) => void;
 }
 
-export function NoteList({ activeSlug, activeTag, listKey, onMutate }: Props) {
+export function NoteList({ activeSlug, activeTag, listKey, onMutate, sortField, sortOrder, onSortChange }: Props) {
   const [inputQuery, setInputQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
   const [rows, setRows] = useState<NoteSummary[]>([]);
@@ -62,6 +76,8 @@ export function NoteList({ activeSlug, activeTag, listKey, onMutate }: Props) {
       const res = await api.notes.list({
         q: cappedQ || undefined,
         tag,
+        sort: sortField,
+        order: sortOrder,
         limit: safeLimit,
         offset: safeOffset,
       });
@@ -83,7 +99,7 @@ export function NoteList({ activeSlug, activeTag, listKey, onMutate }: Props) {
     } finally {
       if (genRef.current === gen) setLoading(false);
     }
-  }, []);
+  }, [sortField, sortOrder]);
 
   // Reset accumulated rows and offset whenever the debounced query, tag filter,
   // or listKey changes.
@@ -148,10 +164,28 @@ export function NoteList({ activeSlug, activeTag, listKey, onMutate }: Props) {
         />
       </div>
 
+      <div class="tag-filter-row">
+        <label class="tag-filter-label">
+          <span class="tag-filter-name">Sort</span>
+          <select
+            class="tag-filter-select"
+            value={`${sortField}:${sortOrder}`}
+            onChange={(e) => {
+              const [field, order] = (e.target as HTMLSelectElement).value.split(':') as [SortField, SortOrder];
+              onSortChange(field, order);
+            }}
+          >
+            {SORT_OPTIONS.map(o => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </select>
+        </label>
+      </div>
+
       {allTags.length > 0 && (
         <div class="tag-filter-row">
           <label class="tag-filter-label">
-            Tag
+            <span class="tag-filter-name">Tag</span>
             <select
               class="tag-filter-select"
               value={activeTag ?? ''}

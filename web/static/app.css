@@ -865,6 +865,11 @@ a.tag-chip:hover { border-color: var(--primary); color: var(--primary); }
   font-weight: 500;
 }
 
+.tag-filter-name {
+  flex: none;
+  width: 2.5rem;
+}
+
 .tag-filter-select {
   flex: 1;
   font-size: 0.85rem;

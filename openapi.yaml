@@ -86,8 +86,10 @@ paths:
       operationId: listNotes
       summary: List notes
       description: >
-        Returns notes ordered by update time (newest first). When `q` is
-        supplied, results are restricted to notes matching the full-text query.
+        Returns a page of notes. The browse list (no `q`) is ordered by the
+        `sort`/`order` parameters, defaulting to update time, newest first.
+        When `q` is supplied, results are restricted to notes matching the
+        full-text query and ordered by relevance (`sort`/`order` are ignored).
       parameters:
         - name: q
           in: query
@@ -116,6 +118,29 @@ paths:
           schema:
             type: boolean
             default: false
+        - name: sort
+          in: query
+          description: >
+            Field the browse list is sorted by. `updated` (default) and
+            `created` sort by the respective timestamp; `title` sorts
+            alphabetically, case-insensitively. Ignored for full-text search
+            (`q` without `titlePrefix`), which is ordered by relevance, and for
+            `titlePrefix` matching, which is always ordered by title.
+          required: false
+          schema:
+            type: string
+            enum: [updated, created, title]
+            default: updated
+        - name: order
+          in: query
+          description: >
+            Direction for `sort`. `desc` (default) is newest-first for the
+            timestamp fields and Z→A for `title`; `asc` is the reverse.
+          required: false
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: desc
         - name: limit
           in: query
           required: false
