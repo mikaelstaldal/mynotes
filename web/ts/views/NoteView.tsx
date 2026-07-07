@@ -99,11 +99,10 @@ export function NoteView({ slug, onDelete }: Props) {
       <div class="note-header">
         <div class="note-header-left">
           <h1 class="note-title">{note.title}</h1>
-          <span class="muted note-view-date">
+          <span class="muted note-view-date" title={`Version ${note.version}`}>
             <time dateTime={note.created_at}>created {formatDateTime(note.created_at)}</time>
             {' · '}
             <time dateTime={note.updated_at}>updated {formatDateTime(note.updated_at)}</time>
-            {' · v'}{note.version}
           </span>
           {note.tags.length > 0 && (
             <div class="tag-chips">
