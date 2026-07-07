@@ -17,6 +17,7 @@ import { slugFromTitle } from '../util/slug.js';
 import { LinkPicker } from '../components/LinkPicker.js';
 import { TagLinkPicker } from '../components/TagLinkPicker.js';
 import { TagPicker } from '../components/TagPicker.js';
+import { ConflictDialog } from '../components/ConflictDialog.js';
 import { saveDraft, loadDraft, clearDraft, type Draft } from '../util/draft.js';
 
 const DATA_URL_RE = /data:([^;,\s]+);base64,[A-Za-z0-9+/]+=*/g;
@@ -91,6 +92,7 @@ export function NoteEditor({ slug, onSave }: Props) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [tagLinkPickerOpen, setTagLinkPickerOpen] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [conflictOpen, setConflictOpen] = useState(false);
 
   const editorContainerRef = useRef<HTMLDivElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
@@ -340,46 +342,105 @@ export function NoteEditor({ slug, onSave }: Props) {
     return () => main?.classList.remove('editor-main');
   }, []);
 
+  // Persists the current edit to an existing note. `ifMatch` enables optimistic
+  // locking: pass the quoted version to guard against concurrent edits, or
+  // undefined to force an overwrite (used when resolving a conflict). On a 412
+  // it opens the conflict dialog; other errors surface a toast.
+  async function saveEditingNote(noteSlug: string, ifMatch: string | undefined) {
+    const content = viewRef.current?.state.doc.toString() ?? '';
+    setSaving(true);
+    try {
+      const body: UpdateNoteRequest = { title, content, tags: tags.map(t => t.slug) };
+      const note = await api.notes.update(noteSlug, body, ifMatch);
+      versionRef.current = note.version;
+      snapshotRef.current = { title, content, slug: note.slug, tags: sortedSlugs(tags) };
+      clearDraft(noteSlug);
+      dirtyRef.current = false;
+      setDirty(false);
+      setConflictOpen(false);
+      onSave?.();
+      navigate(`/notes/${note.slug}`);
+    } catch (e) {
+      if (e instanceof NotFoundError) {
+        showToast('This note no longer exists');
+        dirtyRef.current = false;
+        setDirty(false);
+        setConflictOpen(false);
+        navigate('/');
+      } else if (e instanceof PreconditionFailedError) {
+        setConflictOpen(true);
+      } else {
+        showToast((e as Error).message);
+      }
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  // Discards the local edits and reloads the note from the backend, resolving a
+  // conflict by taking the server's version. Resets the dirty baseline and the
+  // editor contents to match.
+  async function reloadFromBackend(noteSlug: string) {
+    setSaving(true);
+    try {
+      const note = await api.notes.get(noteSlug);
+      setTitle(note.title);
+      setTags(note.tags);
+      versionRef.current = note.version;
+      snapshotRef.current = { title: note.title, content: note.content, slug: note.slug, tags: sortedSlugs(note.tags) };
+      const view = viewRef.current;
+      if (view) {
+        view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: note.content } });
+      }
+      setPreviewHtml(renderNote(note.content));
+      clearDraft(noteSlug);
+      dirtyRef.current = false;
+      setDirty(false);
+      setConflictOpen(false);
+    } catch (e) {
+      if (e instanceof NotFoundError) {
+        showToast('This note no longer exists');
+        dirtyRef.current = false;
+        setDirty(false);
+        setConflictOpen(false);
+        navigate('/');
+      } else {
+        showToast((e as Error).message);
+      }
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function handleSubmit(e: SubmitEvent) {
     e.preventDefault();
-    const content = viewRef.current?.state.doc.toString() ?? '';
     // Persist once more right before submitting, so the draft survives a failure
     // or crash mid-request. It's cleared only after the backend confirms the save.
     persistDraftRef.current();
+    if (editing) {
+      const ifMatch = versionRef.current !== undefined
+        ? `"${versionRef.current}"`
+        : undefined;
+      await saveEditingNote(slug, ifMatch);
+      return;
+    }
+    const content = viewRef.current?.state.doc.toString() ?? '';
     setSaving(true);
     try {
-      const tagSlugs = tags.map(t => t.slug);
-      if (editing) {
-        const body: UpdateNoteRequest = { title, content, tags: tagSlugs };
-        const ifMatch = versionRef.current !== undefined
-          ? `"${versionRef.current}"`
-          : undefined;
-        const note = await api.notes.update(slug, body, ifMatch);
-        versionRef.current = note.version;
-        snapshotRef.current = { title, content, slug: note.slug, tags: sortedSlugs(tags) };
-        clearDraft(slug);
-        dirtyRef.current = false;
-        setDirty(false);
-        onSave?.();
-        navigate(`/notes/${note.slug}`);
-      } else {
-        const body: CreateNoteRequest = { title, content, tags: tagSlugs };
-        if (slugOverrideActive && slugOverride) body.slug = slugOverride;
-        const note = await api.notes.create(body);
-        clearDraft(undefined);
-        dirtyRef.current = false;
-        setDirty(false);
-        onSave?.();
-        navigate(`/notes/${note.slug}`);
-      }
+      const body: CreateNoteRequest = { title, content, tags: tags.map(t => t.slug) };
+      if (slugOverrideActive && slugOverride) body.slug = slugOverride;
+      const note = await api.notes.create(body);
+      clearDraft(undefined);
+      dirtyRef.current = false;
+      setDirty(false);
+      onSave?.();
+      navigate(`/notes/${note.slug}`);
     } catch (e) {
       if (e instanceof NotFoundError) {
         showToast('This note no longer exists');
         dirtyRef.current = false;
         setDirty(false);
         navigate('/');
-      } else if (e instanceof PreconditionFailedError) {
-        showToast('Note was modified elsewhere — please reload before saving');
       } else {
         showToast((e as Error).message);
       }
@@ -715,6 +776,15 @@ export function NoteEditor({ slug, onSave }: Props) {
         <TagLinkPicker
           onSelect={insertTagLink}
           onClose={() => setTagLinkPickerOpen(false)}
+        />
+      )}
+
+      {conflictOpen && editing && (
+        <ConflictDialog
+          busy={saving}
+          onReload={() => reloadFromBackend(slug)}
+          onForceSave={() => saveEditingNote(slug, undefined)}
+          onClose={() => setConflictOpen(false)}
         />
       )}
     </form>

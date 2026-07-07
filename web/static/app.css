@@ -614,6 +614,48 @@ mark { background: #fef08a; color: var(--fg); border-radius: 2px; padding: 0 1px
 
 .link-picker-empty { margin: 1rem; }
 
+/* ── Conflict dialog ────────────────────────────────────────────── */
+
+.conflict-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 15vh;
+  z-index: 600;
+}
+
+.conflict-dialog {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+  width: min(420px, 90vw);
+  padding: 1.25rem;
+}
+
+.conflict-title {
+  margin: 0 0 0.5rem;
+  font-size: 1.1rem;
+}
+
+.conflict-body {
+  margin: 0 0 1.25rem;
+  color: var(--muted);
+}
+
+.conflict-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.conflict-actions button:not(.link) {
+  width: 100%;
+}
+
 /* ── Tags ───────────────────────────────────────────────────────── */
 
 .tag-chips {
