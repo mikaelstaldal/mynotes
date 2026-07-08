@@ -5,7 +5,7 @@ import {
   syntaxHighlighting, defaultHighlightStyle,
   markdown, EditorSelection,
   ViewPlugin, Decoration, WidgetType,
-  type DecorationSet, type ViewUpdate,
+  type DecorationSet, type ViewUpdate, type EditorState,
 } from 'codemirror';
 import { api, NotFoundError, PreconditionFailedError, type CreateNoteRequest, type UpdateNoteRequest, type Tag } from '../api/client.js';
 import { base } from '../basepath.js';
@@ -22,6 +22,20 @@ import { ConflictDialog } from '../components/ConflictDialog.js';
 import { saveDraft, loadDraft, clearDraft, type Draft } from '../util/draft.js';
 
 const DATA_URL_RE = /data:([^;,\s]+);base64,[A-Za-z0-9+/]+=*/g;
+
+// Font sizes for the H1–H6 previews in the heading dropdown.
+const HEADING_SIZES = ['1.5rem', '1.3rem', '1.15rem', '1.05rem', '0.95rem', '0.85rem'];
+
+// ATX heading level (1–6, or 0 for none) of the line under the primary cursor.
+function headingLevelAt(state: EditorState): number {
+  const line = state.doc.lineAt(state.selection.main.head);
+  const m = /^(#{1,6})[ \t]+/.exec(line.text);
+  return m ? m[1].length : 0;
+}
+
+function headingLabel(level: number): string {
+  return level === 0 ? 'Normal' : `Heading ${level}`;
+}
 
 class DataUrlWidget extends WidgetType {
   constructor(readonly mimeType: string) { super(); }
@@ -93,10 +107,13 @@ export function NoteEditor({ slug, onSave }: Props) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [tagLinkPickerOpen, setTagLinkPickerOpen] = useState(false);
   const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
+  const [headingMenuOpen, setHeadingMenuOpen] = useState(false);
+  const [headingLevel, setHeadingLevel] = useState(0);   // heading level of the cursor's line (0 = normal)
   const [uploading, setUploading] = useState(false);
   const [conflictOpen, setConflictOpen] = useState(false);
 
   const editorContainerRef = useRef<HTMLDivElement>(null);
+  const headingMenuRef = useRef<HTMLDivElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   const titleTouchedRef = useRef(false);    // true once user manually edits title
@@ -303,11 +320,13 @@ export function NoteEditor({ slug, onSave }: Props) {
         dataUrlCollapse,
         EditorView.updateListener.of((update) => {
           if (update.docChanged) handleDocChangeRef.current(update.state.doc.toString());
+          if (update.docChanged || update.selectionSet) setHeadingLevel(headingLevelAt(update.state));
         }),
       ],
       parent: editorContainerRef.current,
     });
     viewRef.current = view;
+    setHeadingLevel(headingLevelAt(view.state));
 
     // A restored draft was loaded as the initial doc; mark dirty and render its
     // preview (setting the initial doc doesn't fire the updateListener).
@@ -336,6 +355,16 @@ export function NoteEditor({ slug, onSave }: Props) {
     }
     prevLayoutRef.current = layout;
   }, [layout]);
+
+  // Close the heading dropdown on any click outside its wrapper.
+  useEffect(() => {
+    if (!headingMenuOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (!headingMenuRef.current?.contains(e.target as Node)) setHeadingMenuOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [headingMenuOpen]);
 
   // Expand main to full width while the editor is mounted.
   useEffect(() => {
@@ -528,6 +557,28 @@ export function NoteEditor({ slug, onSave }: Props) {
     const changes: { from: number; insert: string }[] = [];
     for (let i = startLine.number; i <= endLine.number; i++) {
       changes.push({ from: doc.line(i).from, insert: prefix });
+    }
+    view.dispatch({ changes });
+    view.focus();
+  }
+
+  // Applies (or clears, with level 0) an ATX heading marker on every line in the
+  // selection, replacing any heading marker already present so switching levels
+  // doesn't stack `#`s.
+  function setHeading(level: number) {
+    setHeadingMenuOpen(false);
+    const view = viewRef.current;
+    if (!view) return;
+    const { from, to } = view.state.selection.main;
+    const doc = view.state.doc;
+    const startLine = doc.lineAt(from);
+    const endLine = doc.lineAt(to);
+    const prefix = level > 0 ? `${'#'.repeat(level)} ` : '';
+    const changes: { from: number; to: number; insert: string }[] = [];
+    for (let i = startLine.number; i <= endLine.number; i++) {
+      const line = doc.line(i);
+      const existing = /^#{1,6}[ \t]+/.exec(line.text);
+      changes.push({ from: line.from, to: line.from + (existing ? existing[0].length : 0), insert: prefix });
     }
     view.dispatch({ changes });
     view.focus();
@@ -747,6 +798,34 @@ export function NoteEditor({ slug, onSave }: Props) {
         <div class="editor-pane">
           {layout !== 'preview' && (
           <div class="format-toolbar">
+          <div class="heading-menu" ref={headingMenuRef}>
+            <button type="button" class="heading-select" title="Heading"
+              aria-haspopup="true" aria-expanded={headingMenuOpen}
+              onClick={() => setHeadingMenuOpen((o) => !o)}>
+              <span class="heading-select-label">{headingLabel(headingLevel)}</span>
+              <svg class="heading-select-chevron" viewBox="0 0 18 18" aria-hidden="true">
+                <polygon class="fmt-stroke" points="7 11 9 13 11 11 7 11"/>
+                <polygon class="fmt-stroke" points="7 7 9 5 11 7 7 7"/>
+              </svg>
+            </button>
+            {headingMenuOpen && (
+              <div class="heading-menu-dropdown" role="menu">
+                {[1, 2, 3, 4, 5, 6].map((l) => (
+                  <button key={l} type="button" role="menuitem"
+                    class={l === headingLevel ? 'heading-menu-option active' : 'heading-menu-option'}
+                    onClick={() => setHeading(l)}>
+                    <span style={{ fontSize: HEADING_SIZES[l - 1], fontWeight: 600 }}>Heading {l}</span>
+                  </button>
+                ))}
+                <button type="button" role="menuitem"
+                  class={headingLevel === 0 ? 'heading-menu-option active' : 'heading-menu-option'}
+                  onClick={() => setHeading(0)}>
+                  Normal
+                </button>
+              </div>
+            )}
+          </div>
+          <span class="fmt-sep" role="separator" />
           <button type="button" class="btn-icon" title="Bold" aria-label="Bold" onClick={() => insertWrap('**')}>
             <svg viewBox="0 0 18 18">
               <path class="fmt-stroke" d="M5,4H9.5A2.5,2.5,0,0,1,12,6.5v0A2.5,2.5,0,0,1,9.5,9H5A0,0,0,0,1,5,9V4A0,0,0,0,1,5,4Z"></path>
