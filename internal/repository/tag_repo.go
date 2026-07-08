@@ -25,18 +25,18 @@ func scanTag(s interface{ Scan(...any) error }) (model.Tag, error) {
 		t         model.Tag
 		createdAt string
 	)
-	if err := s.Scan(&t.ID, &t.Slug, &t.Name, &createdAt); err != nil {
+	if err := s.Scan(&t.ID, &t.Slug, &createdAt); err != nil {
 		return model.Tag{}, err
 	}
 	t.CreatedAt, _ = time.Parse(rfc3339, createdAt)
 	return t, nil
 }
 
-// List returns every tag sorted by name (case-insensitive). The dataset is
+// List returns every tag sorted by slug (case-insensitive). The dataset is
 // expected to stay small for a single-user tool, so this has no paging.
 func (r *TagRepository) List(ctx context.Context) ([]model.Tag, error) {
 	rows, err := r.db.QueryContext(ctx,
-		`SELECT id, slug, name, created_at FROM tags ORDER BY name COLLATE NOCASE`)
+		`SELECT id, slug, created_at FROM tags ORDER BY slug COLLATE NOCASE`)
 	if err != nil {
 		return nil, err
 	}
@@ -56,7 +56,7 @@ func (r *TagRepository) List(ctx context.Context) ([]model.Tag, error) {
 // GetBySlug returns the tag with the given slug, or ErrNotFound.
 func (r *TagRepository) GetBySlug(ctx context.Context, slug string) (model.Tag, error) {
 	row := r.db.QueryRowContext(ctx,
-		`SELECT id, slug, name, created_at FROM tags WHERE slug = ?`, slug)
+		`SELECT id, slug, created_at FROM tags WHERE slug = ?`, slug)
 	t, err := scanTag(row)
 	if errors.Is(err, sql.ErrNoRows) {
 		return model.Tag{}, ErrNotFound
@@ -78,7 +78,7 @@ func (r *TagRepository) GetBySlugs(ctx context.Context, slugs []string) ([]model
 		args[i] = s
 	}
 	rows, err := r.db.QueryContext(ctx,
-		`SELECT id, slug, name, created_at FROM tags WHERE slug IN (`+strings.Join(placeholders, ",")+`)`,
+		`SELECT id, slug, created_at FROM tags WHERE slug IN (`+strings.Join(placeholders, ",")+`)`,
 		args...)
 	if err != nil {
 		return nil, err
@@ -96,21 +96,12 @@ func (r *TagRepository) GetBySlugs(ctx context.Context, slugs []string) ([]model
 	return tags, rows.Err()
 }
 
-// SlugExists reports whether a tag with the given slug already exists. The
-// check is advisory/racy — the DB UNIQUE constraint is the authority.
-func (r *TagRepository) SlugExists(ctx context.Context, slug string) (bool, error) {
-	var exists bool
-	err := r.db.QueryRowContext(ctx,
-		`SELECT EXISTS(SELECT 1 FROM tags WHERE slug = ?)`, slug).Scan(&exists)
-	return exists, err
-}
-
 // Create inserts a tag with created_at set to now and returns the stored
 // record. A duplicate slug surfaces as ErrConflict.
-func (r *TagRepository) Create(ctx context.Context, slug, name string) (model.Tag, error) {
+func (r *TagRepository) Create(ctx context.Context, slug string) (model.Tag, error) {
 	ts := time.Now().UTC().Format(rfc3339)
 	_, err := r.db.ExecContext(ctx,
-		`INSERT INTO tags (slug, name, created_at) VALUES (?, ?, ?)`, slug, name, ts)
+		`INSERT INTO tags (slug, created_at) VALUES (?, ?)`, slug, ts)
 	if isUniqueViolation(err) {
 		return model.Tag{}, ErrConflict
 	}

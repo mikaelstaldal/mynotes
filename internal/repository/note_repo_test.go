@@ -552,9 +552,9 @@ func TestCreateWithTagsAttachesThem(t *testing.T) {
 	repo := NewNoteRepository(db)
 	tagRepo := NewTagRepository(db)
 
-	work, err := tagRepo.Create(ctx, "work", "Work")
+	work, err := tagRepo.Create(ctx, "work")
 	require.NoError(t, err)
-	home, err := tagRepo.Create(ctx, "home", "Home")
+	home, err := tagRepo.Create(ctx, "home")
 	require.NoError(t, err)
 
 	note, err := repo.CreateWithTime(ctx, "note", "Note", "body", time.Now().UTC(), []int64{work.ID, home.ID})
@@ -587,7 +587,7 @@ func TestUpdateTagsNilLeavesUnchanged(t *testing.T) {
 	repo := NewNoteRepository(db)
 	tagRepo := NewTagRepository(db)
 
-	tag, err := tagRepo.Create(ctx, "work", "Work")
+	tag, err := tagRepo.Create(ctx, "work")
 	require.NoError(t, err)
 	_, err = repo.CreateWithTime(ctx, "note", "Note", "body", time.Now().UTC(), []int64{tag.ID})
 	require.NoError(t, err)
@@ -604,9 +604,9 @@ func TestUpdateTagsReplacesFullSet(t *testing.T) {
 	repo := NewNoteRepository(db)
 	tagRepo := NewTagRepository(db)
 
-	work, err := tagRepo.Create(ctx, "work", "Work")
+	work, err := tagRepo.Create(ctx, "work")
 	require.NoError(t, err)
-	home, err := tagRepo.Create(ctx, "home", "Home")
+	home, err := tagRepo.Create(ctx, "home")
 	require.NoError(t, err)
 	_, err = repo.CreateWithTime(ctx, "note", "Note", "body", time.Now().UTC(), []int64{work.ID})
 	require.NoError(t, err)
@@ -623,7 +623,7 @@ func TestUpdateTagsEmptySliceClears(t *testing.T) {
 	repo := NewNoteRepository(db)
 	tagRepo := NewTagRepository(db)
 
-	tag, err := tagRepo.Create(ctx, "work", "Work")
+	tag, err := tagRepo.Create(ctx, "work")
 	require.NoError(t, err)
 	_, err = repo.CreateWithTime(ctx, "note", "Note", "body", time.Now().UTC(), []int64{tag.ID})
 	require.NoError(t, err)
@@ -639,7 +639,7 @@ func TestDeleteNoteDetachesTagsViaCascade(t *testing.T) {
 	repo := NewNoteRepository(db)
 	tagRepo := NewTagRepository(db)
 
-	tag, err := tagRepo.Create(ctx, "work", "Work")
+	tag, err := tagRepo.Create(ctx, "work")
 	require.NoError(t, err)
 	_, err = repo.CreateWithTime(ctx, "note", "Note", "body", time.Now().UTC(), []int64{tag.ID})
 	require.NoError(t, err)
@@ -657,7 +657,7 @@ func TestDeleteTagDetachesFromNoteViaCascade(t *testing.T) {
 	repo := NewNoteRepository(db)
 	tagRepo := NewTagRepository(db)
 
-	tag, err := tagRepo.Create(ctx, "work", "Work")
+	tag, err := tagRepo.Create(ctx, "work")
 	require.NoError(t, err)
 	_, err = repo.CreateWithTime(ctx, "note", "Note", "body", time.Now().UTC(), []int64{tag.ID})
 	require.NoError(t, err)
@@ -675,9 +675,9 @@ func TestListFilteredByTag(t *testing.T) {
 	repo := NewNoteRepository(db)
 	tagRepo := NewTagRepository(db)
 
-	work, err := tagRepo.Create(ctx, "work", "Work")
+	work, err := tagRepo.Create(ctx, "work")
 	require.NoError(t, err)
-	home, err := tagRepo.Create(ctx, "home", "Home")
+	home, err := tagRepo.Create(ctx, "home")
 	require.NoError(t, err)
 
 	_, err = repo.CreateWithTime(ctx, "report", "Report", "a", time.Now().UTC(), []int64{work.ID})
@@ -700,9 +700,9 @@ func TestSearchFilteredByTag(t *testing.T) {
 	repo := NewNoteRepository(db)
 	tagRepo := NewTagRepository(db)
 
-	work, err := tagRepo.Create(ctx, "work", "Work")
+	work, err := tagRepo.Create(ctx, "work")
 	require.NoError(t, err)
-	home, err := tagRepo.Create(ctx, "home", "Home")
+	home, err := tagRepo.Create(ctx, "home")
 	require.NoError(t, err)
 
 	_, err = repo.CreateWithTime(ctx, "report", "Report", "quarterly revenue figures", time.Now().UTC(), []int64{work.ID})

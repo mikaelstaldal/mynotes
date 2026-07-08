@@ -30,7 +30,7 @@ func New(notes *service.NoteService, artifacts *service.ArtifactService, tags *s
 var _ api.Handler = (*Handler)(nil)
 
 func toAPITag(t model.Tag) api.Tag {
-	return api.Tag{Slug: t.Slug, Name: t.Name}
+	return api.Tag{Slug: t.Slug}
 }
 
 func toAPITags(tags []model.Tag) []api.Tag {
@@ -146,7 +146,7 @@ func (h *Handler) ListTags(ctx context.Context) (*api.TagList, error) {
 }
 
 func (h *Handler) CreateTag(ctx context.Context, req *api.CreateTagRequest) (*api.Tag, error) {
-	t, err := h.tags.Create(ctx, req.Name, optPtr(req.Slug))
+	t, err := h.tags.Create(ctx, req.Slug)
 	if err != nil {
 		return nil, err
 	}

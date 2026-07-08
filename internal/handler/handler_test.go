@@ -523,9 +523,8 @@ func TestImportMarkdownNoTitleRejected(t *testing.T) {
 func TestCreateAndListTags(t *testing.T) {
 	srv := newServer(t)
 
-	created := createTag(t, srv, `{"name":"Work"}`)
-	assert.Equal(t, "Work", created.Name)
-	assert.Equal(t, "work", created.Slug, "slug derived from name")
+	created := createTag(t, srv, `{"slug":"work"}`)
+	assert.Equal(t, "work", created.Slug)
 
 	res, err := http.Get(srv.URL + "/api/v1/tags")
 	require.NoError(t, err)
@@ -538,31 +537,21 @@ func TestCreateAndListTags(t *testing.T) {
 	assert.Equal(t, "work", list.Tags[0].Slug)
 }
 
-func TestCreateTagAutoSlugCollisionSuffixes(t *testing.T) {
+func TestCreateTagSlugConflictIs409(t *testing.T) {
 	srv := newServer(t)
-
-	first := createTag(t, srv, `{"name":"Home"}`)
-	assert.Equal(t, "home", first.Slug)
-
-	second := createTag(t, srv, `{"name":"Home"}`)
-	assert.Equal(t, "home-2", second.Slug, "auto slug de-conflicts with a numeric suffix")
-}
-
-func TestCreateTagExplicitSlugConflictIs409(t *testing.T) {
-	srv := newServer(t)
-	createTag(t, srv, `{"name":"First","slug":"shared"}`)
+	createTag(t, srv, `{"slug":"shared"}`)
 
 	res, err := http.Post(srv.URL+"/api/v1/tags", "application/json",
-		strings.NewReader(`{"name":"Second","slug":"shared"}`))
+		strings.NewReader(`{"slug":"shared"}`))
 	require.NoError(t, err)
 	defer res.Body.Close()
-	assert.Equal(t, http.StatusConflict, res.StatusCode, "explicit slug collision is 409, never suffixed")
+	assert.Equal(t, http.StatusConflict, res.StatusCode, "slug collision is 409, never suffixed")
 }
 
 func TestCreateTagValidationError(t *testing.T) {
 	srv := newServer(t)
 	res, err := http.Post(srv.URL+"/api/v1/tags", "application/json",
-		strings.NewReader(`{"name":"   "}`))
+		strings.NewReader(`{"slug":"Not A Slug"}`))
 	require.NoError(t, err)
 	defer res.Body.Close()
 	assert.Equal(t, http.StatusBadRequest, res.StatusCode)
@@ -570,7 +559,7 @@ func TestCreateTagValidationError(t *testing.T) {
 
 func TestDeleteTag(t *testing.T) {
 	srv := newServer(t)
-	tag := createTag(t, srv, `{"name":"Temp"}`)
+	tag := createTag(t, srv, `{"slug":"temp"}`)
 
 	req, err := http.NewRequestWithContext(context.Background(), http.MethodDelete,
 		srv.URL+"/api/v1/tags/"+tag.Slug, nil)
@@ -601,8 +590,8 @@ func TestDeleteUnknownTagReturns404(t *testing.T) {
 
 func TestCreateNoteWithTags(t *testing.T) {
 	srv := newServer(t)
-	work := createTag(t, srv, `{"name":"Work"}`)
-	urgent := createTag(t, srv, `{"name":"Urgent"}`)
+	work := createTag(t, srv, `{"slug":"work"}`)
+	urgent := createTag(t, srv, `{"slug":"urgent"}`)
 
 	created := createNote(t, srv, `{"title":"Report","tags":["`+work.Slug+`","`+urgent.Slug+`"]}`)
 	require.Len(t, created.Tags, 2)
@@ -628,7 +617,7 @@ func TestCreateNoteUnknownTagRejected(t *testing.T) {
 
 func TestUpdateNoteTagsAbsentLeavesUnchanged(t *testing.T) {
 	srv := newServer(t)
-	tag := createTag(t, srv, `{"name":"Work"}`)
+	tag := createTag(t, srv, `{"slug":"work"}`)
 	created := createNote(t, srv, `{"title":"Note","tags":["`+tag.Slug+`"]}`)
 
 	res := patchNote(t, srv, created.Slug, `{"title":"Renamed"}`)
@@ -642,7 +631,7 @@ func TestUpdateNoteTagsAbsentLeavesUnchanged(t *testing.T) {
 
 func TestUpdateNoteTagsEmptyArrayClears(t *testing.T) {
 	srv := newServer(t)
-	tag := createTag(t, srv, `{"name":"Work"}`)
+	tag := createTag(t, srv, `{"slug":"work"}`)
 	created := createNote(t, srv, `{"title":"Note","tags":["`+tag.Slug+`"]}`)
 
 	res := patchNote(t, srv, created.Slug, `{"tags":[]}`)
@@ -655,7 +644,7 @@ func TestUpdateNoteTagsEmptyArrayClears(t *testing.T) {
 
 func TestUpdateNoteSameTagSetIsNoOp(t *testing.T) {
 	srv := newServer(t)
-	tag := createTag(t, srv, `{"name":"Work"}`)
+	tag := createTag(t, srv, `{"slug":"work"}`)
 	created := createNote(t, srv, `{"title":"Note","tags":["`+tag.Slug+`"]}`)
 	require.Equal(t, 1, created.Version)
 
@@ -678,8 +667,8 @@ func TestUpdateNoteUnknownTagRejected(t *testing.T) {
 
 func TestListNotesFilteredByTag(t *testing.T) {
 	srv := newServer(t)
-	work := createTag(t, srv, `{"name":"Work"}`)
-	home := createTag(t, srv, `{"name":"Home"}`)
+	work := createTag(t, srv, `{"slug":"work"}`)
+	home := createTag(t, srv, `{"slug":"home"}`)
 
 	createNote(t, srv, `{"title":"Report","tags":["`+work.Slug+`"]}`)
 	createNote(t, srv, `{"title":"Chores","tags":["`+home.Slug+`"]}`)
@@ -699,7 +688,7 @@ func TestListNotesFilteredByTag(t *testing.T) {
 
 func TestDeleteTagDetachesFromNotes(t *testing.T) {
 	srv := newServer(t)
-	tag := createTag(t, srv, `{"name":"Work"}`)
+	tag := createTag(t, srv, `{"slug":"work"}`)
 	created := createNote(t, srv, `{"title":"Note","tags":["`+tag.Slug+`"]}`)
 	require.Len(t, created.Tags, 1)
 

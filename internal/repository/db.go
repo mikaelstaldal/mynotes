@@ -15,6 +15,7 @@ var migrations = [][]string{
 	schemaV2,
 	schemaV3,
 	schemaV4,
+	schemaV5,
 }
 
 // OpenDB opens (creating if absent) the SQLite database at path, applies the
@@ -34,6 +35,12 @@ func InitSchema(db *sql.DB) error {
 // CreateDataDir ensures the directory holding the database file exists.
 func CreateDataDir(dbPath string) error {
 	return sqlite.CreateDataDir(dbPath)
+}
+
+// schemaV5 drops the tags.name column: a tag is now identified solely by its
+// slug, which doubles as the display label.
+var schemaV5 = []string{
+	`ALTER TABLE tags DROP COLUMN name`,
 }
 
 var schemaV4 = []string{

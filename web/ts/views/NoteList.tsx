@@ -196,7 +196,7 @@ export function NoteList({ activeSlug, activeTag, listKey, onMutate, sortField, 
             >
               <option value="">All tags</option>
               {allTags.map(t => (
-                <option key={t.slug} value={t.slug}>{t.name}</option>
+                <option key={t.slug} value={t.slug}>{t.slug}</option>
               ))}
               {/* A filter active for a tag that has since been deleted: keep it
                   selectable (as its slug) so the dropdown reflects reality

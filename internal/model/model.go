@@ -35,11 +35,10 @@ type NoteSummary struct {
 }
 
 // Tag is a label attachable to notes many-to-many. Slug is the addressable,
-// unique key; Name is the display label.
+// unique key and also serves as the display label.
 type Tag struct {
 	ID        int64
 	Slug      string
-	Name      string
 	CreatedAt time.Time
 }
 

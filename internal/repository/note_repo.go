@@ -137,11 +137,11 @@ func tagsForNoteIDs(ctx context.Context, q queryer, ids []int64) (map[int64][]mo
 		args[i] = id
 	}
 	rows, err := q.QueryContext(ctx, `
-		SELECT nt.note_id, t.id, t.slug, t.name, t.created_at
+		SELECT nt.note_id, t.id, t.slug, t.created_at
 		FROM note_tags nt
 		JOIN tags t ON t.id = nt.tag_id
 		WHERE nt.note_id IN (`+strings.Join(placeholders, ",")+`)
-		ORDER BY nt.note_id, t.name COLLATE NOCASE`, args...)
+		ORDER BY nt.note_id, t.slug COLLATE NOCASE`, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -154,7 +154,7 @@ func tagsForNoteIDs(ctx context.Context, q queryer, ids []int64) (map[int64][]mo
 			t         model.Tag
 			createdAt string
 		)
-		if err := rows.Scan(&noteID, &t.ID, &t.Slug, &t.Name, &createdAt); err != nil {
+		if err := rows.Scan(&noteID, &t.ID, &t.Slug, &createdAt); err != nil {
 			return nil, err
 		}
 		t.CreatedAt, _ = time.Parse(rfc3339, createdAt)

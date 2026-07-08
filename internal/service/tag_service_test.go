@@ -22,77 +22,36 @@ func newTestTagService(t *testing.T) *TagService {
 	return NewTagService(repository.NewTagRepository(db))
 }
 
-func TestTagService_CreateAutoSlug(t *testing.T) {
+func TestTagService_CreateUsesSlugVerbatim(t *testing.T) {
 	ctx := context.Background()
 	svc := newTestTagService(t)
 
-	tag, err := svc.Create(ctx, "Work", nil)
+	tag, err := svc.Create(ctx, "work")
 	require.NoError(t, err)
 	assert.Equal(t, "work", tag.Slug)
-	assert.Equal(t, "Work", tag.Name)
 }
 
-func TestTagService_CreateAutoSlugCollisionSuffixes(t *testing.T) {
+func TestTagService_CreateSlugCollisionIsConflict(t *testing.T) {
 	ctx := context.Background()
 	svc := newTestTagService(t)
 
-	first, err := svc.Create(ctx, "Work", nil)
-	require.NoError(t, err)
-	assert.Equal(t, "work", first.Slug)
-
-	second, err := svc.Create(ctx, "Work", nil)
-	require.NoError(t, err)
-	assert.Equal(t, "work-2", second.Slug)
-}
-
-func TestTagService_CreateExplicitSlugUsedVerbatim(t *testing.T) {
-	ctx := context.Background()
-	svc := newTestTagService(t)
-
-	tag, err := svc.Create(ctx, "Work Stuff", ptr("custom"))
-	require.NoError(t, err)
-	assert.Equal(t, "custom", tag.Slug)
-}
-
-func TestTagService_CreateExplicitSlugCollisionIsConflict(t *testing.T) {
-	ctx := context.Background()
-	svc := newTestTagService(t)
-
-	_, err := svc.Create(ctx, "First", ptr("taken"))
+	_, err := svc.Create(ctx, "taken")
 	require.NoError(t, err)
 
-	_, err = svc.Create(ctx, "Second", ptr("taken"))
-	assert.ErrorIs(t, err, ErrConflict, "explicit slug collision is never silently suffixed")
+	_, err = svc.Create(ctx, "taken")
+	assert.ErrorIs(t, err, ErrConflict, "a slug collision is never silently suffixed")
 }
 
-func TestTagService_CreateInvalidExplicitSlugRejected(t *testing.T) {
-	ctx := context.Background()
-	svc := newTestTagService(t)
-	_, err := svc.Create(ctx, "Title", ptr("Bad Slug!"))
-	assert.ErrorIs(t, err, ErrValidation)
-}
-
-func TestTagService_CreateTrimsNameAndRejectsBlank(t *testing.T) {
+func TestTagService_CreateInvalidSlugRejected(t *testing.T) {
 	ctx := context.Background()
 	svc := newTestTagService(t)
 
-	tag, err := svc.Create(ctx, "  Spaced  ", nil)
-	require.NoError(t, err)
-	assert.Equal(t, "Spaced", tag.Name)
-
-	_, err = svc.Create(ctx, "   ", nil)
-	assert.ErrorIs(t, err, ErrValidation, "whitespace-only name rejected after trim")
-}
-
-func TestTagService_CreateRejectsControlChars(t *testing.T) {
-	ctx := context.Background()
-	svc := newTestTagService(t)
-
-	// Any Unicode Cc control char is rejected — tab/newline/CR, DEL, and the C1
-	// controls included (a tag name is a single line, mirroring validateTitle).
-	for _, r := range []rune{'\t', '\n', '\r', '\x00', '\x02', '\x1f', '\x7f', '\u0080', '\u0085', '\u009f'} {
-		_, err := svc.Create(ctx, "a"+string(r)+"b", nil)
-		assert.ErrorIs(t, err, ErrValidation, "control char %#x", r)
+	// Anything not matching the slug pattern (lowercase alphanumerics separated
+	// by single hyphens) is rejected: uppercase, spaces, punctuation, empty,
+	// leading/trailing/double hyphens.
+	for _, bad := range []string{"Bad Slug!", "UPPER", "", "-leading", "trailing-", "a--b"} {
+		_, err := svc.Create(ctx, bad)
+		assert.ErrorIs(t, err, ErrValidation, "slug %q", bad)
 	}
 }
 
@@ -100,7 +59,7 @@ func TestTagService_ListAndDelete(t *testing.T) {
 	ctx := context.Background()
 	svc := newTestTagService(t)
 
-	tag, err := svc.Create(ctx, "Work", nil)
+	tag, err := svc.Create(ctx, "work")
 	require.NoError(t, err)
 
 	tags, err := svc.List(ctx)

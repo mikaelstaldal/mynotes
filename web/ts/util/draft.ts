@@ -30,8 +30,8 @@ function sanitizeTags(raw: unknown): Tag[] {
   for (const t of raw) {
     if (typeof t !== 'object' || t === null) continue;
     const o = t as Record<string, unknown>;
-    if (typeof o.slug === 'string' && typeof o.name === 'string') {
-      tags.push({ slug: o.slug, name: o.name });
+    if (typeof o.slug === 'string') {
+      tags.push({ slug: o.slug });
     }
   }
   return tags;

@@ -83,7 +83,7 @@ identity exists but is never exposed as the URL key.
   and the `[[`/`]]` delimiters do not collide with CommonMark, raw HTML, SVG, or
   MathML. The editor offers toolbar buttons to insert a note link or a tag link;
   each opens a picker that autocompletes by case-insensitive prefix match on the
-  note title / tag name.
+  note title / tag slug.
 - The editor toolbar has an emoji button that opens a picker over the full
   Unicode emoji set (from the vendored `emojibase-data`), browsable by category
   and searchable by name/keyword; selecting one inserts the character at the
@@ -115,23 +115,21 @@ The "embed image" toolbar button in the note editor uploads the selected file as
 Notes may be categorized with tags in a many-to-many relationship: a note can
 carry any number of tags, and a tag can be attached to any number of notes.
 
-A tag has a **name** (1–100 characters) and a unique, URL-safe **slug**
-(same character rules as note slugs: lowercase ASCII letters, digits, and
-hyphens, 1–100 characters).
+A tag is identified solely by a unique, URL-safe **slug** (same character rules
+as note slugs: lowercase ASCII letters, digits, and hyphens, 1–100 characters),
+which also serves as its display label.
 
 - **Tags are created explicitly**, via their own API call, before they can be
   attached to a note — a note write never silently creates a new tag.
   Referencing an unknown tag slug on a note create/update is a validation
   error (400).
-- If the client does not supply a slug when creating a tag, one is derived
-  from the name using the same rules as note slug derivation, auto-suffixed
-  on collision. An explicit slug that collides with an existing tag is an
-  error (409), never silently suffixed.
+- A tag is created by supplying its slug directly. A slug that collides with an
+  existing tag is an error (409), never silently suffixed.
 - Deleting a tag detaches it from every note that had it; there is no
   orphan-prevention (mirrors artifact deletion).
 - Notes reference tags by slug in create/update requests; `Note` and
-  `NoteSummary` API responses embed the full tag (slug + name) so the client
-  does not need extra round-trips to display them.
+  `NoteSummary` API responses embed the full tag (slug) so the client does not
+  need extra round-trips to display them.
 - Notes can be listed filtered to a single tag (by slug), combinable with a
   full-text search query.
 
@@ -240,8 +238,9 @@ existing-note editor (`/notes/{slug}/edit`).
 - **Editor (main panel, new/edit):** title input (with auto-derive-from-heading
   until edited); slug field (suggested for new notes, editable-with-warning when
   editing); a tag picker (autocomplete over existing tags, plus an explicit
-  "create tag" action for a name with no match — nudging toward reusing
-  existing tags over creating near-duplicates); a Markdown source editor with a
+  "create tag" action — deriving a slug from the typed text — for a slug with no
+  match, nudging toward reusing existing tags over creating near-duplicates); a
+  Markdown source editor with a
   live local preview; a "Link to note"
   picker that searches notes by title (not body content) and inserts a Markdown
   link to the chosen note's stable URL; Save and Cancel.
@@ -362,8 +361,8 @@ database path) are ignored. The database is created if it does not yet exist.
 
 ### What is seeded
 
-- A handful of **tags** (e.g. Getting Started, Reference, Personal, Work,
-  Recipes, Travel).
+- A handful of **tags** (e.g. `getting-started`, `reference`, `personal`,
+  `work`, `recipes`, `travel`).
 - A few **artifacts** — generated images (PNG) and an inline SVG logo — stored
   through the normal artifact pipeline so they are content-addressed and
   content-validated.
@@ -376,11 +375,11 @@ database path) are ignored. The database is created if it does not yet exist.
 ### Validation and behavior
 
 Demo content is written through the same service layer (and therefore the same
-validation) as any note, tag, or artifact created via the REST API. Seeding is
-additive and not deduplicated: re-running the command adds another copy of the
-demo data (tags get auto-suffixed slugs, notes get auto-suffixed slugs), so it
-is intended for a fresh or throwaway database. Progress is printed to stdout;
-exit code is 0 on success.
+validation) as any note, tag, or artifact created via the REST API. The demo
+tags use fixed slugs, so seeding is intended for a fresh or throwaway database:
+re-running the command against a database that already holds the demo tags fails
+on the duplicate-slug conflict. Progress is printed to stdout; exit code is 0 on
+success.
 
 ## Security (user-facing guarantees)
 

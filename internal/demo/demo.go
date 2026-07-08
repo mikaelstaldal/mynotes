@@ -36,15 +36,12 @@ func Run(ctx context.Context, notes *service.NoteService, artifacts *service.Art
 	_, _ = fmt.Fprintln(w, "Seeding demo data...")
 
 	// --- tags --------------------------------------------------------------
-	tagSlugs := make(map[string]string, len(demoTags))
-	for _, name := range demoTags {
-		slug, err := s.tag(ctx, name)
-		if err != nil {
-			return fmt.Errorf("create tag %q: %w", name, err)
+	for _, slug := range demoTags {
+		if err := s.tag(ctx, slug); err != nil {
+			return fmt.Errorf("create tag %q: %w", slug, err)
 		}
-		tagSlugs[name] = slug
 	}
-	_, _ = fmt.Fprintf(w, "Created %d tag(s).\n", len(tagSlugs))
+	_, _ = fmt.Fprintf(w, "Created %d tag(s).\n", len(demoTags))
 
 	// --- artifacts ---------------------------------------------------------
 	chartPNG, err := barChartPNG()
@@ -73,8 +70,8 @@ func Run(ctx context.Context, notes *service.NoteService, artifacts *service.Art
 	_, _ = fmt.Fprintln(w, "Created 3 artifact(s).")
 
 	// --- notes -------------------------------------------------------------
-	// Each entry names its tags by display name; they are resolved to the
-	// slugs allocated above. Image references point at the artifacts by SHA.
+	// Each entry references its tags by slug (created above). Image references
+	// point at the artifacts by SHA.
 	notesToCreate := []struct {
 		title   string
 		content string
@@ -83,58 +80,51 @@ func Run(ctx context.Context, notes *service.NoteService, artifacts *service.Art
 		{
 			title:   "Welcome to MyNotes",
 			content: fmt.Sprintf(welcomeNote, logoSHA),
-			tags:    []string{"Getting Started"},
+			tags:    []string{"getting-started"},
 		},
 		{
 			title:   "Markdown Formatting Guide",
 			content: markdownGuideNote,
-			tags:    []string{"Getting Started", "Reference"},
+			tags:    []string{"getting-started", "reference"},
 		},
 		{
 			title:   "Sourdough Bread",
 			content: fmt.Sprintf(recipeNote, gradientSHA),
-			tags:    []string{"Recipes", "Personal"},
+			tags:    []string{"recipes", "personal"},
 		},
 		{
 			title:   "Q3 Project Roadmap",
 			content: fmt.Sprintf(roadmapNote, chartSHA),
-			tags:    []string{"Work", "Reference"},
+			tags:    []string{"work", "reference"},
 		},
 		{
 			title:   "Weekend in Lisbon",
 			content: travelNote,
-			tags:    []string{"Travel", "Personal"},
+			tags:    []string{"travel", "personal"},
 		},
 		{
 			title:   "Math & Diagrams",
 			content: mathNote,
-			tags:    []string{"Reference"},
+			tags:    []string{"reference"},
 		},
 	}
 
 	for _, n := range notesToCreate {
-		slugs := make([]string, 0, len(n.tags))
-		for _, name := range n.tags {
-			slugs = append(slugs, tagSlugs[name])
-		}
-		note, err := s.notes.Create(ctx, n.title, &n.content, nil, slugs)
+		note, err := s.notes.Create(ctx, n.title, &n.content, nil, n.tags)
 		if err != nil {
 			return fmt.Errorf("create note %q: %w", n.title, err)
 		}
 		_, _ = fmt.Fprintf(w, "  ✓ %s → /notes/%s\n", note.Title, note.Slug)
 	}
 
-	_, _ = fmt.Fprintf(w, "\nDone. Seeded %d notes, %d tags, and 3 artifacts.\n", len(notesToCreate), len(tagSlugs))
+	_, _ = fmt.Fprintf(w, "\nDone. Seeded %d notes, %d tags, and 3 artifacts.\n", len(notesToCreate), len(demoTags))
 	return nil
 }
 
-// tag creates a tag with an auto-derived slug and returns the allocated slug.
-func (s *seeder) tag(ctx context.Context, name string) (string, error) {
-	t, err := s.tags.Create(ctx, name, nil)
-	if err != nil {
-		return "", err
-	}
-	return t.Slug, nil
+// tag creates a tag with the given slug.
+func (s *seeder) tag(ctx context.Context, slug string) error {
+	_, err := s.tags.Create(ctx, slug)
+	return err
 }
 
 // artifact stores content of the given type and returns its SHA-256 digest, the
@@ -147,14 +137,14 @@ func (s *seeder) artifact(ctx context.Context, content []byte, contentType strin
 	return a.SHA256, nil
 }
 
-// demoTags are the tags every demo note is drawn from.
+// demoTags are the tag slugs every demo note is drawn from.
 var demoTags = []string{
-	"Getting Started",
-	"Reference",
-	"Personal",
-	"Work",
-	"Recipes",
-	"Travel",
+	"getting-started",
+	"reference",
+	"personal",
+	"work",
+	"recipes",
+	"travel",
 }
 
 // barChartPNG renders a simple three-bar chart as a PNG. Generating the bytes

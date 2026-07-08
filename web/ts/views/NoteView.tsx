@@ -107,7 +107,7 @@ export function NoteView({ slug, onDelete }: Props) {
           {note.tags.length > 0 && (
             <div class="tag-chips">
               {note.tags.map(t => (
-                <a key={t.slug} class="tag-chip" href={`${base}/tags/${t.slug}`}>{t.name}</a>
+                <a key={t.slug} class="tag-chip" href={`${base}/tags/${t.slug}`}>{t.slug}</a>
               ))}
             </div>
           )}

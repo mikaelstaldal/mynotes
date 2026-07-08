@@ -274,7 +274,7 @@ paths:
     get:
       operationId: listTags
       summary: List all tags
-      description: Returns all tags sorted by name. Powers client-side autocomplete.
+      description: Returns all tags sorted by slug. Powers client-side autocomplete.
       responses:
         "200":
           description: All tags.
@@ -289,10 +289,9 @@ paths:
       summary: Create a tag
       description: >
         Tags must be created explicitly before being attached to a note (see
-        the `tags` field on CreateNoteRequest/UpdateNoteRequest). An explicit
-        `slug` that collides with an existing tag is a 409, never silently
-        suffixed. When `slug` is absent, one is derived from `name` using the
-        same rules as note slugs and auto-suffixed on collision.
+        the `tags` field on CreateNoteRequest/UpdateNoteRequest). A tag is
+        identified solely by its `slug`, which is also its display label. A
+        `slug` that collides with an existing tag is a 409.
       requestBody:
         required: true
         content:
@@ -716,16 +715,12 @@ components:
 
     Tag:
       type: object
-      required: [slug, name]
+      required: [slug]
       properties:
         slug:
           type: string
           maxLength: 100
           pattern: "^[a-z0-9]+(?:-[a-z0-9]+)*$"
-        name:
-          type: string
-          minLength: 1
-          maxLength: 100
 
     TagList:
       type: object
@@ -738,12 +733,8 @@ components:
 
     CreateTagRequest:
       type: object
-      required: [name]
+      required: [slug]
       properties:
-        name:
-          type: string
-          minLength: 1
-          maxLength: 100
         slug:
           type: string
           maxLength: 100

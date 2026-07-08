@@ -12,11 +12,10 @@ func TestTagCRUD(t *testing.T) {
 	ctx := context.Background()
 	repo := NewTagRepository(newTestDB(t))
 
-	created, err := repo.Create(ctx, "work", "Work")
+	created, err := repo.Create(ctx, "work")
 	require.NoError(t, err)
 	assert.NotZero(t, created.ID)
 	assert.Equal(t, "work", created.Slug)
-	assert.Equal(t, "Work", created.Name)
 	assert.False(t, created.CreatedAt.IsZero())
 
 	got, err := repo.GetBySlug(ctx, "work")
@@ -44,33 +43,33 @@ func TestTagCreateDuplicateSlugRejected(t *testing.T) {
 	ctx := context.Background()
 	repo := NewTagRepository(newTestDB(t))
 
-	_, err := repo.Create(ctx, "dup", "First")
+	_, err := repo.Create(ctx, "dup")
 	require.NoError(t, err)
 
-	_, err = repo.Create(ctx, "dup", "Second")
+	_, err = repo.Create(ctx, "dup")
 	assert.ErrorIs(t, err, ErrConflict)
 
 	got, err := repo.GetBySlug(ctx, "dup")
 	require.NoError(t, err)
-	assert.Equal(t, "First", got.Name, "original row not overwritten by the rejected insert")
+	assert.Equal(t, "dup", got.Slug, "original row not overwritten by the rejected insert")
 }
 
 func TestTagList(t *testing.T) {
 	ctx := context.Background()
 	repo := NewTagRepository(newTestDB(t))
 
-	_, err := repo.Create(ctx, "zebra", "Zebra")
+	_, err := repo.Create(ctx, "zebra")
 	require.NoError(t, err)
-	_, err = repo.Create(ctx, "apple", "apple") // lowercase, tests COLLATE NOCASE ordering
+	_, err = repo.Create(ctx, "apple")
 	require.NoError(t, err)
-	_, err = repo.Create(ctx, "mango", "Mango")
+	_, err = repo.Create(ctx, "mango")
 	require.NoError(t, err)
 
 	tags, err := repo.List(ctx)
 	require.NoError(t, err)
 	require.Len(t, tags, 3)
 	assert.Equal(t, []string{"apple", "mango", "zebra"},
-		[]string{tags[0].Slug, tags[1].Slug, tags[2].Slug}, "sorted by name, case-insensitive")
+		[]string{tags[0].Slug, tags[1].Slug, tags[2].Slug}, "sorted by slug, case-insensitive")
 }
 
 func TestTagListEmpty(t *testing.T) {
@@ -85,11 +84,11 @@ func TestTagGetBySlugs(t *testing.T) {
 	ctx := context.Background()
 	repo := NewTagRepository(newTestDB(t))
 
-	_, err := repo.Create(ctx, "a", "A")
+	_, err := repo.Create(ctx, "a")
 	require.NoError(t, err)
-	_, err = repo.Create(ctx, "b", "B")
+	_, err = repo.Create(ctx, "b")
 	require.NoError(t, err)
-	_, err = repo.Create(ctx, "c", "C")
+	_, err = repo.Create(ctx, "c")
 	require.NoError(t, err)
 
 	got, err := repo.GetBySlugs(ctx, []string{"a", "c", "does-not-exist"})
@@ -104,20 +103,4 @@ func TestTagGetBySlugsEmptyInput(t *testing.T) {
 	got, err := repo.GetBySlugs(context.Background(), nil)
 	require.NoError(t, err)
 	assert.Empty(t, got)
-}
-
-func TestTagSlugExists(t *testing.T) {
-	ctx := context.Background()
-	repo := NewTagRepository(newTestDB(t))
-
-	_, err := repo.Create(ctx, "taken", "Taken")
-	require.NoError(t, err)
-
-	exists, err := repo.SlugExists(ctx, "taken")
-	require.NoError(t, err)
-	assert.True(t, exists)
-
-	exists, err = repo.SlugExists(ctx, "free")
-	require.NoError(t, err)
-	assert.False(t, exists)
 }

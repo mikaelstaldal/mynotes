@@ -497,16 +497,14 @@ export function NoteEditor({ slug, onSave }: Props) {
     view.focus();
   }
 
-  function insertTagLink(tagSlug: string, tagName: string) {
+  function insertTagLink(tagSlug: string) {
     setTagLinkPickerOpen(false);
     const view = viewRef.current;
     if (!view) return;
     const { from } = view.state.selection.main;
-    // Add an alias ([[#slug|Name]]) only when the display name adds information
-    // over the default "#slug" text and is representable in the syntax (the
-    // label may not contain ']' or a newline).
-    const useAlias = tagName !== tagSlug && !/[\]\n]/.test(tagName);
-    const text = useAlias ? `[[#${tagSlug}|${tagName}]]` : `[[#${tagSlug}]]`;
+    // A tag is identified solely by its slug, which is also its display label,
+    // so there is nothing to alias — always insert the bare "#slug" link.
+    const text = `[[#${tagSlug}]]`;
     view.dispatch({
       changes: { from, insert: text },
       selection: EditorSelection.cursor(from + text.length),

@@ -320,7 +320,7 @@ func TestCreate_WithKnownTagsAttachesThem(t *testing.T) {
 	ctx := context.Background()
 	svc, tagRepo := newTestServiceWithTags(t)
 
-	work, err := tagRepo.Create(ctx, "work", "Work")
+	work, err := tagRepo.Create(ctx, "work")
 	require.NoError(t, err)
 
 	note, err := svc.Create(ctx, "Title", nil, nil, []string{work.Slug})
@@ -341,7 +341,7 @@ func TestCreate_DuplicateTagSlugsAreDeduped(t *testing.T) {
 	ctx := context.Background()
 	svc, tagRepo := newTestServiceWithTags(t)
 
-	work, err := tagRepo.Create(ctx, "work", "Work")
+	work, err := tagRepo.Create(ctx, "work")
 	require.NoError(t, err)
 
 	note, err := svc.Create(ctx, "Title", nil, nil, []string{work.Slug, work.Slug})
@@ -353,7 +353,7 @@ func TestUpdate_TagsAbsentLeavesUnchanged(t *testing.T) {
 	ctx := context.Background()
 	svc, tagRepo := newTestServiceWithTags(t)
 
-	work, err := tagRepo.Create(ctx, "work", "Work")
+	work, err := tagRepo.Create(ctx, "work")
 	require.NoError(t, err)
 	created, err := svc.Create(ctx, "Title", nil, nil, []string{work.Slug})
 	require.NoError(t, err)
@@ -367,7 +367,7 @@ func TestUpdate_TagsEmptySliceClears(t *testing.T) {
 	ctx := context.Background()
 	svc, tagRepo := newTestServiceWithTags(t)
 
-	work, err := tagRepo.Create(ctx, "work", "Work")
+	work, err := tagRepo.Create(ctx, "work")
 	require.NoError(t, err)
 	created, err := svc.Create(ctx, "Title", nil, nil, []string{work.Slug})
 	require.NoError(t, err)
@@ -381,7 +381,7 @@ func TestUpdate_SameTagSetIsNoOp(t *testing.T) {
 	ctx := context.Background()
 	svc, tagRepo := newTestServiceWithTags(t)
 
-	work, err := tagRepo.Create(ctx, "work", "Work")
+	work, err := tagRepo.Create(ctx, "work")
 	require.NoError(t, err)
 	created, err := svc.Create(ctx, "Title", nil, nil, []string{work.Slug})
 	require.NoError(t, err)
@@ -406,7 +406,7 @@ func TestUpdate_TagsOnlyFieldIsSufficientToNotBeEmptyPatch(t *testing.T) {
 	ctx := context.Background()
 	svc, tagRepo := newTestServiceWithTags(t)
 
-	work, err := tagRepo.Create(ctx, "work", "Work")
+	work, err := tagRepo.Create(ctx, "work")
 	require.NoError(t, err)
 	created, err := svc.Create(ctx, "Title", nil, nil, nil)
 	require.NoError(t, err)

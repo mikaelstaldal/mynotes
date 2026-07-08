@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'preact/hooks';
 import { api, type Tag } from '../api/client.js';
 import { showToast } from '../util/toast.js';
+import { slugFromTitle } from '../util/slug.js';
 
 interface Props {
   selected: Tag[];
@@ -32,11 +33,14 @@ export function TagPicker({ selected, onChange }: Props) {
 
   const selectedSlugs = new Set(selected.map(t => t.slug));
   const trimmedQuery = query.trim();
+  // The slug is the tag's identity and display label; derive the candidate slug
+  // from the free-text query and match/create against it.
+  const candidateSlug = slugFromTitle(trimmedQuery);
   const matches = trimmedQuery
     ? allTags.filter(t =>
-      !selectedSlugs.has(t.slug) && t.name.toLowerCase().includes(trimmedQuery.toLowerCase()))
+      !selectedSlugs.has(t.slug) && t.slug.includes(candidateSlug))
     : allTags.filter(t => !selectedSlugs.has(t.slug));
-  const exactMatch = allTags.some(t => t.name.toLowerCase() === trimmedQuery.toLowerCase());
+  const exactMatch = allTags.some(t => t.slug === candidateSlug);
   const canCreate = trimmedQuery.length > 0 && !exactMatch;
 
   function addTag(tag: Tag) {
@@ -50,10 +54,10 @@ export function TagPicker({ selected, onChange }: Props) {
   }
 
   async function createAndAddTag() {
-    if (!trimmedQuery || creating) return;
+    if (!candidateSlug || creating) return;
     setCreating(true);
     try {
-      const tag = await api.tags.create({ name: trimmedQuery });
+      const tag = await api.tags.create({ slug: candidateSlug });
       setAllTags(prev => [...prev, tag]);
       addTag(tag);
     } catch (e) {
@@ -67,8 +71,8 @@ export function TagPicker({ selected, onChange }: Props) {
     <div class="tag-picker">
       {selected.map(t => (
         <span key={t.slug} class="tag-chip">
-          {t.name}
-          <button type="button" class="tag-chip-remove" aria-label={`Remove tag ${t.name}`}
+          {t.slug}
+          <button type="button" class="tag-chip-remove" aria-label={`Remove tag ${t.slug}`}
             onClick={() => removeTag(t.slug)}>×</button>
         </span>
       ))}
@@ -95,7 +99,7 @@ export function TagPicker({ selected, onChange }: Props) {
             {matches.map(t => (
               <li key={t.slug}>
                 <button type="button" class="tag-picker-option" onClick={() => addTag(t)}>
-                  {t.name}
+                  {t.slug}
                 </button>
               </li>
             ))}
@@ -103,7 +107,7 @@ export function TagPicker({ selected, onChange }: Props) {
               <li>
                 <button type="button" class="tag-picker-create" disabled={creating}
                   onClick={() => void createAndAddTag()}>
-                  {creating ? 'Creating…' : `+ Create tag "${trimmedQuery}"`}
+                  {creating ? 'Creating…' : `+ Create tag "${candidateSlug}"`}
                 </button>
               </li>
             )}

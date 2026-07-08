@@ -58,7 +58,7 @@ export function NoteRows({ rows, activeSlug }: Props) {
               <div class="tag-chips">
                 {n.tags.map(t => (
                   <a key={t.slug} class="tag-chip" href={`${base}/tags/${t.slug}`}
-                    onClick={(e) => e.stopPropagation()}>{t.name}</a>
+                    onClick={(e) => e.stopPropagation()}>{t.slug}</a>
                 ))}
               </div>
             )}

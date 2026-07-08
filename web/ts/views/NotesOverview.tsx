@@ -62,11 +62,9 @@ export function NotesOverview({ activeTag, listKey, sortField, sortOrder }: Prop
 
   const showLoadMore = !exhausted && total !== null && rows.length < total && !loading;
 
-  // When filtering by tag, every loaded note carries it (the list is filtered by
-  // it), so the tag's display name can be read off a row; fall back to the slug.
-  const heading = activeTag
-    ? rows.flatMap(n => n.tags).find(t => t.slug === activeTag)?.name ?? activeTag
-    : 'All notes';
+  // A tag's slug is its display label, so the active-tag filter heading is just
+  // the slug itself.
+  const heading = activeTag || 'All notes';
 
   if (loading && rows.length === 0) {
     return <p class="muted">Loading…</p>;
