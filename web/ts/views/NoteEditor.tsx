@@ -571,6 +571,33 @@ export function NoteEditor({ slug, onSave }: Props) {
     view.focus();
   }
 
+  function insertHorizontalRule() {
+    const view = viewRef.current;
+    if (!view) return;
+    const { from } = view.state.selection.main;
+    const before = view.state.sliceDoc(0, from);
+    const after = view.state.sliceDoc(from);
+    // A thematic break needs a blank line before it (otherwise `---` directly
+    // under a paragraph is parsed as a setext heading) and a blank line after.
+    let prefix = '';
+    if (before.length > 0) {
+      if (before.endsWith('\n\n')) prefix = '';
+      else if (before.endsWith('\n')) prefix = '\n';
+      else prefix = '\n\n';
+    }
+    let suffix = '\n\n';
+    if (after.length === 0) suffix = '\n';
+    else if (after.startsWith('\n\n')) suffix = '';
+    else if (after.startsWith('\n')) suffix = '\n';
+    const insert = `${prefix}---${suffix}`;
+    const end = from + insert.length;
+    view.dispatch({
+      changes: { from, insert },
+      selection: EditorSelection.cursor(end),
+    });
+    view.focus();
+  }
+
   async function handleFileEmbed(e: Event) {
     const input = e.target as HTMLInputElement;
     const file = input.files?.[0];
@@ -790,6 +817,12 @@ export function NoteEditor({ slug, onSave }: Props) {
               <rect height="2" width="3" x="5" y="11"/>
               <rect height="2" width="4" x="9" y="11"/>
               </g>
+            </svg>
+          </button>
+          <button type="button" class="btn-icon" title="Horizontal rule" aria-label="Horizontal rule" onClick={insertHorizontalRule}>
+            <svg viewBox="0 0 18 18">
+              <path class="fmt-fill" d="M15,12v2a.99942.99942,0,0,1-1,1H4a.99942.99942,0,0,1-1-1V12a1,1,0,0,1,2,0v1h8V12a1,1,0,0,1,2,0ZM14,3H4A.99942.99942,0,0,0,3,4V6A1,1,0,0,0,5,6V5h8V6a1,1,0,0,0,2,0V4A.99942.99942,0,0,0,14,3Z"/>
+              <path class="fmt-fill" d="M15,10H3A1,1,0,0,1,3,8H15a1,1,0,0,1,0,2Z"/>
             </svg>
           </button>
           <span class="fmt-sep" role="separator" />
