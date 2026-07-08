@@ -260,9 +260,27 @@ mark { background: #fef08a; color: var(--fg); border-radius: 2px; padding: 0 1px
 
 .note-content li + li { margin-top: 0.25em; }
 
-/* GFM task lists: drop the list marker and inline the disabled checkbox. */
-.note-content .contains-task-list { list-style: none; padding-left: 0; }
-.note-content .task-list-item-checkbox { margin: 0 0.4em 0 0; }
+/* CommonMark wraps "loose" list items (those separated by blank lines) in a
+   <p>. Collapse its margins so such lists render as tightly as single-line
+   items; genuine multi-paragraph items keep spacing between their paragraphs. */
+.note-content li > p { margin: 0; }
+.note-content li > p + p { margin-top: 0.75em; }
+
+/* Restore list markers inside notes: a global `ul { list-style: none }` reset
+   (for the sidebar) would otherwise strip the bullets from note bullet lists. */
+.note-content ul { list-style: disc; }
+
+/* GFM task lists: drop the marker on the task items only — so plain items in a
+   mixed list keep their bullets — and inline the disabled checkbox, undoing the
+   global form-input styling that would otherwise stretch it to full width. */
+.note-content .task-list-item { list-style: none; }
+.note-content .task-list-item-checkbox {
+  width: auto;
+  margin: 0 0.4em 0 -1.3em;
+  padding: 0;
+  border: 0;
+  vertical-align: middle;
+}
 
 .note-content pre {
   background: var(--surface);

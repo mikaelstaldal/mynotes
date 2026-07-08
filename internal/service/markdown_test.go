@@ -146,8 +146,8 @@ func TestRenderToHTML_RendersTaskList(t *testing.T) {
 	if !strings.Contains(doc, "disabled") {
 		t.Errorf("expected the checkbox to be disabled, got:\n%s", doc)
 	}
-	if strings.Count(doc, `type="checkbox"`) != 2 {
-		t.Errorf("expected two checkboxes, got:\n%s", doc)
+	if strings.Count(doc, "<input") != 2 {
+		t.Errorf("expected two checkbox inputs, got:\n%s", doc)
 	}
 	if !strings.Contains(doc, "checked") {
 		t.Errorf("expected the [x] item to be checked, got:\n%s", doc)

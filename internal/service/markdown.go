@@ -101,6 +101,14 @@ h3 { font-size: 1.15rem; }
 p { margin: 0.75em 0; }
 ul, ol { padding-left: 1.5rem; margin: 0.75em 0; }
 li + li { margin-top: 0.25em; }
+/* Collapse the <p> CommonMark adds to "loose" list items so they render as
+   tightly as single-line items; multi-paragraph items keep their spacing. */
+li > p { margin: 0; }
+li > p + p { margin-top: 0.75em; }
+/* GFM task lists: goldmark emits a classless checkbox input, so target the
+   checkbox itself to drop the list marker and inline it. */
+li:has(input[type="checkbox"]) { list-style: none; }
+input[type="checkbox"] { margin: 0 0.4em 0 -1.3em; vertical-align: middle; }
 a { color: var(--primary); }
 a[href*="/tags/"] {
   text-decoration: none;
