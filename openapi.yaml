@@ -17,28 +17,34 @@ info:
     ## Base and extensions
 
     The base syntax is [CommonMark](https://spec.commonmark.org/) plus a small,
-    fixed subset of
-    [GitHub Flavored Markdown](https://github.github.com/gfm/) extensions:
+    fixed subset of [GitHub Flavored Markdown](https://github.github.com/gfm/) extensions:
 
     - **Tables** — GFM [§4.10 Tables](https://github.github.com/gfm/#tables-extension-).
     - **Strikethrough** — GFM [§6.5](https://github.github.com/gfm/#strikethrough-extension-),
       `~~deleted~~`.
     - **Autolinks** — bare URLs and email addresses are linkified, GFM
       [§6.9](https://github.github.com/gfm/#autolinks-extension-).
+    - **Task lists** — GFM [§5.3](https://github.github.com/gfm/#task-list-items-extension-),
+      `- [ ]` / `- [x]`. A list item whose text begins with such a marker
+      renders as a **disabled (read-only) checkbox**, checked for `[x]`
+      (case-insensitive) and unchecked for `[ ]`. The checkbox is presentational
+      only — toggling it is a content edit that rewrites the marker in the
+      stored Markdown, not a separate state.
 
-    No other extensions are part of the dialect. In particular, **GFM task
-    lists are NOT supported**: `- [ ]` renders as an ordinary list item, not a
-    checkbox. Footnotes, definition lists, YAML front matter and math are also
-    not interpreted.
+    No other extensions are part of the dialect. Footnotes, definition lists,
+    YAML front matter and math (other than embedded MathML) are not interpreted.
 
     ## Raw HTML
 
     Raw inline and block HTML is permitted but restricted to a safe subset
     (broadly the bluemonday UGC / DOMPurify allow-list: common prose, table,
-    figure and media elements, plus inline SVG and MathML). Disallowed
-    constructs — `script`, `style`, `iframe`, `object`, form controls, `on*`
-    event-handler attributes, and any URL whose scheme is not `http`, `https`
-    or `mailto` — are rejected at write time (`400`), so stored content is
+    figure and media elements, plus inline SVG and MathML). The sole permitted
+    form control is the task-list checkbox — `<input type="checkbox">` with only
+    `checked`/`disabled` attributes; any other `input` type or attribute is
+    disallowed. Disallowed constructs — `script`, `style`, `iframe`, `object`,
+    other form controls, `on*` event-handler attributes, and any URL whose
+    scheme is not `http`, `https` or `mailto` — are rejected at write time
+    (`400`), so stored content is
     always safe. Renderers should still sanitize with an equivalent allow-list
     as defense in depth.
 
