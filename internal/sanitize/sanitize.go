@@ -48,6 +48,10 @@ var imgSrcPattern = regexp.MustCompile(`(?i)^(https:|data:image/(gif|png|jpeg|we
 // the same SVG tree and never external resources.
 var svgFragmentHref = regexp.MustCompile(`^#[\w:.\-]+$`)
 
+// checkboxType pins an <input type> to exactly "checkbox" so only GFM task-list
+// checkboxes are kept; any other input type is stripped. Case-insensitive.
+var checkboxType = regexp.MustCompile(`(?i)^checkbox$`)
+
 var policy = newPolicy()
 
 // newPolicy builds the removal-only validation policy: bluemonday's broad
@@ -84,6 +88,15 @@ func newPolicy() *bluemonday.Policy {
 	// Restrict <img src> to https/relative/canonical-data: via a Matching regexp
 	// (ANDed with the global scheme policy above).
 	p.AllowAttrs("src").Matching(imgSrcPattern).OnElements("img")
+
+	// GFM task lists render each "[ ]"/"[x]" list marker as a disabled checkbox.
+	// Allow only that exact shape — <input type="checkbox" disabled [checked]> —
+	// so the rendered checkbox survives the download-html sanitize pass and the
+	// removal-only compare stays in parity with the DOMPurify render-time gate. The
+	// type value is pinned to "checkbox"; any other input (e.g. type="text") loses
+	// its attributes here and so diverges from its re-serialization and is rejected.
+	p.AllowAttrs("type").Matching(checkboxType).OnElements("input")
+	p.AllowAttrs("checked", "disabled").OnElements("input")
 
 	// SVG: presentation and filter elements, matching DOMPurify's svg+svgFilters
 	// profiles (sans <style>, <metadata>, <use>, <animate>, <set>,

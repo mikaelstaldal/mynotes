@@ -769,6 +769,16 @@ export function NoteEditor({ slug, onSave }: Props) {
               <line class="fmt-stroke" x1="3" x2="3" y1="14" y2="14"/>
             </svg>
           </button>
+          <button type="button" class="btn-icon" title="Task list" aria-label="Task list" onClick={() => insertLinePrefix('- [ ] ')}>
+            <svg viewBox="0 0 18 18">
+              <line class="fmt-stroke" x1="9" x2="15" y1="4" y2="4"/>
+              <polyline class="fmt-stroke" points="3 4 4 5 6 3"/>
+              <line class="fmt-stroke" x1="9" x2="15" y1="14" y2="14"/>
+              <polyline class="fmt-stroke" points="3 14 4 15 6 13"/>
+              <line class="fmt-stroke" x1="9" x2="15" y1="9" y2="9"/>
+              <polyline class="fmt-stroke" points="3 9 4 10 6 8"/>
+            </svg>
+          </button>
           <button type="button" class="btn-icon" title="Table" aria-label="Table" onClick={insertTable}>
             <svg viewBox="0 0 18 18">
               <rect class="fmt-stroke" height="12" width="12" x="3" y="3"/>

@@ -46,6 +46,73 @@ md.inline.ruler.before('link', 'wiki_link', (state, silent) => {
   return true;
 });
 
+// GFM task lists: a list item whose first inline text begins with "[ ] ",
+// "[x] ", or "[X] " renders a disabled checkbox in place of that marker, and
+// its <li>/<ul>/<ol> gain the GitHub-compatible task-list classes for styling.
+// Implemented as a core rule over the token stream (the same approach as
+// markdown-it-task-lists) rather than a plugin, so it stays self-contained and
+// npm-free. Checkboxes are always disabled: the read view is render-only, so a
+// task-list checkbox is a status marker, not an interactive control.
+const TASK_MARKER_RE = /^\[[ xX]\] /;
+
+// The @types/markdown-it package does not re-export Token from its entry point,
+// so derive the token type from the mapped MarkdownIt class instead of importing
+// a subpath the vendored single-file bundle can't resolve at runtime.
+type MdToken = ReturnType<MarkdownIt['parse']>[number];
+
+function taskListItemClass(token: MdToken, cls: string): void {
+  const idx = token.attrIndex('class');
+  if (idx < 0) {
+    token.attrPush(['class', cls]);
+    return;
+  }
+  const existing = token.attrs![idx][1];
+  // Idempotent: the parent list is tagged once per task item, so skip a class
+  // that is already present to avoid "contains-task-list contains-task-list".
+  if (existing.split(' ').includes(cls)) return;
+  token.attrs![idx][1] = existing ? `${existing} ${cls}` : cls;
+}
+
+// The list_open token that owns the list_item_open at `itemOpen` is the nearest
+// preceding token one nesting level shallower.
+function parentListToken(tokens: MdToken[], itemOpen: number): number {
+  const target = tokens[itemOpen].level - 1;
+  for (let i = itemOpen - 1; i >= 0; i--) {
+    if (tokens[i].level === target) return i;
+  }
+  return -1;
+}
+
+md.core.ruler.after('inline', 'task_lists', (state) => {
+  const tokens = state.tokens;
+  for (let i = 2; i < tokens.length; i++) {
+    const inline = tokens[i];
+    if (
+      inline.type !== 'inline' ||
+      tokens[i - 1].type !== 'paragraph_open' ||
+      tokens[i - 2].type !== 'list_item_open' ||
+      !TASK_MARKER_RE.test(inline.content)
+    ) {
+      continue;
+    }
+    const checked = inline.content.charCodeAt(1) !== 0x20; // '[x]'/'[X]' vs '[ ]'
+    const box = new state.Token('html_inline', '', 0);
+    box.content =
+      `<input class="task-list-item-checkbox" type="checkbox" disabled${checked ? ' checked' : ''}>`;
+    // Prepend the checkbox and drop the "[ ]"/"[x]" marker (3 chars) from both
+    // the flattened content and the leading text token.
+    inline.children!.unshift(box);
+    inline.content = inline.content.slice(3);
+    const firstText = inline.children![1];
+    if (firstText?.type === 'text') {
+      firstText.content = firstText.content.slice(3);
+    }
+    taskListItemClass(tokens[i - 2], 'task-list-item');
+    const parent = parentListToken(tokens, i - 2);
+    if (parent >= 0) taskListItemClass(tokens[parent], 'contains-task-list');
+  }
+});
+
 // Broad safe-HTML allow-list matching the server bluemonday UGCPolicy profile.
 // Excludes script/style/iframe/object/embed/form-controls/raw-media and all on* handlers.
 DOMPurify.setConfig({
@@ -64,6 +131,8 @@ DOMPurify.setConfig({
     'figure', 'figcaption',
     // Media
     'img',
+    // GFM task-list checkbox (constrained to a disabled checkbox by the hook below)
+    'input',
   ],
   ALLOWED_ATTR: [
     // Link / image
@@ -75,6 +144,8 @@ DOMPurify.setConfig({
     'colspan', 'headers', 'rowspan', 'scope', 'span', 'valign',
     // List
     'reversed', 'start', 'type',
+    // Task-list checkbox (input@type is covered by 'type' above)
+    'checked', 'disabled',
     // Details
     'open',
     // Language
@@ -180,7 +251,20 @@ DOMPurify.setConfig({
   ],
 });
 
+// Constrain <input> to the disabled checkboxes emitted for task-list items:
+// drop any other input (e.g. a raw <input type="text"> that reached the render
+// gate) before its attributes are processed. This runs before
+// afterSanitizeAttributes, which then forces the disabled flag on the survivors.
+DOMPurify.addHook('uponSanitizeElement', (node, data) => {
+  if (data.tagName !== 'input') return;
+  const el = node as Element;
+  if (el.getAttribute?.('type') !== 'checkbox') {
+    el.parentNode?.removeChild(el);
+  }
+});
+
 // Open external links in a new tab; keep internal links in the same tab.
+// Also force task-list checkboxes to stay non-interactive (read-only view).
 DOMPurify.addHook('afterSanitizeAttributes', (node) => {
   if (node.tagName === 'A') {
     const href = node.getAttribute('href') ?? '';
@@ -188,6 +272,8 @@ DOMPurify.addHook('afterSanitizeAttributes', (node) => {
       node.setAttribute('target', '_blank');
       node.setAttribute('rel', 'noopener noreferrer');
     }
+  } else if (node.tagName === 'INPUT') {
+    node.setAttribute('disabled', '');
   }
 });
 

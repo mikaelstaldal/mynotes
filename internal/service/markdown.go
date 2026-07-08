@@ -26,26 +26,30 @@ import (
 const maxNestingDepth = 100
 
 // markdownParser mirrors the client's enabled feature set: GFM tables,
-// strikethrough, and linkify/autolinks, wired via Goldmark's *individual*
-// extensions rather than the extension.GFM bundle, so the GFM task-list parser
-// stays off (matching the no-task-lists frontend). Raw HTML and images are
-// CommonMark-core and already present in the default AST, which is all the walk
-// inspects. The parser is stateless across calls and safe for concurrent use.
+// strikethrough, linkify/autolinks, and task lists, wired via Goldmark's
+// *individual* extensions rather than the extension.GFM bundle. Raw HTML and
+// images are CommonMark-core and already present in the default AST, which is
+// all the walk inspects; the task-list extension only adds a checkbox node the
+// walk ignores. The parser is stateless across calls and safe for concurrent use.
 var markdownParser = goldmark.New(
 	goldmark.WithExtensions(
 		extension.Table,
 		extension.Strikethrough,
 		extension.Linkify,
+		extension.TaskList,
 	),
 ).Parser()
 
 // markdownRenderer converts Markdown to an HTML body fragment. WithUnsafe allows
 // raw HTML blocks stored in notes — content was already validated at write time.
+// The task-list extension renders "[ ]"/"[x]" list markers as disabled
+// checkboxes, which the RenderToHTML sanitize pass keeps (see internal/sanitize).
 var markdownRenderer = goldmark.New(
 	goldmark.WithExtensions(
 		extension.Table,
 		extension.Strikethrough,
 		extension.Linkify,
+		extension.TaskList,
 	),
 	goldmark.WithRendererOptions(
 		gmhtml.WithUnsafe(),

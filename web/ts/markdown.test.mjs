@@ -100,10 +100,15 @@ test('<iframe> is stripped', () => {
   assertAbsent(out, 'evil.example.com', 'iframe src');
 });
 
-test('<form> and <input> are stripped', () => {
+test('<form> and non-checkbox <input> are stripped', () => {
   const out = renderNote('<form action="https://evil.example.com"><input type="submit"></form>');
   assertAbsent(out, '<form', 'form tag');
-  assertAbsent(out, '<input', 'input tag');
+  assertAbsent(out, '<input', 'submit input tag');
+});
+
+test('raw <input type="text"> is stripped (only task-list checkboxes survive)', () => {
+  const out = renderNote('<input type="text" value="x">');
+  assertAbsent(out, '<input', 'text input tag');
 });
 
 // ---------------------------------------------------------------------------
@@ -289,6 +294,43 @@ for (const { label, md, absent, present } of PARITY_VECTORS) {
     for (const pat of present) assertPresent(out, pat, label);
   });
 }
+
+// ---------------------------------------------------------------------------
+// GFM task lists — "- [ ]" / "- [x]" render as disabled checkboxes
+// ---------------------------------------------------------------------------
+
+test('task-list items render disabled checkboxes with GitHub classes', () => {
+  const out = renderNote('- [ ] todo\n- [x] done');
+  assertPresent(out, 'type="checkbox"', 'checkbox input');
+  assertPresent(out, 'disabled', 'disabled attr');
+  assertPresent(out, 'contains-task-list', 'list class');
+  assertPresent(out, 'task-list-item', 'item class');
+  assertPresent(out, 'todo', 'unchecked item text');
+  assertPresent(out, 'done', 'checked item text');
+});
+
+test('checked task-list item ([x]) carries the checked attribute', () => {
+  const out = renderNote('- [x] done');
+  assertPresent(out, 'checked', 'checked attr for [x]');
+});
+
+test('unchecked task-list item ([ ]) is not checked', () => {
+  const out = renderNote('- [ ] todo');
+  assertAbsent(out, 'checked', 'no checked attr for [ ]');
+});
+
+test('the "[ ]"/"[x]" marker is consumed, not shown as literal text', () => {
+  const out = renderNote('- [ ] buy milk');
+  assertAbsent(out, '[ ]', 'literal marker removed');
+  assertPresent(out, 'buy milk', 'label preserved');
+});
+
+test('a non-task list item is left as an ordinary bullet', () => {
+  const out = renderNote('- plain item');
+  assertAbsent(out, 'type="checkbox"', 'no checkbox for plain item');
+  assertAbsent(out, 'contains-task-list', 'no task-list class');
+  assertPresent(out, 'plain item', 'item text');
+});
 
 // ---------------------------------------------------------------------------
 // Internal note wikilinks — [[slug]] / [[slug|label]]

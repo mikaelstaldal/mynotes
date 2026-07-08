@@ -133,6 +133,30 @@ func TestRenderToHTML_NilResolverSkipsInlining(t *testing.T) {
 	}
 }
 
+func TestRenderToHTML_RendersTaskList(t *testing.T) {
+	doc, err := RenderToHTML("T", "- [x] done\n- [ ] todo", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The disabled checkbox must survive the sanitize pass; the checked item
+	// keeps its checked attribute and the unchecked one does not.
+	if !strings.Contains(doc, `type="checkbox"`) {
+		t.Errorf("expected a rendered checkbox, got:\n%s", doc)
+	}
+	if !strings.Contains(doc, "disabled") {
+		t.Errorf("expected the checkbox to be disabled, got:\n%s", doc)
+	}
+	if strings.Count(doc, `type="checkbox"`) != 2 {
+		t.Errorf("expected two checkboxes, got:\n%s", doc)
+	}
+	if !strings.Contains(doc, "checked") {
+		t.Errorf("expected the [x] item to be checked, got:\n%s", doc)
+	}
+	if !strings.Contains(doc, "done") || !strings.Contains(doc, "todo") {
+		t.Errorf("expected both item labels, got:\n%s", doc)
+	}
+}
+
 func TestValidateMarkdownStructure_Accepts(t *testing.T) {
 	cases := map[string]string{
 		"empty":                 "",
@@ -166,6 +190,12 @@ func TestValidateMarkdownStructure_Accepts(t *testing.T) {
 		"embedded data img":     "<img src=\"data:image/gif;base64,R0lGOD==\">",
 		"angle in text":         "5 < 6 and 7 > 2",
 		"deep but ok nesting":   strings.Repeat("> ", 50) + "deep",
+		// GFM task lists: the "[ ]"/"[x]" markers are plain Markdown (no embedded
+		// HTML), so they always pass the structural gate.
+		"task list": "- [ ] todo\n- [x] done",
+		// A raw disabled checkbox is the one <input> shape the policy keeps, so it
+		// round-trips unchanged and is accepted (parity with the DOMPurify gate).
+		"embedded task checkbox": "<input type=\"checkbox\" disabled>",
 		// SVG
 		"svg basic shapes": "<svg width=\"100\" height=\"100\"><circle cx=\"50\" cy=\"50\" r=\"40\" fill=\"blue\"/></svg>",
 		"svg path rect":    "<svg><rect width=\"50\" height=\"50\"/><path d=\"M0 0 L10 10\"/></svg>",

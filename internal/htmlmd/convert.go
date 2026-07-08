@@ -2,7 +2,7 @@
 // subtree is converted; content outside it (scripts, stylesheets, head
 // metadata) is discarded. The produced Markdown uses CommonMark syntax plus
 // the GFM extensions supported by this application: tables, strikethrough,
-// and linkify.
+// linkify, and task lists.
 //
 // Conversion rules:
 //   - Tags with direct Markdown equivalents are converted to Markdown syntax.
@@ -240,6 +240,7 @@ func (c *converter) handleElement(n *html.Node, depth int) {
 		} else {
 			marker = "- "
 		}
+		marker += liTaskMarker(n)
 		c.write(indent + marker)
 		c.walkChildren(n, depth)
 		c.pendingNLs = 1
@@ -598,6 +599,48 @@ func collectRawText(n *html.Node) string {
 }
 
 // ── DOM utilities ─────────────────────────────────────────────────────────────
+
+// liTaskMarker reports the GFM task-list marker ("[ ] " / "[x] ") for a list
+// item whose first element child is a checkbox <input>, or "" when it is not a
+// task item. When it is, a single run of leading spaces on the text following
+// the checkbox is trimmed (mutating the local parse tree) so the emitted marker
+// and label are separated by exactly one space. Only the tight form (input as a
+// direct child of <li>, as produced by markdown-it and GitHub) is recognised.
+func liTaskMarker(li *html.Node) string {
+	for ch := li.FirstChild; ch != nil; ch = ch.NextSibling {
+		if ch.Type == html.TextNode {
+			if strings.TrimSpace(ch.Data) == "" {
+				continue // skip insignificant whitespace before the checkbox
+			}
+			return ""
+		}
+		if ch.Type != html.ElementNode {
+			continue
+		}
+		if ch.DataAtom == atom.Input && strings.EqualFold(attrVal(ch, "type"), "checkbox") {
+			if next := ch.NextSibling; next != nil && next.Type == html.TextNode {
+				next.Data = strings.TrimLeft(next.Data, " ")
+			}
+			if attrHas(ch, "checked") {
+				return "[x] "
+			}
+			return "[ ] "
+		}
+		return "" // first content element is not a checkbox
+	}
+	return ""
+}
+
+// attrHas reports whether n carries the named (possibly boolean) attribute,
+// regardless of its value. Used for presence-only attributes like `checked`.
+func attrHas(n *html.Node, key string) bool {
+	for _, a := range n.Attr {
+		if strings.EqualFold(a.Key, key) {
+			return true
+		}
+	}
+	return false
+}
 
 func attrVal(n *html.Node, key string) string {
 	for _, a := range n.Attr {

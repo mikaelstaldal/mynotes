@@ -97,6 +97,18 @@ func TestConvert(t *testing.T) {
 			wantTitle:   "",
 			wantContent: "- a\n  - b\n- c",
 		},
+		{
+			name:        "task list",
+			html:        `<ul class="contains-task-list"><li class="task-list-item"><input type="checkbox" disabled> todo</li><li class="task-list-item"><input type="checkbox" checked disabled> done</li></ul>`,
+			wantTitle:   "",
+			wantContent: "- [ ] todo\n- [x] done",
+		},
+		{
+			name:        "task list without space after checkbox",
+			html:        `<ul><li><input type="checkbox">a</li></ul>`,
+			wantTitle:   "",
+			wantContent: "- [ ] a",
+		},
 
 		// ── Code ────────────────────────────────────────────────────────────
 		{

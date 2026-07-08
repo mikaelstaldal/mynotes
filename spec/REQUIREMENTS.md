@@ -65,8 +65,9 @@ identity exists but is never exposed as the URL key.
 - Content is stored as Markdown source verbatim; rendering for the read view
   happens in the browser. The server converts Markdown to HTML only for the
   download-html endpoint.
-- Supported syntax: CommonMark plus GFM tables, strikethrough, and autolinks;
-  bare URLs/emails auto-link; images render. Task lists are not supported in v1.
+- Supported syntax: CommonMark plus GFM tables, strikethrough, task lists, and
+  autolinks; bare URLs/emails auto-link; images render. Task-list markers
+  (`- [ ]` / `- [x]`) render as disabled (read-only) checkboxes.
 - Inline SVG and MathML embedded directly in Markdown HTML blocks are allowed;
   scripts, event handlers, `<foreignObject>`, `<use>`, `<style>`, and other
   unsafe constructs are rejected at write time.
@@ -367,8 +368,8 @@ database path) are ignored. The database is created if it does not yet exist.
   through the normal artifact pipeline so they are content-addressed and
   content-validated.
 - Several **notes** that between them exercise the supported Markdown features:
-  headings, emphasis, strikethrough, ordered/nested lists, tables, fenced code,
-  blockquotes, horizontal rules, autolinks, inter-note links, embedded images
+  headings, emphasis, strikethrough, ordered/nested lists, task lists, tables,
+  fenced code, blockquotes, horizontal rules, autolinks, inter-note links, embedded images
   (referencing the seeded artifacts), and inline SVG and MathML. Each note
   carries one or more of the seeded tags.
 

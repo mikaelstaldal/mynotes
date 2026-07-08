@@ -260,6 +260,10 @@ mark { background: #fef08a; color: var(--fg); border-radius: 2px; padding: 0 1px
 
 .note-content li + li { margin-top: 0.25em; }
 
+/* GFM task lists: drop the list marker and inline the disabled checkbox. */
+.note-content .contains-task-list { list-style: none; padding-left: 0; }
+.note-content .task-list-item-checkbox { margin: 0 0.4em 0 0; }
+
 .note-content pre {
   background: var(--surface);
   border: 1px solid var(--border);

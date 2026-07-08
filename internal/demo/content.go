@@ -75,6 +75,12 @@ Ordered:
 2. Mix the ingredients
 3. Bake for 30 minutes
 
+Task lists render as checkboxes:
+
+- [x] Write the note
+- [ ] Review it
+- [ ] Publish
+
 ## Blockquotes
 
 > Not all those who wander are lost.
@@ -102,7 +108,7 @@ func main() {
 | Tables       |    ✅     | GFM pipe tables           |
 | Strikethrough|    ✅     | ` + "`~~text~~`" + `                 |
 | Autolinks    |    ✅     | bare URLs and emails      |
-| Task lists   |    ❌     | not supported in v1       |
+| Task lists   |    ✅     | ` + "`- [ ]`" + ` and ` + "`- [x]`" + `        |
 
 ## Links & rules
 
