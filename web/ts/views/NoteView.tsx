@@ -113,13 +113,11 @@ export function NoteView({ slug, onDelete }: Props) {
           )}
         </div>
         <div class="toolbar">
-          <a class="btn-icon" href={`${base}/api/v1/notes/${note.slug}/download-markdown`} title="Download Markdown" aria-label="Download Markdown">⬇</a>
-          <a class="btn-icon" href={`${base}/api/v1/notes/${note.slug}/download-html`} title="Download HTML" aria-label="Download HTML">&#x1F5CE;</a>
+          <a class="btn-icon" href={`${base}/api/v1/notes/${note.slug}/download-markdown`} title="Download Markdown" aria-label="Download Markdown">𝖬⬇</a>
+          <a class="btn-icon" href={`${base}/api/v1/notes/${note.slug}/download-html`} title="Download HTML" aria-label="Download HTML">HTML</a>
           <button class="btn-icon" title="Edit" aria-label="Edit" onClick={() => navigate(`/notes/${note.slug}/edit`)}>✎</button>
           <button class="danger btn-icon" onClick={handleDelete} disabled={deleting}
-            title={deleting ? 'Deleting…' : 'Delete'} aria-label={deleting ? 'Deleting…' : 'Delete'}>
-            {'✖︎'}
-          </button>
+            title={deleting ? 'Deleting…' : 'Delete'} aria-label={deleting ? 'Deleting…' : 'Delete'}>❌︎</button>
         </div>
       </div>
       <div class="note-content" dangerouslySetInnerHTML={{ __html: renderedContent }} />
