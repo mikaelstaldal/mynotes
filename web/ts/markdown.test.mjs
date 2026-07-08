@@ -23,7 +23,7 @@ globalThis.document = window.document;
 // Dynamic import so markdown.js (and the DOMPurify it imports) sees the
 // globals set above.  The loader hook resolves 'markdown-it' and 'dompurify'
 // to the committed esbuild bundles.
-const { renderNote } = await import(path.resolve(__dirname, '../static/util/markdown.js'));
+const { renderNote, rawHtmlBlockSeparator } = await import(path.resolve(__dirname, '../static/util/markdown.js'));
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -430,4 +430,56 @@ test('ATX heading starting with # is unaffected', () => {
   const out = renderNote('# Heading');
   assertPresent(out, '<h1>', 'heading rendered');
   assertAbsent(out, 'href="/tags', 'no spurious tag link');
+});
+
+// ---------------------------------------------------------------------------
+// rawHtmlBlockSeparator — blank line before a wiki link inserted after raw HTML
+// ---------------------------------------------------------------------------
+
+const SVG_MULTI = '<svg viewBox="0 0 10 10">\n  <rect x="0" y="0" width="10" height="10"/>\n</svg>';
+const MATH_MULTI = '<math>\n  <mrow><mi>x</mi></mrow>\n</math>';
+const DIV_MULTI = '<div class="x">\n  hello\n</div>';
+const COMMENT_MULTI = '<!-- a\n  b -->';
+
+function hasNoteLink(md) {
+  return renderNote(md).includes('href="/notes/my-note"');
+}
+
+// For each raw HTML block, a link placed at the end WITHOUT a separator is
+// swallowed (rendered literally); the separator the helper returns must both be
+// non-empty and, once applied, make the link render.
+for (const [label, before] of [
+  ['multi-line SVG', SVG_MULTI],
+  ['multi-line MathML', MATH_MULTI],
+  ['multi-line div block', DIV_MULTI],
+  ['multi-line HTML comment', COMMENT_MULTI],
+]) {
+  test(`wiki link swallowed by ${label} without a blank line`, () => {
+    assert.ok(!hasNoteLink(before + '[[my-note]]'), `${label}: link should be literal without separator`);
+    const sep = rawHtmlBlockSeparator(before);
+    assert.ok(sep.length > 0, `${label}: separator should be non-empty`);
+    assert.ok(hasNoteLink(before + sep + '[[my-note]]'), `${label}: link should render with separator`);
+  });
+}
+
+test('separator uses a single newline when the block already ends in one', () => {
+  assert.equal(rawHtmlBlockSeparator(SVG_MULTI + '\n'), '\n');
+  assert.ok(hasNoteLink(SVG_MULTI + '\n' + '\n' + '[[my-note]]'));
+});
+
+test('no separator when a blank line already ends the raw HTML block', () => {
+  assert.equal(rawHtmlBlockSeparator(SVG_MULTI + '\n\n'), '');
+});
+
+test('no separator after single-line raw HTML (parsed inline, not a block)', () => {
+  const single = '<svg viewBox="0 0 1 1"><rect/></svg>';
+  assert.equal(rawHtmlBlockSeparator(single), '');
+  assert.ok(hasNoteLink(single + '[[my-note]]'), 'single-line SVG does not swallow the link');
+});
+
+test('no separator in prose, including a paragraph opened by an inline tag', () => {
+  assert.equal(rawHtmlBlockSeparator('hello world'), '');
+  assert.equal(rawHtmlBlockSeparator(''), '');
+  // A wrapped paragraph starting with an inline tag is not a raw HTML block.
+  assert.equal(rawHtmlBlockSeparator('<b>hi</b> some\nmore words'), '');
 });

@@ -292,6 +292,41 @@ export function renderNote(markdown: string): string {
   return DOMPurify.sanitize(md.render(markdown));
 }
 
+// When a wiki link ([[slug]] / [[#slug]]) — or any other inline-parsed content —
+// is inserted directly after a raw HTML block, e.g. an embedded multi-line SVG
+// or MathML element, it is swallowed by that block and rendered literally,
+// because markdown-it does not run inline rules inside raw HTML blocks (see the
+// wiki_link rule above). A CommonMark HTML block opened by a tag alone on its
+// line runs until the next blank line, so the insertion needs a blank line to
+// break out of it. Given the note text preceding the insertion point, return the
+// newline prefix ('', '\n', or '\n\n') that separates the insertion from an open
+// raw HTML block, choosing the fewest newlines that still leave a blank line
+// between them.
+//
+// Single-line raw HTML (e.g. `<svg …>…</svg>` on one line) is parsed as inline
+// HTML inside a paragraph, not a block, and does not swallow following inline
+// content, so it needs no separator.
+export function rawHtmlBlockSeparator(before: string): string {
+  // Only the block containing the insertion point matters: text before the last
+  // blank line is already separated from it.
+  const blankLine = /\n[ \t]*\n/g;
+  let blockStart = 0;
+  for (let m = blankLine.exec(before); m; m = blankLine.exec(before)) {
+    blockStart = m.index + m[0].length;
+  }
+  const block = before.slice(blockStart);
+  const firstBreak = block.indexOf('\n');
+  if (firstBreak === -1) return ''; // a single-line block never swallows inline content
+  // Up to three leading spaces still open an HTML block; more is indented code.
+  const firstLine = block.slice(0, firstBreak).replace(/^ {0,3}/, '');
+  const opensHtmlBlock =
+    /^<[a-zA-Z][^\s/>]*(?:\s[^\n]*?)?\/?>[ \t]*$/.test(firstLine) || // a lone open tag
+    /^<\/[a-zA-Z][^\n]*>[ \t]*$/.test(firstLine) ||                  // a lone close tag
+    /^<(?:!--|!|\?|script|pre|style|textarea)/i.test(firstLine);     // comment / decl / PI / rawtext
+  if (!opensHtmlBlock) return '';
+  return before.endsWith('\n') ? '\n' : '\n\n';
+}
+
 // Sanitize an SVG or MathML string for direct embedding in markdown.
 // DOMPurify.sanitize() (string return) is used because setConfig() above sets
 // the SET_CONFIG flag, causing DOMPurify to ignore per-call RETURN_DOM_FRAGMENT.

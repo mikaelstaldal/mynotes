@@ -11,7 +11,7 @@ import { api, NotFoundError, PreconditionFailedError, type CreateNoteRequest, ty
 import { base } from '../basepath.js';
 import { navigate, setNavigationGuard } from '../router.js';
 import { showToast } from '../util/toast.js';
-import { renderNote, sanitizeSVGOrMathML } from '../util/markdown.js';
+import { renderNote, sanitizeSVGOrMathML, rawHtmlBlockSeparator } from '../util/markdown.js';
 import { titleFromContent } from '../util/title.js';
 import { slugFromTitle } from '../util/slug.js';
 import { LinkPicker } from '../components/LinkPicker.js';
@@ -489,7 +489,10 @@ export function NoteEditor({ slug, onSave }: Props) {
     // default slug text and is representable in the syntax (the label may not
     // contain ']' or a newline).
     const useAlias = noteTitle !== noteSlug && !/[\]\n]/.test(noteTitle);
-    const text = useAlias ? `[[${noteSlug}|${noteTitle}]]` : `[[${noteSlug}]]`;
+    const link = useAlias ? `[[${noteSlug}|${noteTitle}]]` : `[[${noteSlug}]]`;
+    // Break out of a preceding raw HTML block (e.g. an embedded SVG/MathML) so
+    // the link isn't swallowed and rendered literally.
+    const text = rawHtmlBlockSeparator(view.state.sliceDoc(0, from)) + link;
     view.dispatch({
       changes: { from, insert: text },
       selection: EditorSelection.cursor(from + text.length),
@@ -504,7 +507,8 @@ export function NoteEditor({ slug, onSave }: Props) {
     const { from } = view.state.selection.main;
     // A tag is identified solely by its slug, which is also its display label,
     // so there is nothing to alias — always insert the bare "#slug" link.
-    const text = `[[#${tagSlug}]]`;
+    // Break out of a preceding raw HTML block so the link isn't swallowed.
+    const text = rawHtmlBlockSeparator(view.state.sliceDoc(0, from)) + `[[#${tagSlug}]]`;
     view.dispatch({
       changes: { from, insert: text },
       selection: EditorSelection.cursor(from + text.length),
