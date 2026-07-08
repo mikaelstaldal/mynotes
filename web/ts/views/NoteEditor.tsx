@@ -649,6 +649,35 @@ export function NoteEditor({ slug, onSave }: Props) {
     view.focus();
   }
 
+  function insertCodeBlock() {
+    const view = viewRef.current;
+    if (!view) return;
+    const { from, to } = view.state.selection.main;
+    const selected = view.state.sliceDoc(from, to);
+    const before = view.state.sliceDoc(0, from);
+    const after = view.state.sliceDoc(to);
+    // A fenced code block must start on its own line and be separated from
+    // surrounding content by a blank line.
+    let prefix = '';
+    if (before.length > 0) {
+      if (before.endsWith('\n\n')) prefix = '';
+      else if (before.endsWith('\n')) prefix = '\n';
+      else prefix = '\n\n';
+    }
+    let suffix = '\n\n';
+    if (after.length === 0) suffix = '\n';
+    else if (after.startsWith('\n\n')) suffix = '';
+    else if (after.startsWith('\n')) suffix = '\n';
+    const insert = `${prefix}\`\`\`\n${selected}\n\`\`\`${suffix}`;
+    // With a selection, drop the cursor past the whole block; otherwise place it
+    // on the empty line between the fences so content can be typed immediately.
+    const selection = selected
+      ? EditorSelection.cursor(from + insert.length)
+      : EditorSelection.cursor(from + prefix.length + 4); // after the opening "```\n"
+    view.dispatch({ changes: { from, to, insert }, selection });
+    view.focus();
+  }
+
   async function handleFileEmbed(e: Event) {
     const input = e.target as HTMLInputElement;
     const file = input.files?.[0];
@@ -902,6 +931,21 @@ export function NoteEditor({ slug, onSave }: Props) {
             <svg viewBox="0 0 18 18">
               <path class="fmt-fill" d="M15,12v2a.99942.99942,0,0,1-1,1H4a.99942.99942,0,0,1-1-1V12a1,1,0,0,1,2,0v1h8V12a1,1,0,0,1,2,0ZM14,3H4A.99942.99942,0,0,0,3,4V6A1,1,0,0,0,5,6V5h8V6a1,1,0,0,0,2,0V4A.99942.99942,0,0,0,14,3Z"/>
               <path class="fmt-fill" d="M15,10H3A1,1,0,0,1,3,8H15a1,1,0,0,1,0,2Z"/>
+            </svg>
+          </button>
+          <button type="button" class="btn-icon" title="Blockquote" aria-label="Blockquote" onClick={() => insertLinePrefix('> ')}>
+            <svg viewBox="0 0 18 18">
+              <rect class="fmt-fill fmt-stroke" height="3" width="3" x="4" y="5"/>
+              <rect class="fmt-fill fmt-stroke" height="3" width="3" x="11" y="5"/>
+              <path class="fmt-even fmt-fill fmt-stroke" d="M7,8c0,4.031-3,5-3,5"/>
+              <path class="fmt-even fmt-fill fmt-stroke" d="M14,8c0,4.031-3,5-3,5"/>
+            </svg>
+          </button>
+          <button type="button" class="btn-icon" title="Code block" aria-label="Code block" onClick={insertCodeBlock}>
+            <svg viewBox="0 0 18 18">
+              <rect class="fmt-stroke" height="12" width="14" x="2" y="3"/>
+              <polyline class="fmt-even fmt-stroke" points="7 8 5 10 7 12"/>
+              <polyline class="fmt-even fmt-stroke" points="11 8 13 10 11 12"/>
             </svg>
           </button>
           <span class="fmt-sep" role="separator" />
