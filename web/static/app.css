@@ -857,6 +857,95 @@ mark { background: #fef08a; color: var(--fg); border-radius: 2px; padding: 0 1px
   width: 100%;
 }
 
+/* ── Markdown help popup ─────────────────────────────────────────── */
+
+.markdown-help-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 4vh;
+  z-index: 550;
+}
+
+.markdown-help {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+  width: min(560px, 92vw);
+  max-height: 92vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.markdown-help-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--border);
+  flex: none;
+}
+
+.markdown-help-title {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.markdown-help-body {
+  padding: 0.5rem 1rem 1rem;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+}
+
+.markdown-help-section {
+  margin-top: 1rem;
+}
+
+.markdown-help-section-title {
+  margin: 0 0 0.35rem;
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+}
+
+.markdown-help-list {
+  margin: 0;
+  display: grid;
+  grid-template-columns: minmax(10rem, auto) 1fr;
+  gap: 0.3rem 1rem;
+}
+
+.markdown-help-row {
+  display: contents;
+}
+
+.markdown-help-row dt {
+  margin: 0;
+}
+
+.markdown-help-syntax {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0.1rem 0.35rem;
+  font-size: 0.85rem;
+  white-space: pre-wrap;
+}
+
+.markdown-help-desc {
+  margin: 0;
+  align-self: center;
+  color: var(--fg);
+}
+
 /* ── Tags ───────────────────────────────────────────────────────── */
 
 .tag-chips {

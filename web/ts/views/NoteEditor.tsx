@@ -18,6 +18,7 @@ import { LinkPicker } from '../components/LinkPicker.js';
 import { TagLinkPicker } from '../components/TagLinkPicker.js';
 import { TagPicker } from '../components/TagPicker.js';
 import { EmojiPicker } from '../components/EmojiPicker.js';
+import { MarkdownHelp } from '../components/MarkdownHelp.js';
 import { ConflictDialog } from '../components/ConflictDialog.js';
 import { saveDraft, loadDraft, clearDraft, type Draft } from '../util/draft.js';
 
@@ -107,6 +108,7 @@ export function NoteEditor({ slug, onSave }: Props) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [tagLinkPickerOpen, setTagLinkPickerOpen] = useState(false);
   const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
   const [headingMenuOpen, setHeadingMenuOpen] = useState(false);
   const [headingLevel, setHeadingLevel] = useState(0);   // heading level of the cursor's line (0 = normal)
   const [uploading, setUploading] = useState(false);
@@ -991,6 +993,14 @@ export function NoteEditor({ slug, onSave }: Props) {
               <circle class="fmt-stroke" cx="9" cy="9" r="6"/>
             </svg>
           </button>
+          <span class="toolbar-spacer" />
+          <button type="button" class="btn-icon" title="Markdown help" aria-label="Markdown help" onClick={() => setHelpOpen(true)}>
+            <svg viewBox="0 0 18 18">
+              <circle class="fmt-stroke" cx="9" cy="9" r="6"/>
+              <path class="fmt-even fmt-stroke" d="M7,7a2,2,0,1,1,2.8,1.83C9.3,9.06,9,9.4,9,10v0.5"/>
+              <circle class="fmt-fill" cx="9" cy="13" r="0.6"/>
+            </svg>
+          </button>
           </div>
           )}
           <div class="editor-cm" ref={editorContainerRef} />
@@ -1018,6 +1028,10 @@ export function NoteEditor({ slug, onSave }: Props) {
           onSelect={insertEmoji}
           onClose={() => setEmojiPickerOpen(false)}
         />
+      )}
+
+      {helpOpen && (
+        <MarkdownHelp onClose={() => setHelpOpen(false)} />
       )}
 
       {conflictOpen && editing && (
