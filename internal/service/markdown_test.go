@@ -42,6 +42,50 @@ func TestRenderToHTML_InlinesBitmapArtifacts(t *testing.T) {
 	}
 }
 
+func TestRenderToHTML_ReplacesOversizedBitmapWithPlaceholder(t *testing.T) {
+	// A raster artifact just over the 16 MiB cap is not embedded.
+	big := make([]byte, maxInlineImageBytes+1)
+	copy(big, "\x89PNG\r\n\x1a\n")
+	resolve := func(hex string) ([]byte, string, bool) {
+		if hex == sha64 {
+			return big, "image/png", true
+		}
+		return nil, "", false
+	}
+	doc, err := RenderToHTML("T", "![alt](/api/v1/artifacts/"+sha64+")", resolve)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(doc, "data:image") {
+		t.Errorf("oversized bitmap must not be inlined as a data: URL, got:\n%s", doc)
+	}
+	if strings.Contains(doc, "/api/v1/artifacts/"+sha64) {
+		t.Errorf("oversized bitmap reference should be replaced, got:\n%s", doc)
+	}
+	if !strings.Contains(doc, "<svg") || !strings.Contains(doc, "Broken image") {
+		t.Errorf("expected broken-image placeholder, got:\n%s", doc)
+	}
+}
+
+func TestRenderToHTML_InlinesBitmapAtSizeLimit(t *testing.T) {
+	// A raster artifact exactly at the cap is still embedded.
+	atLimit := make([]byte, maxInlineImageBytes)
+	copy(atLimit, "\x89PNG\r\n\x1a\n")
+	resolve := func(hex string) ([]byte, string, bool) {
+		if hex == sha64 {
+			return atLimit, "image/png", true
+		}
+		return nil, "", false
+	}
+	doc, err := RenderToHTML("T", "![alt](/api/v1/artifacts/"+sha64+")", resolve)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(doc, "data:image/png;base64,") {
+		t.Errorf("bitmap at the size limit should be inlined, got a %d-byte doc", len(doc))
+	}
+}
+
 func TestRenderToHTML_LeavesNonArtifactAndUnknownAlone(t *testing.T) {
 	resolve := func(string) ([]byte, string, bool) { return nil, "", false }
 

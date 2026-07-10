@@ -171,8 +171,10 @@ type ArtifactResolver func(sha256hex string) (content []byte, contentType string
 // (<img src=".../api/v1/artifacts/<sha256>">) are inlined so the exported
 // document renders standalone: bitmap (raster) artifacts become base64 data:
 // URLs, while SVG and MathML artifacts are spliced in as inline <svg>/<math>
-// elements (a data: URL for SVG is disallowed by the sanitize policy). Unknown
-// or unresolvable references are left as-is.
+// elements (a data: URL for SVG is disallowed by the sanitize policy). A raster
+// artifact larger than maxInlineImageBytes is replaced by a broken-image
+// placeholder rather than embedded. Unknown or unresolvable references are left
+// as-is.
 func RenderToHTML(title, content string, resolve ArtifactResolver) (string, error) {
 	var body bytes.Buffer
 	if err := markdownRenderer.Convert([]byte(content), &body); err != nil {
@@ -197,6 +199,19 @@ func RenderToHTML(title, content string, resolve ArtifactResolver) (string, erro
 	}
 	return doc.String(), nil
 }
+
+// maxInlineImageBytes caps the raw size of a raster artifact that is embedded as
+// a base64 data: URL in an exported HTML document. A larger bitmap is replaced by
+// brokenImageSVG instead, keeping exported documents from ballooning to
+// unwieldy sizes. base64 inflates the payload by ~4/3, so the embedded text is
+// bounded at roughly 21 MiB.
+const maxInlineImageBytes = 16 << 20 // 16 MiB
+
+// brokenImageSVG is the placeholder spliced in when a raster artifact exceeds
+// maxInlineImageBytes. It uses only elements and attributes permitted by the
+// sanitize policy (see internal/sanitize), so it survives the render-time
+// sanitize pass in RenderToHTML unchanged.
+const brokenImageSVG = `<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120" viewBox="0 0 24 24" fill="none" stroke="#888888" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><title>Broken image (too large to embed)</title><line x1="2" y1="2" x2="22" y2="22"/><path d="M10.41 10.41a2 2 0 1 1-2.83-2.83"/><line x1="13.5" y1="13.5" x2="6" y2="21"/><line x1="18" y1="12" x2="21" y2="15"/><path d="M3.59 3.59A1.99 1.99 0 0 0 3 5v14a2 2 0 0 0 2 2h14c.55 0 1.052-.22 1.41-.59"/><path d="M21 15V5a2 2 0 0 0-2-2H9"/></svg>`
 
 // artifactSrcPattern matches an internal artifact image URL and captures its hex
 // SHA-256 digest. It anchors on the `/api/v1/artifacts/<sha256>` path suffix so
@@ -236,11 +251,13 @@ func inlineArtifactImages(fragment string, resolve ArtifactResolver) string {
 
 // inlineArtifactImg inspects one token and, when it is an <img> referencing an
 // internal artifact, returns the markup that should replace it plus true. For a
-// raster artifact it mutates tok's src to a data: URL and returns the re-emitted
-// tag; for an SVG/MathML artifact it returns the raw <svg>/<math> content in
-// place of the <img>. It returns ("", false) — meaning "emit the token
-// unchanged" — for any non-<img> token, a non-artifact src, an unresolved
-// artifact, or an artifact whose type is neither raster nor SVG/MathML.
+// raster artifact within maxInlineImageBytes it mutates tok's src to a data: URL
+// and returns the re-emitted tag; a larger raster artifact is replaced by the
+// brokenImageSVG placeholder. For an SVG/MathML artifact it returns the raw
+// <svg>/<math> content in place of the <img>. It returns ("", false) — meaning
+// "emit the token unchanged" — for any non-<img> token, a non-artifact src, an
+// unresolved artifact, or an artifact whose type is neither raster nor
+// SVG/MathML.
 func inlineArtifactImg(tok *html.Token, resolve ArtifactResolver) (string, bool) {
 	if tok.Type != html.StartTagToken && tok.Type != html.SelfClosingTagToken {
 		return "", false
@@ -268,6 +285,10 @@ func inlineArtifactImg(tok *html.Token, resolve ArtifactResolver) (string, bool)
 	}
 	switch {
 	case sanitize.DataImageRaster.MatchString("data:" + contentType + ";"):
+		if len(content) > maxInlineImageBytes {
+			// Too large to embed as a data: URL; show a placeholder instead.
+			return brokenImageSVG, true
+		}
 		tok.Attr[srcIdx].Val = "data:" + contentType + ";base64," + base64.StdEncoding.EncodeToString(content)
 		return tok.String(), true
 	case contentType == "image/svg+xml", contentType == "application/mathml+xml":
