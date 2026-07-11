@@ -215,8 +215,19 @@ Full trip is tagged [[#travel]] and [[#personal]].
 `
 
 const mathNote = "# Math & Diagrams\n" + `
-MyNotes renders inline **MathML** and **SVG** embedded directly in Markdown, so
-you can drop equations and simple diagrams straight into your notes.
+MyNotes renders math written in **AsciiMath** syntax, plus **MathML** and **SVG**
+embedded directly in Markdown, so you can drop equations and simple diagrams
+straight into your notes.
+
+## AsciiMath
+
+The quickest way to write math is [AsciiMath](https://asciimath.org): put it
+between single dollars for inline math, like Einstein's $E = mc^2$, or between
+double dollars for a centered display block:
+
+$$sum_(i=1)^n i = (n(n+1))/2$$
+
+It is converted to MathML as you read the note.
 
 ## An equation
 

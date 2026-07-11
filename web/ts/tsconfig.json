@@ -17,7 +17,8 @@
       "codemirror": ["./vendor/codemirror.d.ts"],
       "markdown-it": ["./vendor/node_modules/@types/markdown-it/index.d.mts"],
       "dompurify": ["./vendor/node_modules/dompurify/dist/purify.es.d.mts"],
-      "emoji-data": ["./vendor/emoji.d.ts"]
+      "emoji-data": ["./vendor/emoji.d.ts"],
+      "asciimath": ["./vendor/asciimath.d.ts"]
     },
     "lib": ["ES2020", "DOM", "DOM.Iterable"]
   },

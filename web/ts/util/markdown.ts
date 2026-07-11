@@ -1,5 +1,6 @@
 import MarkdownIt from 'markdown-it';
 import DOMPurify from 'dompurify';
+import { asciiToMathML } from 'asciimath';
 import { base } from '../basepath.js';
 
 const DATA_IMAGE_RE = /^data:image\/(gif|png|jpeg|webp);/;
@@ -112,6 +113,163 @@ md.core.ruler.after('inline', 'task_lists', (state) => {
     if (parent >= 0) taskListItemClass(tokens[parent], 'contains-task-list');
   }
 });
+
+// AsciiMath math: $inline$ and $$display$$
+// AsciiMath (https://asciimath.org) written between single dollars renders as
+// inline MathML; between double dollars as display (block) MathML. Conversion is
+// done at render time by the vendored asciimath2ml library, and the resulting
+// <math> element flows through the same DOMPurify gate as all other output (the
+// MathML tag/attribute allow-list already covers it), so math markup is
+// sanitised like everything else — nothing bypasses the render-time gate. The
+// library never throws (malformed input becomes a <merror> node and '<','>','&'
+// are entity-escaped), but renderMathML still guards defensively and falls back
+// to the literal source so a note never fails to render.
+function renderMathML(src: string, display: boolean): string {
+  const source = src.trim();
+  try {
+    const mathml = asciiToMathML(source, !display);
+    if (mathml) return mathml;
+  } catch {
+    // fall through to the literal source below
+  }
+  return md.utils.escapeHtml(display ? `$$${src}$$` : `$${src}$`);
+}
+
+// A '$' at `pos` counts as escaped when preceded by an odd number of backslashes.
+function isBackslashEscaped(src: string, pos: number): boolean {
+  let count = 0;
+  for (let i = pos - 1; i >= 0 && src.charCodeAt(i) === 0x5c /* \ */; i--) count++;
+  return count % 2 === 1;
+}
+
+// Whether a single '$' at `pos` may open/close inline math. Mirrors
+// markdown-it-katex: an opening '$' must not be immediately followed by
+// whitespace, and a closing '$' must not be immediately preceded by whitespace
+// nor immediately followed by a digit — so currency like "$5 and $10" stays
+// literal text rather than being parsed as an (empty) math span.
+function inlineDelim(src: string, pos: number, posMax: number): { canOpen: boolean; canClose: boolean } {
+  const prev = pos > 0 ? src.charCodeAt(pos - 1) : -1;
+  const next = pos + 1 <= posMax ? src.charCodeAt(pos + 1) : -1;
+  const prevIsSpace = prev === 0x20 || prev === 0x09;
+  const nextIsSpace = next === 0x20 || next === 0x09;
+  const nextIsDigit = next >= 0x30 && next <= 0x39;
+  return { canOpen: !nextIsSpace, canClose: !prevIsSpace && !nextIsDigit };
+}
+
+// Inline display math: $$…$$ on a single inline run (e.g. "see $$x^2$$ here").
+// Registered before math_inline so a "$$" is consumed as a display delimiter
+// rather than as two empty inline spans. Multi-line $$…$$ is handled by the
+// block rule below; this only covers a pair kept within one inline run.
+md.inline.ruler.after('escape', 'math_inline', (state, silent) => {
+  const start = state.pos;
+  if (state.src.charCodeAt(start) !== 0x24 /* $ */) return false;
+  const open = inlineDelim(state.src, start, state.posMax);
+  if (!open.canOpen) {
+    if (!silent) state.pending += '$';
+    state.pos += 1;
+    return true;
+  }
+  let pos = start + 1;
+  let close = -1;
+  while (pos <= state.posMax) {
+    if (
+      state.src.charCodeAt(pos) === 0x24 &&
+      !isBackslashEscaped(state.src, pos) &&
+      inlineDelim(state.src, pos, state.posMax).canClose
+    ) {
+      close = pos;
+      break;
+    }
+    pos++;
+  }
+  if (close < 0) return false;
+  const content = state.src.slice(start + 1, close);
+  if (!content.trim()) return false;
+  if (!silent) {
+    const token = state.push('math_inline', 'math', 0);
+    token.markup = '$';
+    token.content = content;
+  }
+  state.pos = close + 1;
+  return true;
+});
+
+md.inline.ruler.before('math_inline', 'math_display', (state, silent) => {
+  const start = state.pos;
+  if (state.src.charCodeAt(start) !== 0x24 || state.src.charCodeAt(start + 1) !== 0x24) {
+    return false;
+  }
+  let pos = start + 2;
+  let close = -1;
+  while (pos < state.posMax) {
+    if (
+      state.src.charCodeAt(pos) === 0x24 &&
+      state.src.charCodeAt(pos + 1) === 0x24 &&
+      !isBackslashEscaped(state.src, pos)
+    ) {
+      close = pos;
+      break;
+    }
+    pos++;
+  }
+  if (close < 0) return false;
+  const content = state.src.slice(start + 2, close);
+  if (!content.trim()) return false;
+  if (!silent) {
+    const token = state.push('math_display', 'math', 0);
+    token.markup = '$$';
+    token.content = content;
+  }
+  state.pos = close + 2;
+  return true;
+});
+
+// Block display math: a paragraph opened by "$$", spanning one or more lines
+// until a line ending in "$$". Adapted from markdown-it-katex's block rule.
+md.block.ruler.after('blockquote', 'math_block', (state, startLine, endLine, silent) => {
+  let pos = state.bMarks[startLine] + state.tShift[startLine];
+  let max = state.eMarks[startLine];
+  if (pos + 2 > max) return false;
+  if (state.src.charCodeAt(pos) !== 0x24 || state.src.charCodeAt(pos + 1) !== 0x24) {
+    return false;
+  }
+  if (silent) return true;
+  pos += 2;
+  let firstLine = state.src.slice(pos, max);
+  let lastLine = '';
+  let found = false;
+  if (firstLine.trim().endsWith('$$')) {
+    firstLine = firstLine.trim().replace(/\$\$$/, '');
+    found = true;
+  }
+  let next = startLine;
+  while (!found) {
+    next++;
+    if (next >= endLine) break;
+    pos = state.bMarks[next] + state.tShift[next];
+    max = state.eMarks[next];
+    if (pos < max && state.tShift[next] < state.blkIndent) break; // dedent ends the block
+    if (state.src.slice(pos, max).trim().endsWith('$$')) {
+      const lastPos = state.src.slice(0, max).lastIndexOf('$$');
+      lastLine = state.src.slice(pos, lastPos);
+      found = true;
+    }
+  }
+  state.line = next + 1;
+  const token = state.push('math_block', 'math', 0);
+  token.block = true;
+  token.content =
+    (firstLine && firstLine.trim() ? firstLine + '\n' : '') +
+    state.getLines(startLine + 1, next, state.tShift[startLine], true) +
+    (lastLine && lastLine.trim() ? lastLine : '');
+  token.map = [startLine, state.line];
+  token.markup = '$$';
+  return true;
+}, { alt: ['paragraph', 'reference', 'blockquote', 'list'] });
+
+md.renderer.rules.math_inline = (tokens, idx) => renderMathML(tokens[idx].content, false);
+md.renderer.rules.math_display = (tokens, idx) => renderMathML(tokens[idx].content, true);
+md.renderer.rules.math_block = (tokens, idx) => renderMathML(tokens[idx].content, true) + '\n';
 
 // Broad safe-HTML allow-list matching the server bluemonday UGCPolicy profile.
 // Excludes script/style/iframe/object/embed/form-controls/raw-media and all on* handlers.

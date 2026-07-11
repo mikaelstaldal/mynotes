@@ -886,6 +886,11 @@ export function NoteEditor({ slug, onSave }: Props) {
               <path class="fmt-fill" d="M8.984,10C11.457,10.208,12,10.479,12,11.5c0,0.708-1.283,1.5-3,1.5-1.571,0-2.765-.679-2.969-1.309a1,1,0,1,0-1.9.617C4.644,13.894,6.646,15,9,15c2.8,0,5-1.538,5-3.5a3.2,3.2,0,0,0-.5-1.843Z"></path>
             </svg>
           </button>
+          <button type="button" class="btn-icon" title="Math (AsciiMath)" aria-label="Math" onClick={() => insertWrap('$')}>
+            <svg viewBox="0 0 18 18">
+              <polyline class="fmt-even fmt-stroke" points="2 10 4 10 6 15 8 3 15 3"></polyline>
+            </svg>
+          </button>
           <span class="fmt-sep" role="separator" />
           <button type="button" class="btn-icon" title="Numbered list" aria-label="Numbered list" onClick={insertNumberedList}>
             <svg viewBox="0 0 18 18">

@@ -71,6 +71,17 @@ identity exists but is never exposed as the URL key.
 - Inline SVG and MathML embedded directly in Markdown HTML blocks are allowed;
   scripts, event handlers, `<foreignObject>`, `<use>`, `<style>`, and other
   unsafe constructs are rejected at write time.
+- **Math (AsciiMath):** [AsciiMath](https://asciimath.org) written between single
+  dollars (`$x^2$`) renders as inline MathML and between double dollars
+  (`$$…$$`, either inline or as a multi-line block) as display MathML. A literal
+  dollar is written `\$`; a `$` that is not part of a valid pair (e.g. currency
+  like `$5`) stays literal. This is a client render-time transform only: the
+  AsciiMath source is stored verbatim in the Markdown and converted to MathML in
+  the browser by the vendored `asciimath2ml` library (not MathJax), with the
+  generated `<math>` passing through the same DOMPurify sanitization gate as all
+  other rendered HTML. The server-side download-html export does not render
+  AsciiMath, so exported documents keep the literal `$…$` source. The editor
+  toolbar has a math button that wraps the selection in `$…$`.
 - **Wikilinks:** the non-standard `[[…]]` syntax links to another note or a tag's
   note list. `[[slug]]` links to a note (`/notes/{slug}`); `[[#slug]]` (with a `#`
   sigil) links to a tag's note list (`/tags/{slug}`). `[[slug|Display text]]` (or

@@ -10,6 +10,7 @@
     "@codemirror/lang-markdown": "6.5.0",
     "markdown-it": "14.2.0",
     "dompurify": "3.4.11",
+    "asciimath2ml": "1.0.8",
     "@types/markdown-it": "14.1.2",
     "emojibase-data": "16.0.3"
   }

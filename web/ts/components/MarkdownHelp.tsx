@@ -12,11 +12,13 @@ interface Row {
 interface Section {
   title: string;
   rows: Row[];
+  // Optional footer with an external reference link, shown under the section.
+  note?: { text: string; linkText: string; href: string };
 }
 
 // Static cheat-sheet of the Markdown dialect the editor renders (markdown-it
-// with GFM tables/task-lists/strikethrough, autolinks, wiki links, and embedded
-// safe HTML/SVG/MathML). Kept in sync with util/markdown.ts.
+// with GFM tables/task-lists/strikethrough, autolinks, wiki links, AsciiMath
+// math, and embedded safe HTML/SVG/MathML). Kept in sync with util/markdown.ts.
 // Ordered to follow the format toolbar: headings, inline text, lists, blocks,
 // then links & images.
 const SECTIONS: Section[] = [
@@ -66,6 +68,19 @@ const SECTIONS: Section[] = [
       { syntax: '![alt](url)', desc: 'Image' },
     ],
   },
+  {
+    title: 'Math (AsciiMath)',
+    rows: [
+      { syntax: '$x^2$', desc: 'Inline math' },
+      { syntax: '$$sum_(i=1)^n i$$', desc: 'Display (block) math' },
+      { syntax: '\\$5', desc: 'Escape a literal dollar sign' },
+    ],
+    note: {
+      text: 'See the full ',
+      linkText: 'AsciiMath syntax reference',
+      href: 'https://asciimath.org/#syntax',
+    },
+  },
 ];
 
 // A read-only reference popup listing the supported Markdown syntax. Opened from
@@ -99,6 +114,12 @@ export function MarkdownHelp({ onClose }: Props) {
                   </div>
                 ))}
               </dl>
+              {section.note && (
+                <p class="markdown-help-note">
+                  {section.note.text}
+                  <a href={section.note.href} target="_blank" rel="noopener noreferrer">{section.note.linkText}</a>.
+                </p>
+              )}
             </section>
           ))}
         </div>

@@ -34,6 +34,12 @@ npm ci --ignore-scripts
 WORK_DIR="$(mktemp -d)"
 trap 'rm -rf "$WORK_DIR"' EXIT
 
+# asciimath2ml ships CommonJS with a single named export; re-export it as ESM so
+# esbuild emits a browser bundle exposing asciiToMathML (AsciiMath -> MathML).
+cat > "$WORK_DIR/asciimath-entry.mjs" <<'EOF'
+export { asciiToMathML } from "asciimath2ml";
+EOF
+
 # Fixed minimal symbol surface (see CLAUDE.md / spec/TASKS.md). Deliberately
 # excludes @codemirror/search, line numbers/gutters, placeholder, bracket
 # matching, and EditorView.theme (styling lives in app.css, not JS themes).
@@ -75,7 +81,14 @@ esbuild "$WORK_DIR/dompurify-entry.mjs" \
   --bundle --format=esm --platform=browser --minify \
   --outfile="$BROWSER_OUT/dompurify.js"
 
-echo "Wrote $BROWSER_OUT/{codemirror,markdown-it,dompurify}.js"
+# asciimath2ml is MIT-licensed; keep the attribution banner in the bundle.
+esbuild "$WORK_DIR/asciimath-entry.mjs" \
+  --bundle --format=esm --platform=browser --minify \
+  --legal-comments=none \
+  --banner:js='/*! asciimath2ml 1.0.8 | MIT License | Copyright (c) 2024 Tommi Johtela | https://github.com/johtela/asciimath2ml */' \
+  --outfile="$BROWSER_OUT/asciimath.js"
+
+echo "Wrote $BROWSER_OUT/{codemirror,markdown-it,dompurify,asciimath}.js"
 
 # --- 1b. Emoji dataset for the editor's emoji picker ------------------------
 #

@@ -433,6 +433,75 @@ test('ATX heading starting with # is unaffected', () => {
 });
 
 // ---------------------------------------------------------------------------
+// AsciiMath math — $inline$ / $$display$$ render to sanitized MathML
+// ---------------------------------------------------------------------------
+
+test('inline $…$ renders inline MathML', () => {
+  const out = renderNote('Energy $x^2$ here.');
+  assertPresent(out, '<math display="inline"', 'inline math element');
+  assertPresent(out, '<msup>', 'superscript structure');
+  assertPresent(out, '<mn>2</mn>', 'exponent');
+});
+
+test('inline $$…$$ on one line renders display MathML', () => {
+  const out = renderNote('See $$a/b$$ inline.');
+  assertPresent(out, '<math display="block"', 'display math element');
+  assertPresent(out, '<mfrac>', 'fraction structure');
+});
+
+test('block $$…$$ spanning lines renders a display MathML block', () => {
+  const out = renderNote('Before\n\n$$\nsum_(i=1)^n i\n$$\n\nafter');
+  assertPresent(out, '<math display="block"', 'display math element');
+  assertPresent(out, '<munderover>', 'sum with bounds');
+  assertPresent(out, 'after', 'trailing paragraph still rendered');
+});
+
+test('single-line $$…$$ as its own block renders display MathML', () => {
+  const out = renderNote('$$x+1$$');
+  assertPresent(out, '<math display="block"', 'display math element');
+});
+
+// Currency must not be swallowed as an (empty) math span: a closing '$' directly
+// followed by a digit cannot close, and an opening '$' before whitespace cannot open.
+test('currency like "$5 and $10" stays literal text', () => {
+  const out = renderNote('I paid $5 and $10 today.');
+  assertAbsent(out, '<math', 'no math element for currency');
+  assertPresent(out, '$5 and $10', 'dollar amounts preserved');
+});
+
+test('escaped \\$ is a literal dollar, not a math delimiter', () => {
+  const out = renderNote('Escaped \\$x\\$ literal.');
+  assertAbsent(out, '<math', 'no math element for escaped dollars');
+  assertPresent(out, '$x$', 'literal dollars preserved');
+});
+
+test('an unpaired $ is left as literal text', () => {
+  const out = renderNote('Price is $ and more.');
+  assertAbsent(out, '<math', 'no math element');
+  assertPresent(out, '$ and more', 'lone dollar preserved');
+});
+
+test('$…$ inside a code span stays literal (no math)', () => {
+  const out = renderNote('`$x^2$`');
+  assertAbsent(out, '<math', 'no math element inside code span');
+  assertPresent(out, '$x^2$', 'literal text inside code');
+});
+
+// The library entity-escapes '<','>','&' and DOMPurify is the final gate, so an
+// HTML/script payload smuggled inside math cannot inject active content.
+test('script payload inside $…$ cannot inject markup', () => {
+  const out = renderNote('$text(<script>alert(1)</script>)$ end');
+  assertAbsent(out, '<script', 'no script tag');
+  assertAbsent(out, 'alert(1)', 'no script content');
+});
+
+test('malformed AsciiMath degrades to a <merror> node, not a render failure', () => {
+  const out = renderNote('$sqrt($');
+  assertPresent(out, '<math', 'math element still produced');
+  assertPresent(out, '<merror>', 'error node for bad input');
+});
+
+// ---------------------------------------------------------------------------
 // rawHtmlBlockSeparator — blank line before a wiki link inserted after raw HTML
 // ---------------------------------------------------------------------------
 

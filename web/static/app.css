@@ -331,6 +331,16 @@ mark { background: #fef08a; color: var(--fg); border-radius: 2px; padding: 0 1px
 
 .note-content img { max-width: 100%; height: auto; }
 
+/* AsciiMath: display ($$…$$) math is centered on its own line and scrolls
+   horizontally when an equation is wider than the column; inline ($…$) math
+   flows with the surrounding text. */
+.note-content math[display="block"] {
+  display: block;
+  overflow-x: auto;
+  margin: 0.75em 0;
+  text-align: center;
+}
+
 .note-content hr {
   border: none;
   border-top: 1px solid var(--border);
@@ -944,6 +954,12 @@ mark { background: #fef08a; color: var(--fg); border-radius: 2px; padding: 0 1px
   margin: 0;
   align-self: center;
   color: var(--fg);
+}
+
+.markdown-help-note {
+  margin: 0.5rem 0 0;
+  font-size: 0.85rem;
+  color: var(--muted);
 }
 
 /* ── Tags ───────────────────────────────────────────────────────── */
