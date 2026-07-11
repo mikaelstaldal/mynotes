@@ -518,7 +518,10 @@ paths:
       description: >
         Converts the note `content` from Markdown to HTML on the server and
         returns a complete HTML document with a `Content-Disposition` attachment
-        header. Errors keep the JSON `{"error": "message"}` shape.
+        header. Internal artifact images are inlined so the document is
+        standalone. This server-side rendering does NOT render AsciiMath: any
+        `$…$` / `$$…$$` math is left as literal source text. Errors
+        keep the JSON `{"error": "message"}` shape.
       responses:
         "200":
           description: The note rendered as a complete HTML document.

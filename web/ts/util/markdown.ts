@@ -450,6 +450,15 @@ export function renderNote(markdown: string): string {
   return DOMPurify.sanitize(md.render(markdown));
 }
 
+// Run an already-rendered HTML fragment back through the same DOMPurify gate.
+// Used by the HTML export after it splices inlined artifact markup (base64 data:
+// URLs for raster images, raw <svg>/<math> for vector/MathML artifacts) into the
+// rendered body, so the injected content passes the identical allow-list as
+// everything else — defense-in-depth, mirroring the server export's re-sanitize.
+export function sanitizeHtml(html: string): string {
+  return DOMPurify.sanitize(html);
+}
+
 // When a wiki link ([[slug]] / [[#slug]]) — or any other inline-parsed content —
 // is inserted directly after a raw HTML block, e.g. an embedded multi-line SVG
 // or MathML element, it is swallowed by that block and rendered literally,

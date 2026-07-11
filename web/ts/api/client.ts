@@ -156,6 +156,20 @@ export const api = {
   artifacts: {
     create: (file: File): Promise<Artifact> =>
       requestBinary<Artifact>('POST', '/artifacts', file, file.type),
+
+    // Fetch the raw bytes and content type of a stored artifact. Used by the
+    // client-side HTML export to inline internal artifact images so a downloaded
+    // document renders standalone. Resolves to null when the artifact is unknown
+    // or unavailable, mirroring the server export's "leave the reference as-is"
+    // behaviour rather than failing the whole export.
+    get: async (sha256: string): Promise<{ blob: Blob; contentType: string } | null> => {
+      const res = await fetchWithRetry(`${BASE}/artifacts/${sha256}`, { method: 'GET' });
+      if (res.status === 401) { window.location.reload(); throw new Error('Unauthorized'); }
+      if (!res.ok) return null;
+      const blob = await res.blob();
+      const contentType = (res.headers.get('Content-Type') ?? blob.type).split(';')[0].trim();
+      return { blob, contentType };
+    },
   },
 
   tags: {
