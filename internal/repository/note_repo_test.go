@@ -345,6 +345,35 @@ func TestBrowseExcerptSkipsGFMTables(t *testing.T) {
 	assert.Equal(t, "Heading text", bySlug["setext-note"])
 }
 
+func TestBrowseExcerptStripsWikiLinks(t *testing.T) {
+	ctx := context.Background()
+	repo := NewNoteRepository(newTestDB(t))
+
+	cases := []struct {
+		slug, content, want string
+	}{
+		{"plain-note", "See [[other-note]] for details.", "See other-note for details."},
+		{"labeled-note", "See [[other-note|the other note]] for details.", "See the other note for details."},
+		{"tag-note", "Filed under [[#work]] today.", "Filed under #work today."},
+		{"tag-labeled-note", "Filed under [[#work|my job]] today.", "Filed under my job today."},
+	}
+	for _, c := range cases {
+		_, err := repo.Create(ctx, c.slug, c.slug, c.content)
+		require.NoError(t, err)
+	}
+
+	notes, _, err := repo.List(ctx, "", "", false, "updated", "desc", 50, 0)
+	require.NoError(t, err)
+	bySlug := map[string]string{}
+	for _, n := range notes {
+		bySlug[n.Slug] = n.Excerpt
+	}
+
+	for _, c := range cases {
+		assert.Equal(t, c.want, bySlug[c.slug])
+	}
+}
+
 func TestSearchMatchesAndSnippet(t *testing.T) {
 	ctx := context.Background()
 	repo := NewNoteRepository(newTestDB(t))

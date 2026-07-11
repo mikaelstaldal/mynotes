@@ -14,8 +14,12 @@ import (
 )
 
 var (
-	mdImageRE       = regexp.MustCompile(`!\[[^\]]*\]\([^)]*\)`)
-	mdLinkRE        = regexp.MustCompile(`\[([^\]]*)\]\([^)]*\)`)
+	mdImageRE = regexp.MustCompile(`!\[[^\]]*\]\([^)]*\)`)
+	mdLinkRE  = regexp.MustCompile(`\[([^\]]*)\]\([^)]*\)`)
+	// mdWikiLinkRE matches internal wikilinks ([[slug]], [[slug|text]],
+	// [[#slug]], [[#slug|text]]); mirrors WIKI_LINK_RE in web/ts/util/markdown.ts.
+	// Groups: 1=sigil ("#" for a tag), 2=slug, 3=optional display label.
+	mdWikiLinkRE    = regexp.MustCompile(`\[\[(#?)([a-z0-9]+(?:-[a-z0-9]+)*)(?:\|([^\]\n]+))?\]\]`)
 	mdCodeRE        = regexp.MustCompile("`+([^`]*)`+")
 	mdStrikeRE      = regexp.MustCompile(`~~([^~]*)~~`)
 	mdOrderedListRE = regexp.MustCompile(`^\d+\.\s+`)
@@ -628,6 +632,15 @@ func plainExcerpt(probe string) string {
 		}
 		// Remove images, convert links to their text
 		line = mdImageRE.ReplaceAllString(line, "")
+		// Convert wikilinks to their display text (label, else slug; tag links
+		// without a label keep their '#' prefix) before the standard link rule.
+		line = mdWikiLinkRE.ReplaceAllStringFunc(line, func(s string) string {
+			m := mdWikiLinkRE.FindStringSubmatch(s)
+			if m[3] != "" {
+				return m[3]
+			}
+			return m[1] + m[2]
+		})
 		line = mdLinkRE.ReplaceAllString(line, "$1")
 		// Remove inline code backticks (keep content)
 		line = mdCodeRE.ReplaceAllString(line, "$1")
