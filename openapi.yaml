@@ -31,8 +31,26 @@ info:
       only — toggling it is a content edit that rewrites the marker in the
       stored Markdown, not a separate state.
 
-    No other extensions are part of the dialect. Footnotes, definition lists,
-    YAML front matter and math (other than embedded MathML) are not interpreted.
+    No other extensions are part of the dialect. Footnotes, definition lists
+    and YAML front matter are not interpreted.
+
+    ## Math (AsciiMath)
+
+    [AsciiMath](https://asciimath.org) written between single dollars (`$x^2$`)
+    renders as inline MathML and between double dollars (`$$…$$`, either inline
+    or as a multi-line block) as display MathML. A literal dollar is written
+    `\$`; a `$` that is not part of a valid pair (e.g. currency like `$5`) stays
+    literal. This is a **client render-time transform only**: the AsciiMath
+    source is stored verbatim in the `content` Markdown and converted to MathML
+    in the browser (by the web UI's vendored `asciimath2ml` library), with the
+    generated `<math>` passing through the same sanitization gate as all other
+    rendered HTML. MathML embedded directly as raw HTML is also permitted (see
+    "Raw HTML"); that MathML is stored verbatim and is not a transform.
+
+    A consumer that renders notes must run the AsciiMath transform itself to
+    display math. Consumers that only pass `content` through unchanged (or the
+    server-side `download-html` endpoint, which does not render AsciiMath)
+    receive the literal `$…$` source.
 
     ## Raw HTML
 
