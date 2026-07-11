@@ -33,8 +33,17 @@ interface Props {
 }
 
 export function NoteList({ activeSlug, activeTag, listKey, onMutate, sortField, sortOrder, onSortChange }: Props) {
-  const [inputQuery, setInputQuery] = useState('');
-  const [debouncedQuery, setDebouncedQuery] = useState('');
+  // Two mutually-exclusive search inputs: a full-text query over content+title,
+  // and an autocomplete-style case-insensitive prefix filter on the title only.
+  // Typing in one clears the other; the title filter takes precedence when both
+  // somehow hold text.
+  const [textInput, setTextInput] = useState('');
+  const [titleInput, setTitleInput] = useState('');
+  const [debounced, setDebounced] = useState<{ q: string; titlePrefix: boolean }>({ q: '', titlePrefix: false });
+  const titleMode = titleInput.trim() !== '';
+  // Sort only applies to the browse list; the backend ignores it for both
+  // full-text (relevance-ordered) and title-prefix (title-ordered) searches.
+  const searchActive = titleMode || textInput.trim() !== '';
   const [rows, setRows] = useState<NoteSummary[]>([]);
   const [offset, setOffset] = useState(0);
   const [total, setTotal] = useState<number | null>(null);
@@ -45,11 +54,17 @@ export function NoteList({ activeSlug, activeTag, listKey, onMutate, sortField, 
   const genRef = useRef(0);
   const uploadRef = useRef<HTMLInputElement>(null);
 
-  // Commit inputQuery → debouncedQuery after 300 ms of no input.
+  // Commit the active input → debounced {query, mode} after 300 ms of no input.
+  // The title filter wins when it holds text; otherwise the full-text query
+  // applies (empty means "browse all").
   useEffect(() => {
-    const id = setTimeout(() => setDebouncedQuery(inputQuery), 300);
+    const id = setTimeout(() => {
+      setDebounced(titleInput.trim()
+        ? { q: titleInput, titlePrefix: true }
+        : { q: textInput, titlePrefix: false });
+    }, 300);
     return () => clearTimeout(id);
-  }, [inputQuery]);
+  }, [textInput, titleInput]);
 
   // Load the full tag list (independent of which notes are currently shown)
   // so the filter dropdown can offer every tag, not just ones visible in the
@@ -66,7 +81,7 @@ export function NoteList({ activeSlug, activeTag, listKey, onMutate, sortField, 
     })();
   }, [listKey]);
 
-  const loadPage = useCallback(async (q: string, tag: string | undefined, pageOffset: number, gen: number) => {
+  const loadPage = useCallback(async (q: string, tag: string | undefined, prefix: boolean, pageOffset: number, gen: number) => {
     setLoading(true);
     const cappedQ = capRunes(q, MAX_Q_RUNES);
     // Clamp limit/offset to the ranges declared in openapi.yaml.
@@ -76,6 +91,7 @@ export function NoteList({ activeSlug, activeTag, listKey, onMutate, sortField, 
       const res = await api.notes.list({
         q: cappedQ || undefined,
         tag,
+        titlePrefix: prefix,
         sort: sortField,
         order: sortOrder,
         limit: safeLimit,
@@ -101,8 +117,8 @@ export function NoteList({ activeSlug, activeTag, listKey, onMutate, sortField, 
     }
   }, [sortField, sortOrder]);
 
-  // Reset accumulated rows and offset whenever the debounced query, tag filter,
-  // or listKey changes.
+  // Reset accumulated rows and offset whenever the debounced query, match mode,
+  // tag filter, or listKey changes.
   useEffect(() => {
     const gen = ++genRef.current;
     shownRef.current = new Set();
@@ -110,8 +126,8 @@ export function NoteList({ activeSlug, activeTag, listKey, onMutate, sortField, 
     setOffset(0);
     setTotal(null);
     setExhausted(false);
-    void loadPage(debouncedQuery, activeTag, 0, gen);
-  }, [debouncedQuery, activeTag, loadPage, listKey]);
+    void loadPage(debounced.q, activeTag, debounced.titlePrefix, 0, gen);
+  }, [debounced, activeTag, loadPage, listKey]);
 
   async function handleUpload(e: Event) {
     const file = (e.target as HTMLInputElement).files?.[0];
@@ -148,9 +164,25 @@ export function NoteList({ activeSlug, activeTag, listKey, onMutate, sortField, 
       <div class="toolbar">
         <input
           type="search"
-          placeholder="Search…"
-          value={inputQuery}
-          onInput={e => setInputQuery((e.target as HTMLInputElement).value)}
+          placeholder="Full-text search…"
+          aria-label="Full-text search"
+          value={textInput}
+          onInput={e => {
+            const v = (e.target as HTMLInputElement).value;
+            setTextInput(v);
+            if (v) setTitleInput('');
+          }}
+        />
+        <input
+          type="search"
+          placeholder="Filter titles…"
+          aria-label="Filter by title"
+          value={titleInput}
+          onInput={e => {
+            const v = (e.target as HTMLInputElement).value;
+            setTitleInput(v);
+            if (v) setTextInput('');
+          }}
         />
         <button class="btn-icon" title="Reload list" aria-label="Reload list" onClick={() => onMutate?.()}>↺</button>
         <button class="primary btn-icon" title="New note" aria-label="New note" onClick={() => navigate('/new')}>+</button>
@@ -170,6 +202,10 @@ export function NoteList({ activeSlug, activeTag, listKey, onMutate, sortField, 
           <select
             class="tag-filter-select"
             value={`${sortField}:${sortOrder}`}
+            disabled={searchActive}
+            title={searchActive
+              ? (titleMode ? 'Title matches are always ordered by title' : 'Search results are ordered by relevance')
+              : undefined}
             onChange={(e) => {
               const [field, order] = (e.target as HTMLSelectElement).value.split(':') as [SortField, SortOrder];
               onSortChange(field, order);
@@ -216,7 +252,7 @@ export function NoteList({ activeSlug, activeTag, listKey, onMutate, sortField, 
       {loading && rows.length === 0 ? (
         <p class="muted">Loading…</p>
       ) : !loading && rows.length === 0 ? (
-        <p class="muted">{debouncedQuery ? 'No matching notes.' : 'No notes yet.'}</p>
+        <p class="muted">{debounced.q ? 'No matching notes.' : 'No notes yet.'}</p>
       ) : (
         <NoteRows rows={rows} activeSlug={activeSlug} />
       )}
@@ -225,7 +261,7 @@ export function NoteList({ activeSlug, activeTag, listKey, onMutate, sortField, 
 
       {showLoadMore && (
         <div class="load-more">
-          <button onClick={() => void loadPage(debouncedQuery, activeTag, offset, genRef.current)}>
+          <button onClick={() => void loadPage(debounced.q, activeTag, debounced.titlePrefix, offset, genRef.current)}>
             Load more
           </button>
         </div>
