@@ -63,8 +63,8 @@ identity exists but is never exposed as the URL key.
 ## Markdown handling
 
 - Content is stored as Markdown source verbatim; rendering for the read view
-  happens in the browser. The server converts Markdown to HTML only for the
-  download-html endpoint.
+  happens in the browser. The server converts Markdown to HTML (including
+  AsciiMath → MathML) only for the download-html endpoint.
 - Supported syntax: CommonMark plus GFM tables, strikethrough, task lists, and
   autolinks; bare URLs/emails auto-link; images render. Task-list markers
   (`- [ ]` / `- [x]`) render as disabled (read-only) checkboxes.
@@ -75,17 +75,17 @@ identity exists but is never exposed as the URL key.
   dollars (`$x^2$`) renders as inline MathML and between double dollars
   (`$$…$$`, either inline or as a multi-line block) as display MathML. A literal
   dollar is written `\$`; a `$` that is not part of a valid pair (e.g. currency
-  like `$5`) stays literal. This is a client render-time transform only: the
-  AsciiMath source is stored verbatim in the Markdown and converted to MathML in
-  the browser by the vendored `asciimath2ml` library (not MathJax), with the
-  generated `<math>` passing through the same DOMPurify sanitization gate as all
-  other rendered HTML. The web UI's "Download HTML" renders the note
-  client-side, so exported documents contain the same MathML as the on-screen
-  view (see the Download HTML behaviour below). The server-side download-html
-  REST endpoint itself does not render AsciiMath — goldmark has no AsciiMath
-  support — so a direct API consumer (e.g. the Android app) receives the literal
-  `$…$` source. The editor toolbar has a math button that wraps the selection in
-  `$…$`.
+  like `$5`) stays literal. The AsciiMath source is stored verbatim in the
+  Markdown. In the browser read view it is converted to MathML by the vendored
+  `asciimath2ml` library (not MathJax), with the generated `<math>` passing
+  through the same DOMPurify sanitization gate as all other rendered HTML. The
+  server's download-html endpoint performs the same conversion with a Go port of
+  that library (`internal/asciimath`), so a downloaded document — whether from
+  the web UI's "Download HTML" button or a direct API consumer such as the
+  Android app — contains the same MathML as the on-screen view. The generated
+  `<math>` passes through the server's bluemonday sanitize pass (whose allow-list
+  already covers the MathML element/attribute set). The editor toolbar has a math
+  button that wraps the selection in `$…$`.
 - **Wikilinks:** the non-standard `[[…]]` syntax links to another note or a tag's
   note list. `[[slug]]` links to a note (`/notes/{slug}`); `[[#slug]]` (with a `#`
   sigil) links to a tag's note list (`/tags/{slug}`). `[[slug|Display text]]` (or
@@ -193,7 +193,7 @@ The API manages notes keyed by slug. Operations:
 - **Delete a note** by slug — deleting an unknown note is a not-found error
   (delete is not idempotent).
 - **Download Markdown** — `GET /notes/{slug}/download-markdown` returns the raw Markdown as a `.md` file (filename derived from slug).
-- **Download HTML** — `GET /notes/{slug}/download-html` converts the note to HTML on the server and returns a complete HTML document as a `.html` file. Internal artifact image references (`![alt](/api/v1/artifacts/{sha256})`) are inlined so the downloaded document renders standalone, without a live server: bitmap artifacts (PNG, JPEG, GIF, WebP) up to 16 MiB become base64 `data:` URLs, while SVG and MathML artifacts are spliced in as inline `<svg>`/`<math>` elements (a `data:` URL for SVG is disallowed by the sanitize policy). A bitmap artifact larger than 16 MiB is replaced by an inline broken-image icon (SVG) rather than embedded, to keep exported documents from ballooning. The spliced markup passes through the same render-time sanitization as the rest of the document. Unknown or unresolvable references are left as-is. This server-side rendering does not convert AsciiMath, so a direct API consumer receives the literal `$…$` source. The **web UI's "Download HTML" button** does not use this endpoint: it builds the document in the browser from the same render path as the on-screen note view (so AsciiMath is rendered to MathML), fetching each internal artifact to inline it with the identical size limit, broken-image placeholder, and re-sanitization behaviour described above.
+- **Download HTML** — `GET /notes/{slug}/download-html` converts the note to HTML on the server and returns a complete HTML document as a `.html` file. Internal artifact image references (`![alt](/api/v1/artifacts/{sha256})`) are inlined so the downloaded document renders standalone, without a live server: bitmap artifacts (PNG, JPEG, GIF, WebP) up to 16 MiB become base64 `data:` URLs, while SVG and MathML artifacts are spliced in as inline `<svg>`/`<math>` elements (a `data:` URL for SVG is disallowed by the sanitize policy). A bitmap artifact larger than 16 MiB is replaced by an inline broken-image icon (SVG) rather than embedded, to keep exported documents from ballooning. The spliced markup passes through the same render-time sanitization as the rest of the document. Unknown or unresolvable references are left as-is. AsciiMath (`$…$` / `$$…$$`) is converted to MathML by the server's Go port of `asciimath2ml` (`internal/asciimath`), so the exported document contains the same math markup as the on-screen view. The **web UI's "Download HTML" button** is a plain link to this endpoint (like Download Markdown).
 - **Import HTML** — `POST /import-html` accepts a `text/html` request body
   and converts it to Markdown server-side. The title is taken from the HTML
   `<title>` element; if absent, the plain text of the first `h1`–`h6` element is

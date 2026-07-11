@@ -298,6 +298,26 @@ func TestDownloadNoteHtml(t *testing.T) {
 	assert.Contains(t, bodyStr, "<p>body</p>")
 }
 
+func TestDownloadNoteHtmlRendersMath(t *testing.T) {
+	srv := newServer(t)
+	// Inline $…$ and a display $$…$$ block; the block contains Markdown-active
+	// runs (`**`) that must stay literal AsciiMath, not become emphasis.
+	created := createNote(t, srv, `{"title":"Math","content":"Energy $x^2$ here.\n\n$$\na**b**\n$$"}`)
+
+	res, err := http.Get(srv.URL + "/api/v1/notes/" + created.Slug + "/download-html")
+	require.NoError(t, err)
+	defer res.Body.Close()
+	require.Equal(t, http.StatusOK, res.StatusCode)
+
+	body, err := io.ReadAll(res.Body)
+	require.NoError(t, err)
+	bodyStr := string(body)
+	assert.Contains(t, bodyStr, `<math display="inline">`, "inline $…$ renders as inline MathML")
+	assert.Contains(t, bodyStr, `<math display="block">`, "$$…$$ renders as display MathML")
+	assert.NotContains(t, bodyStr, "<strong>", "math content must not be parsed as Markdown emphasis")
+	assert.NotContains(t, bodyStr, "$x^2$", "the literal AsciiMath source must not survive")
+}
+
 func TestDownloadNoteHtmlInlinesArtifacts(t *testing.T) {
 	srv := newServer(t)
 

@@ -40,17 +40,18 @@ info:
     renders as inline MathML and between double dollars (`$$…$$`, either inline
     or as a multi-line block) as display MathML. A literal dollar is written
     `\$`; a `$` that is not part of a valid pair (e.g. currency like `$5`) stays
-    literal. This is a **client render-time transform only**: the AsciiMath
-    source is stored verbatim in the `content` Markdown and converted to MathML
-    in the browser (by the web UI's vendored `asciimath2ml` library), with the
-    generated `<math>` passing through the same sanitization gate as all other
-    rendered HTML. MathML embedded directly as raw HTML is also permitted (see
-    "Raw HTML"); that MathML is stored verbatim and is not a transform.
+    literal. This is a **render-time transform**: the AsciiMath source is stored
+    verbatim in the `content` Markdown and converted to MathML at render time —
+    in the browser by the web UI's vendored `asciimath2ml` library, and on the
+    server (by a Go port of the same library) for the `download-html` endpoint —
+    with the generated `<math>` passing through the same sanitization gate as all
+    other rendered HTML. MathML embedded directly as raw HTML is also permitted
+    (see "Raw HTML"); that MathML is stored verbatim and is not a transform.
 
-    A consumer that renders notes must run the AsciiMath transform itself to
-    display math. Consumers that only pass `content` through unchanged (or the
-    server-side `download-html` endpoint, which does not render AsciiMath)
-    receive the literal `$…$` source.
+    A consumer that renders `content` itself must run the AsciiMath transform to
+    display math. Consumers that only pass `content` through unchanged receive
+    the literal `$…$` source; the `download-html` endpoint returns rendered
+    MathML.
 
     ## Raw HTML
 
@@ -537,9 +538,8 @@ paths:
         Converts the note `content` from Markdown to HTML on the server and
         returns a complete HTML document with a `Content-Disposition` attachment
         header. Internal artifact images are inlined so the document is
-        standalone. This server-side rendering does NOT render AsciiMath: any
-        `$…$` / `$$…$$` math is left as literal source text. Errors
-        keep the JSON `{"error": "message"}` shape.
+        standalone. AsciiMath (`$…$` / `$$…$$`) is rendered to MathML, matching
+        the on-screen view. Errors keep the JSON `{"error": "message"}` shape.
       responses:
         "200":
           description: The note rendered as a complete HTML document.

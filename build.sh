@@ -26,8 +26,8 @@ tsc --project web/ts/tsconfig.json
 # 4. Unpack the committed jsdom install tree (idempotent — no-op if already unpacked).
 web/ts/vendor/test/unpack.sh
 
-# 5. Run frontend XSS-gate, markdown render, and HTML-export tests.
-node --import ./web/ts/test-preload.mjs --test web/ts/xss-gate.test.mjs web/ts/markdown.test.mjs web/ts/exporthtml.test.mjs
+# 5. Run frontend XSS-gate and markdown render tests.
+node --import ./web/ts/test-preload.mjs --test web/ts/xss-gate.test.mjs web/ts/markdown.test.mjs
 
 # 6. Build the single binary (frontend is embedded via web/embed.go).
 CGO_ENABLED=0 go build -trimpath -buildvcs=true -tags netgo -o "$OUTPUT_DIR/mynotes" .

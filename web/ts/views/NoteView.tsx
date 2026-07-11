@@ -4,7 +4,6 @@ import { navigate } from '../router.js';
 import { base } from '../basepath.js';
 import { showToast } from '../util/toast.js';
 import { renderNote } from '../util/markdown.js';
-import { downloadNoteHtml } from '../util/exporthtml.js';
 
 function formatDateTime(iso: string): string {
   const d = new Date(iso);
@@ -26,7 +25,6 @@ export function NoteView({ slug, onDelete }: Props) {
   const [notFound, setNotFound] = useState(false);
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState(false);
-  const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -63,21 +61,6 @@ export function NoteView({ slug, onDelete }: Props) {
     if (!note) return '';
     return renderNote(note.content);
   }, [note]);
-
-  // HTML export runs client-side (unlike Markdown download, a plain link to the
-  // server) so AsciiMath is rendered to MathML via the same path as the on-screen
-  // view; the server download-html endpoint keeps the literal $…$ source.
-  async function handleDownloadHtml() {
-    if (!note) return;
-    setExporting(true);
-    try {
-      await downloadNoteHtml(note);
-    } catch (e) {
-      showToast(`Failed to export HTML: ${(e as Error).message}`);
-    } finally {
-      setExporting(false);
-    }
-  }
 
   async function handleDelete() {
     if (!note) return;
@@ -131,8 +114,7 @@ export function NoteView({ slug, onDelete }: Props) {
         </div>
         <div class="toolbar">
           <a class="btn-icon" href={`${base}/api/v1/notes/${note.slug}/download-markdown`} title="Download Markdown" aria-label="Download Markdown">𝖬⬇</a>
-          <button class="btn-icon" onClick={handleDownloadHtml} disabled={exporting}
-            title={exporting ? 'Preparing HTML…' : 'Download HTML'} aria-label="Download HTML">HTML</button>
+          <a class="btn-icon" href={`${base}/api/v1/notes/${note.slug}/download-html`} title="Download HTML" aria-label="Download HTML">HTML</a>
           <button class="btn-icon" title="Edit" aria-label="Edit" onClick={() => navigate(`/notes/${note.slug}/edit`)}>✎</button>
           <button class="danger btn-icon" onClick={handleDelete} disabled={deleting}
             title={deleting ? 'Deleting…' : 'Delete'} aria-label={deleting ? 'Deleting…' : 'Delete'}>❌︎</button>

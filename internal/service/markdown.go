@@ -44,12 +44,16 @@ var markdownParser = goldmark.New(
 // raw HTML blocks stored in notes — content was already validated at write time.
 // The task-list extension renders "[ ]"/"[x]" list markers as disabled
 // checkboxes, which the RenderToHTML sanitize pass keeps (see internal/sanitize).
+// The mathExt extension converts AsciiMath ($…$ / $$…$$) to MathML so the
+// downloaded HTML matches the web UI's on-screen rendering (see math.go); its
+// output flows through the same sanitize pass as everything else.
 var markdownRenderer = goldmark.New(
 	goldmark.WithExtensions(
 		extension.Table,
 		extension.Strikethrough,
 		extension.Linkify,
 		extension.TaskList,
+		mathExt,
 	),
 	goldmark.WithRendererOptions(
 		gmhtml.WithUnsafe(),
