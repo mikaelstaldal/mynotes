@@ -32,6 +32,12 @@ export function currentRoute(): Route {
   return parseRoute(window.location.pathname);
 }
 
+// The current in-app (root-relative, base-stripped) path — suitable for passing
+// back to navigate(). Used to remember where a navigation originated.
+export function currentPath(): string {
+  return stripBase(window.location.pathname);
+}
+
 // A navigation guard returns true to allow the navigation, false to block it.
 type NavigationGuard = () => boolean;
 let guard: NavigationGuard | null = null;
@@ -41,12 +47,14 @@ export function setNavigationGuard(fn: NavigationGuard | null): void {
 }
 
 // path is always a root-relative SPA path (e.g. '/notes/slug'). navigate
-// prepends the deployment base so pushState produces the full URL path.
-export function navigate(path: string): void {
+// prepends the deployment base so pushState produces the full URL path. An
+// optional state object is stored on the history entry (e.g. where a navigation
+// originated) and can be read back via history.state.
+export function navigate(path: string, state: unknown = null): void {
   if (guard && !guard()) return;
-  history.pushState(null, '', base + path);
+  history.pushState(state, '', base + path);
   // pushState alone does not fire popstate; dispatch one so listeners update.
-  window.dispatchEvent(new PopStateEvent('popstate', { state: null }));
+  window.dispatchEvent(new PopStateEvent('popstate', { state }));
 }
 
 // Returns true for paths that the SPA owns. API and external URLs are excluded

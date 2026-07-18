@@ -54,6 +54,7 @@ function App() {
             <NotesOverview
               activeTag={route.tag}
               listKey={listKey}
+              onMutate={refreshList}
               sortField={sortField}
               sortOrder={sortOrder}
             />

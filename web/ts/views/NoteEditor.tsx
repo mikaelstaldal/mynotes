@@ -762,7 +762,13 @@ export function NoteEditor({ slug, onSave }: Props) {
           <button type="button" class={layout === 'preview' ? 'active btn-icon' : 'btn-icon'} title="Preview" aria-label="Preview" onClick={() => setLayout('preview')}>◉</button>
         </div>
         <span class="toolbar-spacer" />
-        <button type="button" class="btn-icon" title="Cancel" aria-label="Cancel" onClick={() => navigate(editing ? `/notes/${slug}` : '/')}>✕</button>
+        <button type="button" class="btn-icon" title="Cancel" aria-label="Cancel" onClick={() => {
+          // Return to wherever the edit was launched from (e.g. the note list),
+          // recorded in history state by the Edit action; fall back to the note
+          // view when editing (or the overview for a new note) if unknown.
+          const returnTo = (window.history.state as { returnTo?: string } | null)?.returnTo;
+          navigate(returnTo ?? (editing ? `/notes/${slug}` : '/'));
+        }}>✕</button>
         <button type="submit" class="primary btn-icon" disabled={saving || !dirty}
           title={saving ? 'Saving…' : 'Save'} aria-label={saving ? 'Saving…' : 'Save'}>✓</button>
       </div>

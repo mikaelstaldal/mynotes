@@ -1,5 +1,6 @@
 import { type NoteSummary } from '../api/client.js';
 import { base } from '../basepath.js';
+import { NoteActions } from '../components/NoteActions.js';
 
 function escapeHtml(s: string): string {
   return s
@@ -32,17 +33,23 @@ export function formatDate(iso: string): string {
 interface Props {
   rows: NoteSummary[];
   activeSlug?: string;
+  // When true, render the per-note action toolbar (download, print, split,
+  // edit, delete) on each row — used by the main-panel overview, not the
+  // sidebar list. onMutate is invoked after an action changes the note set so
+  // the lists can refresh.
+  showActions?: boolean;
+  onMutate?: () => void;
 }
 
 // Presentational list of note rows shared by the sidebar list and the
 // main-panel overview. Must be rendered inside an `.item-list` container so the
 // per-row border styling applies.
-export function NoteRows({ rows, activeSlug }: Props) {
+export function NoteRows({ rows, activeSlug, showActions, onMutate }: Props) {
   return (
     <ul>
       {rows.map(n => (
         <li key={n.slug}>
-          <div class={`note-row${n.slug === activeSlug ? ' note-row--active' : ''}`}>
+          <div class={`note-row${n.slug === activeSlug ? ' note-row--active' : ''}${showActions ? ' note-row--actions' : ''}`}>
             <a class="link" href={`${base}/notes/${n.slug}`}>{n.title}</a>
             <span class="muted note-date" title={`Version ${n.version}`}>
               <time dateTime={n.created_at}>created {formatDate(n.created_at)}</time>
@@ -61,6 +68,16 @@ export function NoteRows({ rows, activeSlug }: Props) {
                     onClick={(e) => e.stopPropagation()}>{t.slug}</a>
                 ))}
               </div>
+            )}
+            {showActions && (
+              <NoteActions
+                slug={n.slug}
+                title={n.title}
+                toolbarClass="note-row-actions"
+                showView
+                onDeleted={onMutate}
+                onSplit={onMutate}
+              />
             )}
           </div>
         </li>

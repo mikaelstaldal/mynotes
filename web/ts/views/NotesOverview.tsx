@@ -8,6 +8,7 @@ const LIMIT = 50;
 interface Props {
   activeTag?: string;
   listKey?: number;
+  onMutate?: () => void;
   sortField: SortField;
   sortOrder: SortOrder;
 }
@@ -15,7 +16,7 @@ interface Props {
 // Main-panel overview shown when no note is selected. Lists every note (or every
 // note carrying the active tag). Falls back to a prompt only when the list is
 // genuinely empty.
-export function NotesOverview({ activeTag, listKey, sortField, sortOrder }: Props) {
+export function NotesOverview({ activeTag, listKey, onMutate, sortField, sortOrder }: Props) {
   const [rows, setRows] = useState<NoteSummary[]>([]);
   const [offset, setOffset] = useState(0);
   const [total, setTotal] = useState<number | null>(null);
@@ -77,7 +78,7 @@ export function NotesOverview({ activeTag, listKey, sortField, sortOrder }: Prop
   return (
     <div class="item-list">
       <h1 class="note-title overview-heading">{heading}</h1>
-      <NoteRows rows={rows} />
+      <NoteRows rows={rows} showActions onMutate={onMutate} />
       {loading && rows.length > 0 && <p class="muted">Loading…</p>}
       {showLoadMore && (
         <div class="load-more">

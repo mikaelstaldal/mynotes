@@ -261,6 +261,15 @@ existing-note editor (`/notes/{slug}/edit`).
   via `POST /notes`. For HTML files, the raw HTML is sent to `POST /notes/import-html`
   and the server performs the conversion and title extraction. Oversized files are
   rejected before/from the server with a clear message.
+- **Overview (main panel, no note selected):** shown for `/` and
+  `/tags/{slug}`. A heading ("All notes", or the tag slug when filtered) over a
+  list of every note (or every note carrying the active tag), each row showing
+  title, created/updated times, excerpt, and tags, ordered by the shared sort
+  choice and paged with "Load more". Each row carries the same per-note action
+  toolbar as the read view — "Download Markdown", "Download HTML", "Print",
+  "Split", "Edit", and "Delete" — acting on that row's note; delete and split
+  refresh the lists in place. Falls back to a "select or create a note" prompt
+  only when the list is genuinely empty.
 - **Read view (main panel):** renders the note's Markdown safely into a styled
   container. The stored title is used as the browser tab title (not duplicated as
   a body heading). The note's tags are shown as chips; clicking one filters the

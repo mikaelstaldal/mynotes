@@ -1052,6 +1052,27 @@ a.tag-chip:hover { border-color: var(--primary); color: var(--primary); }
 }
 .note-row .tag-chips { grid-area: tags; }
 
+/* Overview rows carry the per-note action toolbar in a right-hand column,
+   aligned to the title line to save vertical space (as in the read view). */
+.note-row--actions {
+  grid-template-areas:
+    "title   actions"
+    "date    actions"
+    "excerpt actions"
+    "tags    actions";
+  grid-template-columns: 1fr auto;
+  column-gap: 0.5rem;
+}
+.note-row-actions {
+  grid-area: actions;
+  align-self: start;
+  justify-self: end;
+  margin-top: 0;
+  margin-bottom: 0;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
 .meta-tags {
   display: flex;
   align-items: baseline;
