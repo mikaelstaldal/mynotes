@@ -62,6 +62,43 @@ export function NoteView({ slug, onDelete }: Props) {
     return renderNote(note.content);
   }, [note]);
 
+  // Print reuses the server-rendered Download HTML document (standalone, with
+  // internal images inlined): it is loaded into an off-screen iframe whose
+  // print dialog is then invoked, so the printout matches the exported file
+  // rather than the surrounding app chrome.
+  async function handlePrint() {
+    if (!note) return;
+    try {
+      const html = await api.notes.exportHtml(note.slug);
+      const iframe = document.createElement('iframe');
+      iframe.setAttribute('aria-hidden', 'true');
+      iframe.style.position = 'fixed';
+      iframe.style.right = '0';
+      iframe.style.bottom = '0';
+      iframe.style.width = '0';
+      iframe.style.height = '0';
+      iframe.style.border = '0';
+      iframe.onload = () => {
+        const win = iframe.contentWindow;
+        if (!win) { iframe.remove(); return; }
+        const cleanup = () => iframe.remove();
+        win.addEventListener('afterprint', cleanup);
+        win.focus();
+        win.print();
+        // Fallback removal for browsers that never fire afterprint.
+        setTimeout(cleanup, 60000);
+      };
+      iframe.srcdoc = html;
+      document.body.appendChild(iframe);
+    } catch (e) {
+      if (e instanceof NotFoundError) {
+        showToast('Note not found');
+      } else {
+        showToast(`Failed to print: ${(e as Error).message}`);
+      }
+    }
+  }
+
   async function handleDelete() {
     if (!note) return;
     if (!confirm(`Delete “${note.title}”? This cannot be undone.`)) return;
@@ -115,6 +152,7 @@ export function NoteView({ slug, onDelete }: Props) {
         <div class="toolbar">
           <a class="btn-icon" href={`${base}/api/v1/notes/${note.slug}/download-markdown`} title="Download Markdown" aria-label="Download Markdown">𝖬⬇</a>
           <a class="btn-icon" href={`${base}/api/v1/notes/${note.slug}/download-html`} title="Download HTML" aria-label="Download HTML">HTML</a>
+          <button class="btn-icon" title="Print" aria-label="Print" onClick={handlePrint}>🖨</button>
           <button class="btn-icon" title="Edit" aria-label="Edit" onClick={() => navigate(`/notes/${note.slug}/edit`)}>✎</button>
           <button class="danger btn-icon" onClick={handleDelete} disabled={deleting}
             title={deleting ? 'Deleting…' : 'Delete'} aria-label={deleting ? 'Deleting…' : 'Delete'}>❌︎</button>

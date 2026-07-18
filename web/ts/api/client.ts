@@ -151,6 +151,18 @@ export const api = {
 
     importMarkdown: (markdown: string): Promise<Note> =>
       requestRaw<Note>('POST', '/import', markdown, 'text/markdown'),
+
+    // Fetch the server-rendered, standalone HTML document for a note (the same
+    // artifact the Download HTML link produces, with internal images inlined).
+    // Reused by the client-side print flow, which loads it into a hidden iframe
+    // and invokes the browser's print dialog.
+    exportHtml: async (slug: string): Promise<string> => {
+      const res = await fetchWithRetry(`${BASE}/notes/${slug}/download-html`, { method: 'GET' });
+      if (res.status === 401) { window.location.reload(); throw new Error('Unauthorized'); }
+      if (res.status === 404) throw new NotFoundError();
+      if (!res.ok) throw new Error(res.statusText);
+      return res.text();
+    },
   },
 
   artifacts: {
