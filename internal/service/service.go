@@ -167,12 +167,14 @@ func (s *NoteService) Get(ctx context.Context, slug string) (model.Note, error) 
 // name existing tags (created via POST /tags) — an unknown slug is a
 // validation error.
 func (s *NoteService) Create(ctx context.Context, title string, content, slug *string, tagSlugs []string) (model.Note, error) {
-	return s.createNote(ctx, title, content, slug, time.Time{}, tagSlugs)
+	return s.createNote(ctx, title, content, slug, time.Time{}, time.Time{}, tagSlugs)
 }
 
 // createNote is the internal implementation shared by Create and the import
-// paths. createdAt zero means "use the current time".
-func (s *NoteService) createNote(ctx context.Context, title string, content, slug *string, createdAt time.Time, tagSlugs []string) (model.Note, error) {
+// paths. createdAt zero means "use the current time"; updatedAt zero means
+// "use the resolved createdAt" (so most callers leave the two timestamps equal
+// and only the split passes a distinct updated_at).
+func (s *NoteService) createNote(ctx context.Context, title string, content, slug *string, createdAt, updatedAt time.Time, tagSlugs []string) (model.Note, error) {
 	title = strings.TrimSpace(title)
 	if err := validateTitle(title); err != nil {
 		return model.Note{}, err
@@ -195,6 +197,10 @@ func (s *NoteService) createNote(ctx context.Context, title string, content, slu
 	if ts.IsZero() {
 		ts = time.Now().UTC()
 	}
+	uts := updatedAt
+	if uts.IsZero() {
+		uts = ts
+	}
 
 	// Explicit slug: validate and insert as-is. A collision is a 409, never
 	// resolved with a suffix.
@@ -202,7 +208,7 @@ func (s *NoteService) createNote(ctx context.Context, title string, content, slu
 		if err := validateSlug(*slug); err != nil {
 			return model.Note{}, err
 		}
-		note, err := s.repo.CreateWithTime(ctx, *slug, title, body, ts, tagIDs)
+		note, err := s.repo.CreateWithTimes(ctx, *slug, title, body, ts, uts, tagIDs)
 		return note, mapTagErr(err)
 	}
 
@@ -214,7 +220,7 @@ func (s *NoteService) createNote(ctx context.Context, title string, content, slu
 		if err != nil {
 			return model.Note{}, err
 		}
-		note, err := s.repo.CreateWithTime(ctx, candidate, title, body, ts, tagIDs)
+		note, err := s.repo.CreateWithTimes(ctx, candidate, title, body, ts, uts, tagIDs)
 		if errors.Is(err, ErrConflict) {
 			continue
 		}
@@ -379,7 +385,7 @@ func (s *NoteService) ImportMarkdown(ctx context.Context, markdownContent string
 		slugPtr = &fm.Slug
 	}
 
-	return s.createNote(ctx, title, &content, slugPtr, fm.Date, nil)
+	return s.createNote(ctx, title, &content, slugPtr, fm.Date, time.Time{}, nil)
 }
 
 // firstATXHeading scans Markdown content for the first ATX heading line,
@@ -417,6 +423,167 @@ func firstATXHeading(content string) string {
 		}
 	}
 	return ""
+}
+
+// splitSection is one piece of a note produced by splitByHeadings: a heading's
+// text and the Markdown body running from that heading to the next boundary.
+type splitSection struct {
+	title string
+	body  string
+}
+
+// splitByHeadings partitions Markdown content into sections at the shallowest
+// ATX heading level present, ignoring headings inside fenced code blocks (using
+// the same fence tracking as firstATXHeading). Content before the first heading
+// of that level (the preamble) is dropped. Each section's body includes its own
+// heading line and everything up to — but not including — the next heading of
+// the same level, so deeper subheadings stay nested within their parent section.
+// Because boundaries only ever fall on heading lines outside a fence, each
+// section is independently well-formed Markdown. Returns nil when the content
+// has no headings at all.
+func splitByHeadings(content string) []splitSection {
+	lines := strings.Split(content, "\n")
+
+	// Pass 1: collect heading lines (outside fences) with their level and text.
+	type heading struct {
+		line  int
+		level int
+		text  string
+	}
+	var headings []heading
+	var fenceChar byte
+	fenceLen := 0
+	for i, line := range lines {
+		if fenceLen == 0 {
+			b := []byte(line)
+			if len(b) >= 3 && (b[0] == '`' || b[0] == '~') {
+				n := 0
+				for n < len(b) && b[n] == b[0] {
+					n++
+				}
+				if n >= 3 {
+					fenceChar = b[0]
+					fenceLen = n
+					continue
+				}
+			}
+			if m := atxHeadingRe.FindStringSubmatch(line); m != nil {
+				level := 0
+				for level < len(line) && line[level] == '#' {
+					level++
+				}
+				headings = append(headings, heading{line: i, level: level, text: strings.TrimSpace(m[1])})
+			}
+		} else {
+			b := []byte(line)
+			n := 0
+			for n < len(b) && b[n] == fenceChar {
+				n++
+			}
+			if n >= fenceLen && strings.TrimSpace(string(b[n:])) == "" {
+				fenceLen = 0
+				fenceChar = 0
+			}
+		}
+	}
+
+	if len(headings) == 0 {
+		return nil
+	}
+
+	// Shallowest heading level present is the split boundary.
+	minLevel := headings[0].level
+	for _, h := range headings[1:] {
+		if h.level < minLevel {
+			minLevel = h.level
+		}
+	}
+	var boundaries []heading
+	for _, h := range headings {
+		if h.level == minLevel {
+			boundaries = append(boundaries, h)
+		}
+	}
+
+	// Pass 2: slice content between successive boundary headings.
+	sections := make([]splitSection, 0, len(boundaries))
+	for i, b := range boundaries {
+		end := len(lines)
+		if i+1 < len(boundaries) {
+			end = boundaries[i+1].line
+		}
+		body := strings.TrimRight(strings.Join(lines[b.line:end], "\n"), "\n")
+		sections = append(sections, splitSection{title: b.text, body: body})
+	}
+	return sections
+}
+
+// Split divides the note addressed by slug into several new notes, one per
+// section delimited by Markdown ATX headings at the shallowest level present
+// (see splitByHeadings). Each new note takes its title from the section heading
+// and shares both the original note's created_at and updated_at; the original
+// note is left unchanged. tag, when non-nil and non-empty, names an existing
+// tag attached to every new note — an unknown tag is a validation error
+// (surfaced before any note is created). A note with no headings is a
+// validation error. Returns summaries (not full content) of the created notes,
+// in document order.
+func (s *NoteService) Split(ctx context.Context, slug string, tag *string) ([]model.NoteSummary, error) {
+	existing, err := s.repo.GetBySlug(ctx, slug)
+	if err != nil {
+		return nil, err
+	}
+
+	var tagSlugs []string
+	if tag != nil && *tag != "" {
+		tagSlugs = []string{*tag}
+	}
+	// Resolve the tag once up front: createNote re-resolves per note, but doing
+	// it here means an unknown tag fails before any note is written rather than
+	// leaving a partial split behind.
+	if _, err := s.resolveTagIDs(ctx, tagSlugs); err != nil {
+		return nil, err
+	}
+
+	sections := splitByHeadings(existing.Content)
+	if len(sections) == 0 {
+		return nil, validationError("note has no headings to split on")
+	}
+
+	// Pre-validate every section (title + content) so an invalid one is rejected
+	// before any note is created.
+	titles := make([]string, len(sections))
+	for i, sec := range sections {
+		title := sec.title
+		if runes := []rune(title); len(runes) > maxTitleLen {
+			title = string(runes[:maxTitleLen-1]) + "…"
+		}
+		if err := validateTitle(strings.TrimSpace(title)); err != nil {
+			return nil, err
+		}
+		if err := validateContent(sec.body); err != nil {
+			return nil, err
+		}
+		titles[i] = title
+	}
+
+	created := make([]model.NoteSummary, 0, len(sections))
+	for i, sec := range sections {
+		body := sec.body
+		note, err := s.createNote(ctx, titles[i], &body, nil, existing.CreatedAt, existing.UpdatedAt, tagSlugs)
+		if err != nil {
+			return nil, err
+		}
+		created = append(created, model.NoteSummary{
+			Slug:      note.Slug,
+			Title:     note.Title,
+			Excerpt:   repository.Excerpt(note.Content),
+			CreatedAt: note.CreatedAt,
+			UpdatedAt: note.UpdatedAt,
+			Version:   note.Version,
+			Tags:      note.Tags,
+		})
+	}
+	return created, nil
 }
 
 // uniqueSlug returns base if free, otherwise base-2, base-3, … picking the first

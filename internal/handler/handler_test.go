@@ -727,3 +727,82 @@ func TestDeleteTagDetachesFromNotes(t *testing.T) {
 	require.NoError(t, json.NewDecoder(res.Body).Decode(&got))
 	assert.Empty(t, got.Tags, "deleting a tag detaches it from every note that had it")
 }
+
+// splitNote POSTs to /notes/{slug}/split and returns the raw response.
+func splitNote(t *testing.T, srv *httptest.Server, slug, body string) *http.Response {
+	t.Helper()
+	res, err := http.Post(srv.URL+"/api/v1/notes/"+slug+"/split", "application/json",
+		strings.NewReader(body))
+	require.NoError(t, err)
+	return res
+}
+
+func TestSplitNote(t *testing.T) {
+	srv := newServer(t)
+	tag := createTag(t, srv, `{"slug":"work"}`)
+	orig := createNote(t, srv,
+		`{"title":"Original","content":"preamble\n\n## Section A\n\na\n\n## Section B\n\nb"}`)
+
+	res := splitNote(t, srv, orig.Slug, `{"tag":"`+tag.Slug+`"}`)
+	defer res.Body.Close()
+	require.Equal(t, http.StatusCreated, res.StatusCode)
+
+	var out api.SplitNoteResponse
+	require.NoError(t, json.NewDecoder(res.Body).Decode(&out))
+	require.Len(t, out.Notes, 2)
+	assert.Equal(t, "Section A", out.Notes[0].Title)
+	assert.Equal(t, "Section B", out.Notes[1].Title)
+	for _, n := range out.Notes {
+		require.Len(t, n.Tags, 1)
+		assert.Equal(t, "work", n.Tags[0].Slug)
+		assert.True(t, orig.CreatedAt.Equal(n.CreatedAt), "new notes keep the original created_at")
+		assert.True(t, orig.UpdatedAt.Equal(n.UpdatedAt), "new notes keep the original updated_at")
+	}
+
+	// The original note is left unchanged.
+	got, err := http.Get(srv.URL + "/api/v1/notes/" + orig.Slug)
+	require.NoError(t, err)
+	defer got.Body.Close()
+	require.Equal(t, http.StatusOK, got.StatusCode)
+	var after api.Note
+	require.NoError(t, json.NewDecoder(got.Body).Decode(&after))
+	assert.Equal(t, orig.Content, after.Content)
+	assert.Equal(t, 1, after.Version)
+}
+
+func TestSplitNoteWithoutBody(t *testing.T) {
+	srv := newServer(t)
+	orig := createNote(t, srv, `{"title":"Original","content":"## A\n\na\n\n## B\n\nb"}`)
+
+	// An absent body is allowed (the tag is optional).
+	res, err := http.Post(srv.URL+"/api/v1/notes/"+orig.Slug+"/split", "application/json", nil)
+	require.NoError(t, err)
+	defer res.Body.Close()
+	require.Equal(t, http.StatusCreated, res.StatusCode)
+	var out api.SplitNoteResponse
+	require.NoError(t, json.NewDecoder(res.Body).Decode(&out))
+	assert.Len(t, out.Notes, 2)
+}
+
+func TestSplitNoteMissingReturns404(t *testing.T) {
+	srv := newServer(t)
+	res := splitNote(t, srv, "does-not-exist", `{}`)
+	defer res.Body.Close()
+	assert.Equal(t, http.StatusNotFound, res.StatusCode)
+}
+
+func TestSplitNoteUnknownTagReturns400(t *testing.T) {
+	srv := newServer(t)
+	orig := createNote(t, srv, `{"title":"Original","content":"## A\n\na\n\n## B\n\nb"}`)
+	res := splitNote(t, srv, orig.Slug, `{"tag":"nope"}`)
+	defer res.Body.Close()
+	assert.Equal(t, http.StatusBadRequest, res.StatusCode)
+}
+
+func TestSplitNoteNoHeadingsReturns400(t *testing.T) {
+	srv := newServer(t)
+	orig := createNote(t, srv, `{"title":"Original","content":"just text, no headings"}`)
+	res := splitNote(t, srv, orig.Slug, `{}`)
+	defer res.Body.Close()
+	assert.Equal(t, http.StatusBadRequest, res.StatusCode)
+}

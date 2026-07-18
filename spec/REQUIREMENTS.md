@@ -106,6 +106,15 @@ identity exists but is never exposed as the URL key.
 - Both the read view and the editor's live preview render the same way and must
   be safe against XSS (see Security).
 - Content is bounded at 1,000,000 characters; empty content is valid.
+- **Split by headings:** a note can be split into several new notes, one per
+  section delimited by Markdown ATX headings at the shallowest level present
+  (e.g. if a note's headings are `##`/`###`, it splits at each `##`, keeping the
+  `###` subsections nested inside their parent section). Headings inside fenced
+  code blocks are ignored. Content before the first such heading (the preamble)
+  is discarded. Each new note takes its title from its section heading and shares
+  the source note's created and updated times; the source note is left unchanged.
+  An optional tag (which must already exist) is attached to every new note. A note
+  with no headings cannot be split.
 
 ## Artifacts
 
@@ -192,6 +201,13 @@ The API manages notes keyed by slug. Operations:
   `version` and `ETag`.
 - **Delete a note** by slug — deleting an unknown note is a not-found error
   (delete is not idempotent).
+- **Split a note** — `POST /notes/{slug}/split` creates one new note per
+  top-level heading section of the source note (see "Split by headings" under
+  Markdown handling). An optional request body `{ "tag": "<slug>" }` attaches an
+  existing tag to every new note (an unknown tag is a validation error). Returns
+  summaries (not full content) of the created notes in document order
+  (`{ "notes": [ … ] }`). A note with no headings is a validation error. The
+  source note is left unchanged.
 - **Download Markdown** — `GET /notes/{slug}/download-markdown` returns the raw Markdown as a `.md` file (filename derived from slug).
 - **Download HTML** — `GET /notes/{slug}/download-html` converts the note to HTML on the server and returns a complete HTML document as a `.html` file. Internal artifact image references (`![alt](/api/v1/artifacts/{sha256})`) are inlined so the downloaded document renders standalone, without a live server: bitmap artifacts (PNG, JPEG, GIF, WebP) up to 16 MiB become base64 `data:` URLs, while SVG and MathML artifacts are spliced in as inline `<svg>`/`<math>` elements (a `data:` URL for SVG is disallowed by the sanitize policy). A bitmap artifact larger than 16 MiB is replaced by an inline broken-image icon (SVG) rather than embedded, to keep exported documents from ballooning. The spliced markup passes through the same render-time sanitization as the rest of the document. Unknown or unresolvable references are left as-is. AsciiMath (`$…$` / `$$…$$`) is converted to MathML by the server's Go port of `asciimath2ml` (`internal/asciimath`), so the exported document contains the same math markup as the on-screen view. The **web UI's "Download HTML" button** is a plain link to this endpoint (like Download Markdown).
 - **Import HTML** — `POST /import-html` accepts a `text/html` request body
@@ -210,9 +226,10 @@ Notes also expose a monotonically increasing `version` integer (1 on creation,
 +1 per write, no-op PATCHes do not increment it) in all response bodies
 (`Note` and `NoteSummary`).
 
-Errors use the shape `{ "error": "message" }`. Status codes: 201 create/import;
-200 get/update/list/download; 204 delete; 400 validation/malformed input; 404 not
-found; 409 conflict on an explicit slug; 412 version mismatch on update.
+Errors use the shape `{ "error": "message" }`. Status codes: 201
+create/import/split; 200 get/update/list/download; 204 delete; 400
+validation/malformed input; 404 not found; 409 conflict on an explicit slug;
+412 version mismatch on update.
 
 ## Frontend behavior
 
@@ -247,9 +264,12 @@ existing-note editor (`/notes/{slug}/edit`).
 - **Read view (main panel):** renders the note's Markdown safely into a styled
   container. The stored title is used as the browser tab title (not duplicated as
   a body heading). The note's tags are shown as chips; clicking one filters the
-  sidebar list to that tag. "Edit", "Delete", "Download Markdown", and "Download
-  HTML" actions. A 404 (or a
-  malformed-slug deep link) shows a not-found message.
+  sidebar list to that tag. "Edit", "Delete", "Split", "Print", "Download
+  Markdown", and "Download HTML" actions. "Split" opens a dialog with a tag
+  picker (the same autocomplete-or-create widget as the editor) to optionally
+  choose or create a single tag, then splits the note by its top-level headings
+  and navigates to the tag's note list (when a tag was chosen) or the first new
+  note. A 404 (or a malformed-slug deep link) shows a not-found message.
 - **Editor (main panel, new/edit):** title input (with auto-derive-from-heading
   until edited); slug field (suggested for new notes, editable-with-warning when
   editing); a tag picker (autocomplete over existing tags, plus an explicit

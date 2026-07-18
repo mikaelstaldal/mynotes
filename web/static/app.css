@@ -867,6 +867,53 @@ mark { background: #fef08a; color: var(--fg); border-radius: 2px; padding: 0 1px
   width: 100%;
 }
 
+/* ── Split dialog ───────────────────────────────────────────────── */
+
+.split-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 15vh;
+  z-index: 600;
+}
+
+.split-dialog {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+  width: min(420px, 90vw);
+  padding: 1.25rem;
+}
+
+.split-title {
+  margin: 0 0 0.5rem;
+  font-size: 1.1rem;
+}
+
+.split-body {
+  margin: 0 0 1rem;
+  color: var(--muted);
+}
+
+.split-tag-selected {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  min-height: 2rem;
+  align-items: center;
+}
+
+.split-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 1.25rem;
+}
+
 /* ── Markdown help popup ─────────────────────────────────────────── */
 
 .markdown-help-overlay {

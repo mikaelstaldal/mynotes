@@ -12,6 +12,7 @@ export type NoteSummary = components['schemas']['NoteSummary'];
 export type NoteList = components['schemas']['NoteList'];
 export type CreateNoteRequest = components['schemas']['CreateNoteRequest'];
 export type UpdateNoteRequest = components['schemas']['UpdateNoteRequest'];
+export type SplitNoteResponse = components['schemas']['SplitNoteResponse'];
 export type Artifact = components['schemas']['Artifact'];
 export type Tag = components['schemas']['Tag'];
 export type TagList = components['schemas']['TagList'];
@@ -145,6 +146,12 @@ export const api = {
 
     delete: (slug: string) =>
       request<void>('DELETE', `/notes/${slug}`),
+
+    // Split a note into several notes at its top-level Markdown headings. When
+    // tag is given, it must name an existing tag and is attached to every new
+    // note. The source note is left unchanged.
+    split: (slug: string, tag?: string) =>
+      request<SplitNoteResponse>('POST', `/notes/${slug}/split`, tag ? { tag } : {}),
 
     importHtml: (html: string): Promise<Note> =>
       requestRaw<Note>('POST', '/import', html, 'text/html'),

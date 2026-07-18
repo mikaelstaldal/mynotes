@@ -198,16 +198,24 @@ func (r *NoteRepository) Create(ctx context.Context, slug, title, content string
 // and attaches tagIDs (nil/empty means no tags). The note insert and the tag
 // attachment run in a single transaction so the two never diverge.
 func (r *NoteRepository) CreateWithTime(ctx context.Context, slug, title, content string, createdAt time.Time, tagIDs []int64) (model.Note, error) {
+	return r.CreateWithTimes(ctx, slug, title, content, createdAt, createdAt, tagIDs)
+}
+
+// CreateWithTimes is like CreateWithTime but sets created_at and updated_at
+// independently, so a caller (e.g. the note split) can preserve BOTH of an
+// original note's timestamps on the copies it produces.
+func (r *NoteRepository) CreateWithTimes(ctx context.Context, slug, title, content string, createdAt, updatedAt time.Time, tagIDs []int64) (model.Note, error) {
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return model.Note{}, err
 	}
 	defer func() { _ = tx.Rollback() }() // no-op once Commit succeeds
 
-	ts := createdAt.UTC().Format(rfc3339)
+	createdTS := createdAt.UTC().Format(rfc3339)
+	updatedTS := updatedAt.UTC().Format(rfc3339)
 	res, err := tx.ExecContext(ctx, `
 		INSERT INTO notes (slug, title, content, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`,
-		slug, title, content, ts, ts)
+		slug, title, content, createdTS, updatedTS)
 	if isUniqueViolation(err) {
 		return model.Note{}, ErrConflict
 	}
@@ -588,6 +596,12 @@ func (r *NoteRepository) search(ctx context.Context, q, tagSlug string, limit, o
 	}
 	return notes, total, nil
 }
+
+// Excerpt derives the same browse-style excerpt the list projection uses (first
+// non-heading line, inline Markdown stripped, truncated). Exposed so callers
+// that assemble a NoteSummary outside a list query — e.g. the note split — stay
+// consistent with how excerpts look when browsing.
+func Excerpt(content string) string { return plainExcerpt(content) }
 
 // plainExcerpt finds the first non-heading, non-blank line in the Markdown
 // probe, ignoring raw HTML blocks (including SVG and MathML), strips inline

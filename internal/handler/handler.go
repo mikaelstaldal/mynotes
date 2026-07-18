@@ -137,6 +137,22 @@ func (h *Handler) DeleteNote(ctx context.Context, params api.DeleteNoteParams) e
 	return h.notes.Delete(ctx, params.Slug)
 }
 
+func (h *Handler) SplitNote(ctx context.Context, req api.OptSplitNoteRequest, params api.SplitNoteParams) (*api.SplitNoteResponse, error) {
+	var tag *string
+	if r, ok := req.Get(); ok {
+		tag = optPtr(r.Tag)
+	}
+	notes, err := h.notes.Split(ctx, params.Slug, tag)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]api.NoteSummary, len(notes))
+	for i, n := range notes {
+		out[i] = toAPISummary(n)
+	}
+	return &api.SplitNoteResponse{Notes: out}, nil
+}
+
 func (h *Handler) ListTags(ctx context.Context) (*api.TagList, error) {
 	tags, err := h.tags.List(ctx)
 	if err != nil {

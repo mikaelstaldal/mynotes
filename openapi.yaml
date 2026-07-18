@@ -572,6 +572,42 @@ paths:
         default:
           $ref: "#/components/responses/Error"
 
+  /notes/{slug}/split:
+    parameters:
+      - name: slug
+        in: path
+        required: true
+        schema:
+          type: string
+          maxLength: 100
+          pattern: "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+    post:
+      operationId: splitNote
+      summary: Split a note into several notes by Markdown headings
+      description: >
+        Creates one new note per section of the source note, cutting at the
+        shallowest ATX heading level present (headings inside fenced code blocks
+        are ignored). Content before the first such heading is discarded. Each
+        new note takes its title from the section heading and shares the source
+        note's `created_at` and `updated_at`; the source note is left unchanged.
+        A note with no headings is a 400. The optional `tag` must name an
+        existing tag (400 if unknown), attached to every new note.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SplitNoteRequest"
+      responses:
+        "201":
+          description: The notes created from the split, in document order.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SplitNoteResponse"
+        default:
+          $ref: "#/components/responses/Error"
+
 components:
   responses:
     Error:
@@ -718,6 +754,30 @@ components:
             present (including an empty array) replaces the full set. An
             unknown slug is a 400. Replacing with the same set as before is a
             no-op (does not bump `version`).
+
+    SplitNoteRequest:
+      type: object
+      properties:
+        tag:
+          type: string
+          maxLength: 100
+          pattern: "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+          description: >
+            Slug of an existing tag to attach to every note created by the
+            split. Tags must already exist (create via POST /tags first) — an
+            unknown slug is a 400. Absent or omitted attaches no tag.
+
+    SplitNoteResponse:
+      type: object
+      required: [notes]
+      properties:
+        notes:
+          type: array
+          items:
+            $ref: "#/components/schemas/NoteSummary"
+          description: >
+            Summaries (without full content) of the notes created by the split,
+            in document order.
 
     Artifact:
       type: object
