@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'preact/hooks';
-import { api, type NoteSummary, type Tag, type SortField, type SortOrder } from '../api/client.js';
+import { api, NotFoundError, type NoteSummary, type Tag, type SortField, type SortOrder } from '../api/client.js';
 import { navigate } from '../router.js';
 import { showToast } from '../util/toast.js';
 import { NoteRows } from './NoteRows.js';
@@ -50,6 +50,7 @@ export function NoteList({ activeSlug, activeTag, listKey, onMutate, sortField, 
   const [loading, setLoading] = useState(false);
   const [exhausted, setExhausted] = useState(false);
   const [allTags, setAllTags] = useState<Tag[]>([]);
+  const [removingTag, setRemovingTag] = useState(false);
   const shownRef = useRef(new Set<string>());
   const genRef = useRef(0);
   const uploadRef = useRef<HTMLInputElement>(null);
@@ -157,6 +158,41 @@ export function NoteList({ activeSlug, activeTag, listKey, onMutate, sortField, 
     if (uploadRef.current) uploadRef.current.value = '';
   }
 
+  // Remove the currently-filtered tag. The server detaches it from every note
+  // (the notes themselves are kept), so this works whether the tag is empty or
+  // still attached to notes. Afterwards drop the filter and refresh the list so
+  // the deleted tag disappears from the dropdown.
+  //
+  // Confirm only when the tag still carries notes: an empty tag has nothing to
+  // lose, so removing it is a no-cost action. Count with a dedicated query
+  // (limit 0, just the total) so any active search/title filter doesn't skew it;
+  // if the count can't be fetched, err on the side of confirming.
+  async function handleRemoveTag() {
+    if (!activeTag) return;
+    let hasNotes = true;
+    try {
+      const res = await api.notes.list({ tag: activeTag, limit: 1, offset: 0 });
+      hasNotes = res.total > 0;
+    } catch {
+      // Leave hasNotes = true so we still confirm.
+    }
+    if (hasNotes && !confirm(`Remove tag “${activeTag}”? Notes with this tag are kept, but will no longer carry it.`)) return;
+    setRemovingTag(true);
+    try {
+      await api.tags.delete(activeTag);
+    } catch (e) {
+      if (!(e instanceof NotFoundError)) {
+        showToast(`Failed to remove tag: ${(e as Error).message}`);
+        setRemovingTag(false);
+        return;
+      }
+      // Already gone: fall through to clear the filter and refresh.
+    }
+    setRemovingTag(false);
+    navigate('/');
+    onMutate?.();
+  }
+
   const showLoadMore = !exhausted && total !== null && rows.length < total && !loading;
 
   return (
@@ -242,6 +278,15 @@ export function NoteList({ activeSlug, activeTag, listKey, onMutate, sortField, 
               )}
             </select>
           </label>
+          {activeTag && (
+            <button
+              class="danger btn-icon"
+              onClick={handleRemoveTag}
+              disabled={removingTag}
+              title={removingTag ? 'Removing tag…' : `Remove tag “${activeTag}”`}
+              aria-label={removingTag ? 'Removing tag…' : `Remove tag “${activeTag}”`}
+            >❌︎</button>
+          )}
         </div>
       )}
 

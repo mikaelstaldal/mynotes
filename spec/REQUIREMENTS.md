@@ -250,7 +250,10 @@ existing-note editor (`/notes/{slug}/edit`).
   filter dropdown lists every tag that exists (not just tags visible in the
   currently loaded notes), so a tag can be selected to filter even when no
   matching note is currently on screen; selecting "All tags" clears the
-  filter. Empty and
+  filter. While a tag is selected, a "Remove tag" button beside the dropdown
+  deletes that tag (after a confirmation): the tag is detached from every note
+  that carried it — the notes themselves are kept — and the filter is then
+  cleared. Empty and
   loading states. A "Load more" button pages through results (accumulating and
   de-duplicating rows by slug); resets on query or tag-filter change. Shows
   the total count. "New note" and "Upload note" actions. The currently open

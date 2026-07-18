@@ -1138,12 +1138,19 @@ a.tag-chip:hover { border-color: var(--primary); color: var(--primary); }
 }
 .tag-picker-create:disabled { color: var(--muted); cursor: default; }
 
-.tag-filter-row { margin-bottom: 0.5rem; }
+.tag-filter-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-bottom: 0.5rem;
+}
 
 .tag-filter-label {
   display: flex;
   align-items: center;
   gap: 0.4rem;
+  flex: 1;
+  min-width: 0;
   font-size: 0.85rem;
   font-weight: 500;
 }
