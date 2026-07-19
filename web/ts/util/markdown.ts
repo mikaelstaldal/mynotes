@@ -1,6 +1,7 @@
 import MarkdownIt from 'markdown-it';
 import DOMPurify from 'dompurify';
 import { asciiToMathML } from 'asciimath';
+import { LUCIDE_ICON_NODES } from 'lucide-icons';
 import { base } from '../basepath.js';
 
 const DATA_IMAGE_RE = /^data:image\/(gif|png|jpeg|webp);/;
@@ -270,6 +271,68 @@ md.block.ruler.after('blockquote', 'math_block', (state, startLine, endLine, sil
 md.renderer.rules.math_inline = (tokens, idx) => renderMathML(tokens[idx].content, false);
 md.renderer.rules.math_display = (tokens, idx) => renderMathML(tokens[idx].content, true);
 md.renderer.rules.math_block = (tokens, idx) => renderMathML(tokens[idx].content, true) + '\n';
+
+// Built-in Lucide icons are stored as compact Markdown image references
+// (![name](<base>/api/v1/icons/lucide/<name>)), but rendering them as <img> loads
+// the SVG in its own document context, where it can't inherit the note's text
+// colour (the served icon bakes in a grey stroke). Instead, render a known icon
+// inline as an <svg> whose stroke is `currentColor`, so it matches the
+// surrounding foreground exactly and follows the light/dark theme — mirroring
+// components/Icon.tsx and the server-side HTML export. The regexp anchors on the
+// path suffix so it matches root-relative, basepath-prefixed, and absolute srcs
+// (any query/fragment is trimmed first), mirroring the server's iconSrcPattern.
+const SVG_NS = 'http://www.w3.org/2000/svg';
+const ICON_SRC_RE = /(?:^|\/)api\/v1\/icons\/lucide\/([a-z0-9]+(?:-[a-z0-9]+)*)$/;
+
+function iconNameFromSrc(src: string): string | null {
+  const path = src.replace(/[?#].*$/s, '');
+  const m = ICON_SRC_RE.exec(path);
+  return m ? m[1] : null;
+}
+
+// Builds the inline <svg> markup for a Lucide icon from the vendored geometry.
+// Returns null for an unknown name, so the caller can fall back to the default
+// <img> rendering. Built via the DOM so attribute values are escaped correctly;
+// the geometry is trusted vendored data and the result is re-sanitised by the
+// DOMPurify gate in renderNote regardless.
+function renderIconSvg(name: string): string | null {
+  const nodes = LUCIDE_ICON_NODES[name];
+  if (!nodes) return null;
+  const svg = document.createElementNS(SVG_NS, 'svg');
+  const svgAttrs: Record<string, string> = {
+    xmlns: SVG_NS,
+    width: '24',
+    height: '24',
+    viewBox: '0 0 24 24',
+    fill: 'none',
+    stroke: 'currentColor',
+    'stroke-width': '2',
+    'stroke-linecap': 'round',
+    'stroke-linejoin': 'round',
+    class: `lucide lucide-${name}`,
+    'aria-hidden': 'true',
+  };
+  for (const key of Object.keys(svgAttrs)) svg.setAttribute(key, svgAttrs[key]);
+  for (const [tag, attrs] of nodes) {
+    const child = document.createElementNS(SVG_NS, tag);
+    for (const key of Object.keys(attrs)) child.setAttribute(key, attrs[key]);
+    svg.appendChild(child);
+  }
+  return svg.outerHTML;
+}
+
+// Render a built-in icon image reference as inline <svg>; delegate every other
+// image to the default renderer so ordinary images and unknown icon names stay
+// <img> elements.
+const defaultImageRule = md.renderer.rules.image!;
+md.renderer.rules.image = (tokens, idx, options, env, self) => {
+  const name = iconNameFromSrc(tokens[idx].attrGet('src') ?? '');
+  if (name) {
+    const svg = renderIconSvg(name);
+    if (svg) return svg;
+  }
+  return defaultImageRule(tokens, idx, options, env, self);
+};
 
 // Broad safe-HTML allow-list matching the server bluemonday UGCPolicy profile.
 // Excludes script/style/iframe/object/embed/form-controls/raw-media and all on* handlers.

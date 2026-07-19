@@ -13,7 +13,7 @@
 # package-manager install manual, audited, and out of the automated build —
 # build.sh and CI need neither npm nor esbuild.
 #
-# Requires on $PATH: npm, esbuild.
+# Requires on $PATH: npm, esbuild, git.
 set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")"
@@ -102,6 +102,39 @@ node "$VENDOR_DIR/gen-emoji.mjs" \
   "$VENDOR_DIR/node_modules/emojibase-data/en/data.json" \
   "$VENDOR_DIR/node_modules/emojibase-data/en/messages.json" \
   "$BROWSER_OUT/emoji.js"
+
+# --- 1c. Lucide icon set for the editor's icon picker ----------------------
+#
+# lucide-static ships the whole icon collection as data: icon-nodes.json (each
+# icon's SVG child elements as [tag, attrs] pairs) plus tags.json (search
+# keywords). It ships NO category data, so the picker's category tabs come from
+# the lucide *source* repo instead — its icons/<name>.json (each icon's category
+# membership) and categories/<slug>.json (each category's title + representative
+# tab icon). We sparse-checkout just those two metadata dirs at a pinned tag.
+# gen-lucide.mjs (committed, fs-only, no network) transforms all of it into the
+# compact LUCIDE_ICON_NODES + LUCIDE_ICONS + LUCIDE_CATEGORIES bundle the picker
+# and the <Icon> component import as "lucide-icons". Its LUCIDE_ICON_NODES export
+# is the single embedded copy of the icon geometry: the Go server (internal/icons)
+# reads it from the same bundle and rebuilds each icon's SVG to serve GET
+# /api/v1/icons/lucide/{name}, so nothing is embedded twice and the two sides
+# can't drift. gen-lucide intersects category membership with the shipped set, so
+# a handful of icons the pinned source and lucide-static disagree on drop out
+# cleanly. No esbuild needed — the generator emits plain files directly.
+
+# Pinned lucide source ref the category metadata is taken from. Bump alongside
+# the lucide-static version in package.json when refreshing the icon set.
+LUCIDE_REF="main"
+LUCIDE_SRC="$WORK_DIR/lucide-src"
+git clone --depth 1 --branch "$LUCIDE_REF" --filter=blob:none --sparse \
+  https://github.com/lucide-icons/lucide.git "$LUCIDE_SRC"
+git -C "$LUCIDE_SRC" sparse-checkout set icons categories
+
+node "$VENDOR_DIR/gen-lucide.mjs" \
+  "$VENDOR_DIR/node_modules/lucide-static/icon-nodes.json" \
+  "$VENDOR_DIR/node_modules/lucide-static/tags.json" \
+  "$BROWSER_OUT/lucide.js" \
+  "$LUCIDE_SRC/icons" \
+  "$LUCIDE_SRC/categories"
 
 # --- 2. Test-only jsdom bundle (never shipped to the browser) ---------------
 #

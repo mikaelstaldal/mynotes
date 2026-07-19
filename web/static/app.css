@@ -350,6 +350,13 @@ mark { background: #fef08a; color: var(--fg); border-radius: 2px; padding: 0 1px
 
 .note-content img { max-width: 100%; height: auto; }
 
+/* Built-in Lucide icons render inline as <svg class="lucide …"> (see renderNote),
+   with stroke="currentColor" so they inherit the note foreground and follow the
+   theme. Align them with adjacent text rather than on the baseline. The [src]
+   selector covers the fallback for an unknown icon name, which stays an <img>. */
+.note-content svg.lucide,
+.note-content img[src*="/api/v1/icons/"] { vertical-align: text-bottom; }
+
 /* AsciiMath: display ($$…$$) math is centered on its own line and scrolls
    horizontally when an equation is wider than the column; inline ($…$) math
    flows with the surrounding text. */
@@ -843,6 +850,103 @@ mark { background: #fef08a; color: var(--fg); border-radius: 2px; padding: 0 1px
 .emoji-picker-item:hover { background: var(--surface); }
 
 .emoji-picker-empty { margin: 1rem; }
+
+/* ── Icon picker modal ─────────────────────────────────────────── */
+
+.icon-picker-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 15vh;
+  z-index: 500;
+}
+
+.icon-picker {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+  width: min(460px, 92vw);
+  max-height: 60vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.icon-picker-input {
+  border: none;
+  border-bottom: 1px solid var(--border);
+  border-radius: 8px 8px 0 0;
+  padding: 0.75rem 1rem;
+  font-size: 1rem;
+  width: 100%;
+  flex: none;
+}
+
+.icon-picker-tabs {
+  display: flex;
+  gap: 0.15rem;
+  padding: 0.35rem 0.5rem;
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+  flex: none;
+}
+
+.icon-picker-tab {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  border-radius: 6px;
+  padding: 0.3rem;
+  color: var(--fg);
+  cursor: pointer;
+  opacity: 0.6;
+}
+
+.icon-picker-tab:hover { background: var(--surface); opacity: 1; }
+.icon-picker-tab.active { background: var(--primary); color: #fff; opacity: 1; }
+
+.icon-picker-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(2.5rem, 1fr));
+  gap: 0.1rem;
+  padding: 0.5rem;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+}
+
+.icon-picker-item {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  border-radius: 6px;
+  padding: 0.4rem;
+  color: var(--fg);
+  cursor: pointer;
+  aspect-ratio: 1;
+}
+
+.icon-picker-item:hover { background: var(--surface); }
+
+.icon-picker-empty { margin: 1rem; }
+
+.icon-picker-more {
+  margin: 0;
+  padding: 0.4rem 1rem;
+  border-top: 1px solid var(--border);
+  font-size: 0.85rem;
+  text-align: center;
+  flex: none;
+}
 
 /* ── Conflict dialog ────────────────────────────────────────────── */
 

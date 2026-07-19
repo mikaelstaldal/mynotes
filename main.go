@@ -27,6 +27,7 @@ import (
 	"github.com/mikaelstaldal/mynotes/internal/demo"
 	"github.com/mikaelstaldal/mynotes/internal/gdocs"
 	"github.com/mikaelstaldal/mynotes/internal/handler"
+	"github.com/mikaelstaldal/mynotes/internal/icons"
 	"github.com/mikaelstaldal/mynotes/internal/repository"
 	"github.com/mikaelstaldal/mynotes/internal/service"
 	"github.com/mikaelstaldal/mynotes/web"
@@ -199,6 +200,12 @@ func run(addr string, port int, dataDir, publicURL, basicAuthFile, basicAuthReal
 	// so it gets consistent failure behaviour; ServeArtifact overrides the
 	// no-store Cache-Control set by WithMiddleware with its own immutable policy.
 	mux.Handle("GET /api/v1/artifacts/{sha256}", handler.WithMiddleware(http.HandlerFunc(h.ServeArtifact)))
+	// Lucide icons embedded in note content render as
+	// <img src="/api/v1/icons/lucide/{name}">. Served as a static, public,
+	// immutable SVG asset (see internal/icons); like the artifact GET above, this
+	// specific pattern wins over the "/api/v1/" ogen handler. The "lucide" segment
+	// namespaces the set, leaving room for other icon sets in future.
+	mux.Handle("GET /api/v1/icons/lucide/{name}", handler.WithMiddleware(icons.Handler()))
 	mux.Handle("/api/v1/", handler.WithMiddleware(ogenServer))
 	mux.HandleFunc("/", staticHandler(indexHTML))
 

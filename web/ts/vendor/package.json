@@ -12,6 +12,7 @@
     "dompurify": "3.4.11",
     "asciimath2ml": "1.0.8",
     "@types/markdown-it": "14.1.2",
-    "emojibase-data": "16.0.3"
+    "emojibase-data": "16.0.3",
+    "lucide-static": "1.25.0"
   }
 }

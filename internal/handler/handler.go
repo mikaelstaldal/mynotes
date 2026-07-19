@@ -315,6 +315,13 @@ func (h *Handler) GetArtifact(ctx context.Context, params api.GetArtifactParams)
 	return nil, fmt.Errorf("not used")
 }
 
+// GetIcon is declared in the spec for clients (e.g. the Android app) but
+// served by the raw icons.Handler mounted directly on the mux, so this ogen stub
+// is never used.
+func (h *Handler) GetIcon(ctx context.Context, params api.GetIconParams) (api.GetIconRes, error) {
+	return nil, fmt.Errorf("not used")
+}
+
 // ServeArtifact is a raw http.HandlerFunc for GET /api/v1/artifacts/{sha256}.
 // It is registered directly on the mux (not through ogen) so it can set a
 // dynamic Content-Type response header matching the stored artifact MIME type.

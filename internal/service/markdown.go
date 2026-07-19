@@ -10,6 +10,7 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/mikaelstaldal/mynotes/internal/icons"
 	"github.com/mikaelstaldal/mynotes/internal/sanitize"
 	"github.com/yuin/goldmark"
 	"github.com/yuin/goldmark/ast"
@@ -150,6 +151,11 @@ table { border-collapse: collapse; width: 100%; margin: 0.75em 0; }
 th, td { border: 1px solid var(--border); padding: 0.4rem 0.7rem; text-align: left; }
 th { background: var(--surface); font-weight: 600; }
 img { max-width: 100%; height: auto; }
+/* Inline Lucide icons: an icon image reference becomes an inline
+   svg.lucide when the document is inlined, or stays an icon image when
+   inlining is off / the name is unknown. Align them with adjacent text rather
+   than on the baseline, matching the web UI's .note-content rule in app.css. */
+svg.lucide, img[src*="/api/v1/icons/"] { vertical-align: text-bottom; }
 hr { border: none; border-top: 1px solid var(--border); margin: 1.5em 0; }
 `
 
@@ -171,14 +177,16 @@ type ArtifactResolver func(sha256hex string) (content []byte, contentType string
 // policy used at write time before being embedded in the document, providing
 // defense-in-depth against any divergence between validation and render output.
 //
-// When resolve is non-nil, internal artifact image references
-// (<img src=".../api/v1/artifacts/<sha256>">) are inlined so the exported
-// document renders standalone: bitmap (raster) artifacts become base64 data:
-// URLs, while SVG and MathML artifacts are spliced in as inline <svg>/<math>
-// elements (a data: URL for SVG is disallowed by the sanitize policy). A raster
-// artifact larger than maxInlineImageBytes is replaced by a broken-image
-// placeholder rather than embedded. Unknown or unresolvable references are left
-// as-is.
+// When resolve is non-nil the document is inlined so it renders standalone,
+// without a live server:
+//   - Internal artifact image references (<img src=".../api/v1/artifacts/<sha256>">)
+//     become base64 data: URLs (bitmaps) or inline <svg>/<math> (SVG/MathML; a
+//     data: URL for SVG is disallowed by the sanitize policy). A raster artifact
+//     larger than maxInlineImageBytes is replaced by a broken-image placeholder.
+//   - Lucide icon references (<img src=".../api/v1/icons/lucide/<name>">) are
+//     replaced by the icon's inline <svg> (from the internal/icons embedded set).
+//
+// Unknown or unresolvable references are left as-is.
 func RenderToHTML(title, content string, resolve ArtifactResolver) (string, error) {
 	var body bytes.Buffer
 	if err := markdownRenderer.Convert([]byte(content), &body); err != nil {
@@ -186,7 +194,7 @@ func RenderToHTML(title, content string, resolve ArtifactResolver) (string, erro
 	}
 	rendered := body.String()
 	if resolve != nil {
-		rendered = inlineArtifactImages(rendered, resolve)
+		rendered = inlineImages(rendered, resolve)
 	}
 	safe := sanitize.HTML(rendered)
 	var doc bytes.Buffer
@@ -224,17 +232,17 @@ const brokenImageSVG = `<svg xmlns="http://www.w3.org/2000/svg" width="120" heig
 // (`https://host/api/v1/...`); any query string or fragment is trimmed first.
 var artifactSrcPattern = regexp.MustCompile(`(?:^|/)api/v1/artifacts/([0-9a-f]{64})$`)
 
-// inlineArtifactImages rewrites internal artifact <img> references so a
-// downloaded document renders without a live server. Each token is re-emitted
-// via the same golang.org/x/net/html tokenizer bluemonday drives; the sanitize
-// pass in RenderToHTML runs afterwards over the result, so any unsafe markup
-// spliced in from an artifact is stripped there (defense-in-depth). A raster
-// artifact's <img src> is rewritten to a base64 data: URL — gated on
-// sanitize.DataImageRaster so the emitted scheme is one the render-time policy
-// keeps. An SVG or MathML artifact's <img> is replaced outright by the raw
-// <svg>/<math> markup. Unknown or unresolvable references are left untouched.
-// On any tokenizer error the original fragment is returned unchanged.
-func inlineArtifactImages(fragment string, resolve ArtifactResolver) string {
+// inlineImages rewrites internal <img> references so a downloaded document
+// renders without a live server. Each token is re-emitted via the same
+// golang.org/x/net/html tokenizer bluemonday drives; the sanitize pass in
+// RenderToHTML runs afterwards over the result, so any unsafe markup spliced in
+// is stripped there (defense-in-depth). For each <img> it tries, in order:
+// artifact inlining (a raster artifact's src becomes a base64 data: URL, gated
+// on sanitize.DataImageRaster; an SVG/MathML artifact's <img> is replaced by the
+// raw <svg>/<math>), then Lucide icon inlining (the <img> is replaced by the
+// icon's <svg>). Unknown or unresolvable references are left untouched. On any
+// tokenizer error the original fragment is returned unchanged.
+func inlineImages(fragment string, resolve ArtifactResolver) string {
 	z := html.NewTokenizer(strings.NewReader(fragment))
 	var b strings.Builder
 	for {
@@ -249,16 +257,65 @@ func inlineArtifactImages(fragment string, resolve ArtifactResolver) string {
 			b.WriteString(repl)
 			continue
 		}
+		if repl, ok := inlineIconImg(&tok); ok {
+			b.WriteString(repl)
+			continue
+		}
 		b.WriteString(tok.String())
 	}
+}
+
+// iconSrcPattern matches an internal Lucide icon image URL and captures its
+// (kebab-case) name. Like artifactSrcPattern it anchors on the path suffix so it
+// matches root-relative, basepath-prefixed, or absolute references.
+var iconSrcPattern = regexp.MustCompile(`(?:^|/)api/v1/icons/lucide/([a-z0-9]+(?:-[a-z0-9]+)*)$`)
+
+// inlineIconImg replaces an <img> referencing a built-in Lucide icon with that
+// icon's inline <svg>. It returns ("", false) — "emit the token unchanged" — for
+// any non-<img> token, a non-icon src, or an unknown icon name.
+func inlineIconImg(tok *html.Token) (string, bool) {
+	if tok.Type != html.StartTagToken && tok.Type != html.SelfClosingTagToken {
+		return "", false
+	}
+	if tok.Data != "img" {
+		return "", false
+	}
+	for i := range tok.Attr {
+		if !strings.EqualFold(tok.Attr[i].Key, "src") {
+			continue
+		}
+		name, ok := iconName(tok.Attr[i].Val)
+		if !ok {
+			return "", false
+		}
+		// Inline form: no xmlns (the <svg> is already in the SVG namespace here).
+		return icons.GetInline(name)
+	}
+	return "", false
+}
+
+// iconName extracts the icon name from an internal icon image src, or returns
+// ok=false when src is not such a reference. Any query string or fragment is
+// trimmed before matching.
+func iconName(src string) (string, bool) {
+	path := src
+	if i := strings.IndexAny(path, "?#"); i >= 0 {
+		path = path[:i]
+	}
+	m := iconSrcPattern.FindStringSubmatch(path)
+	if m == nil {
+		return "", false
+	}
+	return m[1], true
 }
 
 // inlineArtifactImg inspects one token and, when it is an <img> referencing an
 // internal artifact, returns the markup that should replace it plus true. For a
 // raster artifact within maxInlineImageBytes it mutates tok's src to a data: URL
 // and returns the re-emitted tag; a larger raster artifact is replaced by the
-// brokenImageSVG placeholder. For an SVG/MathML artifact it returns the raw
-// <svg>/<math> content in place of the <img>. It returns ("", false) — meaning
+// brokenImageSVG placeholder. For an SVG/MathML artifact it returns the
+// <svg>/<math> content in place of the <img> (its redundant default xmlns is
+// dropped, since it is now inline). It returns ("", false) — meaning
 // "emit the token unchanged" — for any non-<img> token, a non-artifact src, an
 // unresolved artifact, or an artifact whose type is neither raster nor
 // SVG/MathML.
@@ -295,11 +352,30 @@ func inlineArtifactImg(tok *html.Token, resolve ArtifactResolver) (string, bool)
 		}
 		tok.Attr[srcIdx].Val = "data:" + contentType + ";base64," + base64.StdEncoding.EncodeToString(content)
 		return tok.String(), true
-	case contentType == "image/svg+xml", contentType == "application/mathml+xml":
-		return string(content), true
+	case contentType == "image/svg+xml":
+		// Drop the redundant default namespace: the <svg>/<math> is embedded inline
+		// in HTML here, so the subtree is already in the right namespace.
+		return svgDefaultXmlns.ReplaceAllString(string(content), ""), true
+	case contentType == "application/mathml+xml":
+		return mathmlDefaultXmlns.ReplaceAllString(string(content), ""), true
 	default:
 		return "", false
 	}
+}
+
+// svgDefaultXmlns and mathmlDefaultXmlns match the redundant default namespace
+// declaration (double- or single-quoted) of an SVG resp. MathML root embedded
+// inline in HTML, where the subtree is already in that namespace. Only the
+// *default* xmlns is matched — a prefixed declaration such as xmlns:xlink has ':'
+// after "xmlns", so it is left intact — so stripping removes nothing but the
+// redundant attribute.
+var (
+	svgDefaultXmlns    = defaultXmlnsRe("http://www.w3.org/2000/svg")
+	mathmlDefaultXmlns = defaultXmlnsRe("http://www.w3.org/1998/Math/MathML")
+)
+
+func defaultXmlnsRe(nsURI string) *regexp.Regexp {
+	return regexp.MustCompile(`\s+xmlns=["']` + regexp.QuoteMeta(nsURI) + `["']`)
 }
 
 // artifactSHA extracts the hex SHA-256 digest from an internal artifact image

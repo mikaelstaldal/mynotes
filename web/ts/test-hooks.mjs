@@ -14,6 +14,7 @@ const SPECIFIER_MAP = {
   'markdown-it': new URL(`file://${VENDOR}/markdown-it.js`).href,
   'dompurify': new URL(`file://${VENDOR}/dompurify.js`).href,
   'asciimath': new URL(`file://${VENDOR}/asciimath.js`).href,
+  'lucide-icons': new URL(`file://${VENDOR}/lucide.js`).href,
 };
 
 export async function resolve(specifier, context, nextResolve) {

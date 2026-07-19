@@ -18,6 +18,7 @@ import { LinkPicker } from '../components/LinkPicker.js';
 import { TagLinkPicker } from '../components/TagLinkPicker.js';
 import { TagPicker } from '../components/TagPicker.js';
 import { EmojiPicker } from '../components/EmojiPicker.js';
+import { IconPicker } from '../components/IconPicker.js';
 import { MarkdownHelp } from '../components/MarkdownHelp.js';
 import { ConflictDialog } from '../components/ConflictDialog.js';
 import { saveDraft, loadDraft, clearDraft, type Draft } from '../util/draft.js';
@@ -112,6 +113,7 @@ export function NoteEditor({ slug, initialSlug, initialTitle, onSave }: Props) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [tagLinkPickerOpen, setTagLinkPickerOpen] = useState(false);
   const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
+  const [iconPickerOpen, setIconPickerOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const [headingMenuOpen, setHeadingMenuOpen] = useState(false);
   const [headingLevel, setHeadingLevel] = useState(0);   // heading level of the cursor's line (0 = normal)
@@ -530,6 +532,23 @@ export function NoteEditor({ slug, initialSlug, initialTitle, onSave }: Props) {
     view.dispatch({
       changes: { from, to, insert: emoji },
       selection: EditorSelection.cursor(from + emoji.length),
+    });
+    view.focus();
+  }
+
+  // Inserts a Lucide icon as a Markdown image reference to the server's icon
+  // endpoint (![name](<base>/api/v1/icons/lucide/name)) at the cursor, keeping
+  // note content compact rather than embedding the full SVG. The server serves
+  // the icon as an image/svg+xml asset (see internal/icons).
+  function insertIcon(name: string) {
+    setIconPickerOpen(false);
+    const view = viewRef.current;
+    if (!view) return;
+    const { from, to } = view.state.selection.main;
+    const insert = `![${name}](${base}/api/v1/icons/lucide/${name})`;
+    view.dispatch({
+      changes: { from, to, insert },
+      selection: EditorSelection.cursor(from + insert.length),
     });
     view.focus();
   }
@@ -1008,6 +1027,13 @@ export function NoteEditor({ slug, initialSlug, initialTitle, onSave }: Props) {
               <circle class="fmt-stroke" cx="9" cy="9" r="6"/>
             </svg>
           </button>
+          <button type="button" class="btn-icon" title="Icon" aria-label="Icon" onClick={() => setIconPickerOpen(true)}>
+            <svg viewBox="0 0 18 18">
+              <rect class="fmt-even fmt-stroke" x="2.25" y="2.25" width="13.5" height="13.5" rx="1.5" ry="1.5"/>
+              <circle class="fmt-stroke" cx="6.75" cy="6.75" r="1.5"/>
+              <path class="fmt-even fmt-stroke" d="M15.75,11.25l-2.3145-2.3145a1.5,1.5,0,0,0-2.121,0L4.5,15.75"/>
+            </svg>
+          </button>
           <span class="toolbar-spacer" />
           <button type="button" class="btn-icon" title="Markdown help" aria-label="Markdown help" onClick={() => setHelpOpen(true)}>
             <svg viewBox="0 0 18 18">
@@ -1042,6 +1068,13 @@ export function NoteEditor({ slug, initialSlug, initialTitle, onSave }: Props) {
         <EmojiPicker
           onSelect={insertEmoji}
           onClose={() => setEmojiPickerOpen(false)}
+        />
+      )}
+
+      {iconPickerOpen && (
+        <IconPicker
+          onSelect={insertIcon}
+          onClose={() => setIconPickerOpen(false)}
         />
       )}
 

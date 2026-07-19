@@ -120,6 +120,33 @@ identity exists but is never exposed as the URL key.
   Unicode emoji set (from the vendored `emojibase-data`), browsable by category
   and searchable by name/keyword; selecting one inserts the character at the
   cursor.
+- The editor toolbar has an icon button that opens a picker over the full Lucide
+  icon set (from the vendored `lucide-static`), searchable by name/keyword;
+  selecting one inserts a Markdown image reference to the server's icon endpoint,
+  `![<name>](<base>/api/v1/icons/lucide/<name>)`, at the cursor — keeping note content
+  compact rather than embedding the full SVG. The picker previews each icon inline
+  (theme-aware, `stroke="currentColor"`) via a reusable `Icon` component backed by
+  the vendored Lucide data (`web/static/vendor/lucide.js`, exposing
+  `LUCIDE_ICON_NODES` and `LUCIDE_ICONS`). That bundle is the single embedded copy
+  of the icon geometry: the server (`internal/icons`) reads `LUCIDE_ICON_NODES`
+  from it and reconstructs each icon's SVG at startup, so the set is not embedded
+  twice and the two sides never drift.
+- **`GET /api/v1/icons/{set}/{name}`** serves an icon as an `image/svg+xml`
+  asset (from the `internal/icons` embedded set), so note-embedded
+  `![…](/api/v1/icons/<set>/<name>)` references render. It is declared in `openapi.yaml` 
+  (operation `getIcon`) for clients such as the Android app, but mounted directly on the 
+  mux (like the artifact GET), taking precedence over the ogen `/api/v1/` handler rather than
+  being served through it. It is a static, public, immutable, unauthenticated
+  asset route served under the same locked-down sandbox CSP as artifact SVGs.
+  The served asset carries a fixed neutral-grey stroke (for clients such as the
+  Android app that load it directly). An unknown name returns 404.
+- In the **web UI**, a note-embedded `![…](/api/v1/icons/lucide/<name>)` reference
+  to a known icon is rendered inline as an `<svg stroke="currentColor">` (built from
+  the vendored `LUCIDE_ICON_NODES`, mirroring the `Icon` component and the server's
+  HTML export) rather than as an `<img>`, so the icon inherits the note's foreground
+  colour and follows the light/dark toggle. An unknown name falls back to an `<img>`
+  pointing at the icon endpoint (which 404s). The inline `<svg>` passes through the
+  same DOMPurify render-time gate as all other note markup.
 - Both the read view and the editor's live preview render the same way and must
   be safe against XSS (see Security).
 - Content is bounded at 1,000,000 characters; empty content is valid.
@@ -226,7 +253,7 @@ The API manages notes keyed by slug. Operations:
   (`{ "notes": [ … ] }`). A note with no headings is a validation error. The
   source note is left unchanged.
 - **Download Markdown** — `GET /notes/{slug}/download-markdown` returns the raw Markdown as a `.md` file (filename derived from slug).
-- **Download HTML** — `GET /notes/{slug}/download-html` converts the note to HTML on the server and returns a complete HTML document as a `.html` file. Internal artifact image references (`![alt](/api/v1/artifacts/{sha256})`) are inlined so the downloaded document renders standalone, without a live server: bitmap artifacts (PNG, JPEG, GIF, WebP) up to 16 MiB become base64 `data:` URLs, while SVG and MathML artifacts are spliced in as inline `<svg>`/`<math>` elements (a `data:` URL for SVG is disallowed by the sanitize policy). A bitmap artifact larger than 16 MiB is replaced by an inline broken-image icon (SVG) rather than embedded, to keep exported documents from ballooning. The spliced markup passes through the same render-time sanitization as the rest of the document. Unknown or unresolvable references are left as-is. AsciiMath (`$…$` / `$$…$$`) is converted to MathML by the server's Go port of `asciimath2ml` (`internal/asciimath`), so the exported document contains the same math markup as the on-screen view. The **web UI's "Download HTML" button** is a plain link to this endpoint (like Download Markdown).
+- **Download HTML** — `GET /notes/{slug}/download-html` converts the note to HTML on the server and returns a complete HTML document as a `.html` file. Internal artifact image references (`![alt](/api/v1/artifacts/{sha256})`) are inlined so the downloaded document renders standalone, without a live server: bitmap artifacts (PNG, JPEG, GIF, WebP) up to 16 MiB become base64 `data:` URLs, while SVG and MathML artifacts are spliced in as inline `<svg>`/`<math>` elements (a `data:` URL for SVG is disallowed by the sanitize policy). A bitmap artifact larger than 16 MiB is replaced by an inline broken-image icon (SVG) rather than embedded, to keep exported documents from ballooning. Lucide icon references (`![name](/api/v1/icons/lucide/{name})`) are likewise inlined as the icon's `<svg>` (from the `internal/icons` embedded set). The spliced markup passes through the same render-time sanitization as the rest of the document. Unknown or unresolvable references are left as-is. AsciiMath (`$…$` / `$$…$$`) is converted to MathML by the server's Go port of `asciimath2ml` (`internal/asciimath`), so the exported document contains the same math markup as the on-screen view. The **web UI's "Download HTML" button** is a plain link to this endpoint (like Download Markdown).
 - **Import HTML** — `POST /import-html` accepts a `text/html` request body
   and converts it to Markdown server-side. The title is taken from the HTML
   `<title>` element; if absent, the plain text of the first `h1`–`h6` element is

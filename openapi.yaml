@@ -494,6 +494,51 @@ paths:
         default:
           $ref: "#/components/responses/Error"
 
+  /icons/{set}/{name}:
+    parameters:
+      - name: set
+        in: path
+        required: true
+        schema:
+          type: string
+          maxLength: 64
+          pattern: "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          maxLength: 64
+          pattern: "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+    get:
+      operationId: getIcon
+      summary: Get an icon as SVG
+      description: >
+        Returns the named icon from the given set as an `image/svg+xml` document. 
+        Icons are fixed, built-in sets; note content references them as Markdown images
+        `![<name>](/api/v1/icons/<set>/<name>)`. The response is a static, public, 
+        immutable asset served under a locked-down sandbox Content-Security-Policy. 
+        The icon has a fixed stroke colour (it is loaded via `<img>`, so it cannot 
+        inherit the client's theme). Unknown sets or names return 404.
+        Currently only the `lucide` set is available (from the vendored `lucide-static`, 
+        see https://lucide.dev/), but others might be added in future.
+      responses:
+        "200":
+          description: The icon SVG document.
+          content:
+            image/svg+xml:
+              schema:
+                type: string
+                format: binary
+        "404":
+          description: Icon not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        default:
+          $ref: "#/components/responses/Error"
+
   /notes/{slug}/download-markdown:
     parameters:
       - name: slug

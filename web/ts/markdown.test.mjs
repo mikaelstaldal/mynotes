@@ -159,6 +159,40 @@ test('mailto: link survives', () => {
   assertPresent(out, 'mailto:user@example.com', 'mailto href');
 });
 
+// ---------------------------------------------------------------------------
+// Built-in Lucide icons — rendered inline as <svg> so they inherit the note's
+// text colour (stroke="currentColor"), instead of a grey <img>.
+// ---------------------------------------------------------------------------
+
+test('a Lucide icon image renders inline as <svg stroke="currentColor">', () => {
+  const out = renderNote('![search](/api/v1/icons/lucide/search)');
+  assertPresent(out, '<svg', 'inline svg emitted');
+  assertPresent(out, 'lucide-search', 'icon class kept');
+  assertPresent(out, 'currentColor', 'stroke inherits foreground');
+  assertAbsent(out, '<img', 'no img element');
+  assertAbsent(out, '/api/v1/icons/lucide/search', 'no icon URL left');
+});
+
+test('a basepath-prefixed / absolute icon src is still inlined', () => {
+  const rel = renderNote('![x](/notes/api/v1/icons/lucide/star)');
+  assertPresent(rel, 'lucide-star', 'basepath-prefixed src inlined');
+  const abs = renderNote('![x](https://host.example/api/v1/icons/lucide/star)');
+  assertPresent(abs, 'lucide-star', 'absolute src inlined');
+});
+
+test('an unknown icon name falls back to an <img>', () => {
+  const out = renderNote('![x](/api/v1/icons/lucide/no-such-icon)');
+  assertPresent(out, '<img', 'unknown icon stays an img');
+  assertPresent(out, '/api/v1/icons/lucide/no-such-icon', 'src preserved');
+  assertAbsent(out, '<svg', 'no svg for unknown icon');
+});
+
+test('an ordinary image is untouched (not treated as an icon)', () => {
+  const out = renderNote('![pic](https://example.com/photo.png)');
+  assertPresent(out, '<img', 'ordinary image stays an img');
+  assertPresent(out, 'src="https://example.com/photo.png"', 'src preserved');
+});
+
 test('in-app /notes/slug relative link survives', () => {
   const out = renderNote('[note](/notes/my-note)');
   assertPresent(out, 'href="/notes/my-note"', 'relative href');

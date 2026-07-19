@@ -132,6 +132,33 @@ func TestRenderToHTML_InlinesSVGArtifact(t *testing.T) {
 	if strings.Contains(doc, "data:") {
 		t.Errorf("SVG must not be inlined as a data: URL, got:\n%s", doc)
 	}
+	// The redundant default xmlns is dropped when the SVG is inlined into HTML.
+	if strings.Contains(doc, "xmlns") {
+		t.Errorf("inlined SVG artifact should not carry a redundant xmlns, got:\n%s", doc)
+	}
+}
+
+// The default namespace xmlns is redundant inline and is stripped, but a
+// prefixed namespace declaration (xmlns:xlink) is meaningful and must be left
+// intact — for both the SVG and MathML roots.
+func TestDefaultXmlnsStripPreservesPrefixDecls(t *testing.T) {
+	svg := `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="10"><rect/></svg>`
+	out := svgDefaultXmlns.ReplaceAllString(svg, "")
+	if strings.Contains(out, `xmlns="http://www.w3.org/2000/svg"`) {
+		t.Errorf("default SVG xmlns should be stripped, got: %s", out)
+	}
+	if !strings.Contains(out, `xmlns:xlink="http://www.w3.org/1999/xlink"`) {
+		t.Errorf("prefixed xmlns:xlink declaration must be preserved, got: %s", out)
+	}
+
+	math := `<math xmlns="http://www.w3.org/1998/Math/MathML" xmlns:foo="urn:x"><mi>x</mi></math>`
+	out = mathmlDefaultXmlns.ReplaceAllString(math, "")
+	if strings.Contains(out, `xmlns="http://www.w3.org/1998/Math/MathML"`) {
+		t.Errorf("default MathML xmlns should be stripped, got: %s", out)
+	}
+	if !strings.Contains(out, `xmlns:foo="urn:x"`) {
+		t.Errorf("prefixed xmlns:foo declaration must be preserved, got: %s", out)
+	}
 }
 
 func TestRenderToHTML_InlinesMathMLArtifact(t *testing.T) {
@@ -148,6 +175,51 @@ func TestRenderToHTML_InlinesMathMLArtifact(t *testing.T) {
 	}
 	if strings.Contains(doc, "<img") {
 		t.Errorf("the <img> reference should be replaced, got:\n%s", doc)
+	}
+	// The redundant default xmlns is dropped when the MathML is inlined into HTML.
+	if strings.Contains(doc, "xmlns") {
+		t.Errorf("inlined MathML artifact should not carry a redundant xmlns, got:\n%s", doc)
+	}
+}
+
+// noArtifacts is a non-nil resolver that resolves nothing — it enables inline
+// mode without providing any artifacts, for exercising the icon path alone.
+func noArtifacts(string) ([]byte, string, bool) { return nil, "", false }
+
+func TestRenderToHTML_InlinesIcon(t *testing.T) {
+	doc, err := RenderToHTML("T", "![search](/api/v1/icons/lucide/search)", noArtifacts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(doc, "<svg") || !strings.Contains(doc, "lucide-search") {
+		t.Errorf("icon should be spliced in as inline <svg>, got:\n%s", doc)
+	}
+	if strings.Contains(doc, "<img") || strings.Contains(doc, "/api/v1/icons/lucide/search") {
+		t.Errorf("the <img> reference should be replaced, got:\n%s", doc)
+	}
+	// xmlns is redundant on an inline <svg> in HTML; the export strips it.
+	if strings.Contains(doc, "xmlns") {
+		t.Errorf("inlined icon should not carry an xmlns declaration, got:\n%s", doc)
+	}
+}
+
+func TestRenderToHTML_UnknownIconLeftAsImg(t *testing.T) {
+	doc, err := RenderToHTML("T", "![x](/api/v1/icons/lucide/no-such-icon)", noArtifacts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(doc, "/api/v1/icons/lucide/no-such-icon") {
+		t.Errorf("an unknown icon reference should be left untouched, got:\n%s", doc)
+	}
+}
+
+func TestRenderToHTML_NilResolverSkipsIcon(t *testing.T) {
+	doc, err := RenderToHTML("T", "![search](/api/v1/icons/lucide/search)", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(doc, "/api/v1/icons/lucide/search") {
+		t.Errorf("nil resolver should leave icon references untouched, got:\n%s", doc)
 	}
 }
 
@@ -248,6 +320,10 @@ func TestValidateMarkdownStructure_Accepts(t *testing.T) {
 		"svg filter":       "<svg><defs><filter id=\"f\"><feGaussianBlur stdDeviation=\"3\"/></filter></defs><rect filter=\"url(#f)\" width=\"50\" height=\"50\"/></svg>",
 		"svg image https":  "<svg><image href=\"https://example.com/logo.png\" width=\"50\" height=\"50\"/></svg>",
 		"svg textpath":     "<svg><defs><path id=\"p\" d=\"M0 0 L100 0\"/></defs><text><textPath href=\"#p\">text</textPath></text></svg>",
+		// A Lucide icon as inserted by the editor's icon picker: a Markdown image
+		// pointing at the server's /api/v1/icons/lucide/{name} endpoint (relative
+		// URL, no embedded HTML), so it passes the structural gate like any image.
+		"lucide icon image": "![search](/api/v1/icons/lucide/search)",
 		// MathML
 		"mathml fraction":    "<math><mfrac><mn>1</mn><mn>2</mn></mfrac></math>",
 		"mathml sqrt":        "<math display=\"block\"><msqrt><mn>2</mn></msqrt></math>",
