@@ -9,29 +9,46 @@ import "time"
 // the internal SQLite primary key; the API addresses notes by Slug and never
 // exposes ID. Tags is populated by the repository (batched, never lazy-loaded
 // per row) and is []Tag{} rather than nil when the note has no tags.
+// IncomingLinks/OutgoingLinks are the note's wikilink relationships, likewise
+// batched by the repository and never nil (see NoteLink).
 type Note struct {
-	ID        int64
-	Slug      string
-	Title     string
-	Content   string
-	CreatedAt time.Time
-	UpdatedAt time.Time
-	Version   int
-	Tags      []Tag
+	ID            int64
+	Slug          string
+	Title         string
+	Content       string
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
+	Version       int
+	Tags          []Tag
+	IncomingLinks []NoteLink
+	OutgoingLinks []NoteLink
 }
 
 // NoteSummary is the list/search projection of a note: the addressable Slug, the
 // display Title and UpdatedAt, plus a repository-built Excerpt (a plain prefix
 // when browsing, an FTS snippet when searching). Excerpt is "" when empty, never
-// absent. Tags mirrors Note.Tags (never nil).
+// absent. Tags mirrors Note.Tags (never nil); IncomingLinks/OutgoingLinks mirror
+// Note's link fields (never nil).
 type NoteSummary struct {
-	Slug      string
-	Title     string
-	Excerpt   string
-	CreatedAt time.Time
-	UpdatedAt time.Time
-	Version   int
-	Tags      []Tag
+	Slug          string
+	Title         string
+	Excerpt       string
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
+	Version       int
+	Tags          []Tag
+	IncomingLinks []NoteLink
+	OutgoingLinks []NoteLink
+}
+
+// NoteLink is one edge of the note-to-note wikilink graph: a reference to
+// another note by its addressable Slug, paired with that note's current Title
+// (resolved at read time, so it always reflects the target's latest title).
+// Only links whose target note exists are represented — dangling wikilinks are
+// omitted. Tag links ([[#slug]]) are not part of this graph.
+type NoteLink struct {
+	Slug  string
+	Title string
 }
 
 // Tag is a label attachable to notes many-to-many. Slug is the addressable,

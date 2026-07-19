@@ -110,6 +110,16 @@ export function NoteView({ slug, onDelete }: Props) {
         />
       </div>
       <div class="note-content" dangerouslySetInnerHTML={{ __html: renderedContent }} />
+      {note.incoming_links.length > 0 && (
+        <section class="note-backlinks">
+          <h2>Linked from</h2>
+          <ul>
+            {note.incoming_links.map(l => (
+              <li key={l.slug}><a class="link" href={`${base}/notes/${l.slug}`}>{l.title}</a></li>
+            ))}
+          </ul>
+        </section>
+      )}
     </div>
   );
 }

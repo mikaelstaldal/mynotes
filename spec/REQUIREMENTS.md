@@ -100,6 +100,22 @@ identity exists but is never exposed as the URL key.
   MathML. The editor offers toolbar buttons to insert a note link or a tag link;
   each opens a picker that autocompletes by case-insensitive prefix match on the
   note title / tag slug.
+- **Link index / backlinks:** note wikilinks (not tag links) are additionally
+  indexed server-side. Each note's content is parsed for `[[slug]]` note links
+  whenever the note is created or updated, and the resulting edges are stored in
+  a `note_links` table (source note → target slug). Extraction matches the
+  renderer: a `[[slug]]` inside a code span or code block is not a link and is
+  not indexed. The `Note` and `NoteSummary` API responses expose the graph as
+  `outgoing_links` (notes this note links to, resolved to existing notes only —
+  dangling links to non-existent notes are omitted) and `incoming_links`
+  (backlinks — notes that link to this note); each entry is a `{slug, title}`
+  pair. Link titles and existence are resolved at read time, so creating a
+  previously-missing target, renaming, or deleting a note updates the links of
+  every note that references it without re-indexing. Existing notes are indexed
+  once by a one-time backfill when the database is upgraded to the schema
+  version that introduces `note_links`. The web note view renders `incoming_links`
+  as a "Linked from" backlinks section below the content (outgoing links already
+  appear inline as rendered wikilinks).
 - The editor toolbar has an emoji button that opens a picker over the full
   Unicode emoji set (from the vendored `emojibase-data`), browsable by category
   and searchable by name/keyword; selecting one inserts the character at the

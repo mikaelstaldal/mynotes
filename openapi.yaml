@@ -100,6 +100,16 @@ info:
     render-time convention and are **not** expanded by the
     `GET /notes/{slug}/export` HTML endpoint, which targets standalone viewing
     outside the app.
+
+    Note wikilinks (not tag links) are additionally **indexed** server-side:
+    each note carries `outgoing_links` (the notes it links to, resolved to
+    existing notes only) and `incoming_links` (backlinks — notes that link to
+    it), both on `Note` and `NoteSummary` (see the `NoteLink` schema). The index
+    is refreshed whenever a note's content is written and reflects target titles
+    and existence at read time, so creating, renaming, or deleting a target note
+    updates the links of every note that references it without a re-index.
+    Extraction matches the render: a `[[slug]]` inside a code span or code block
+    is not a link and is not indexed.
   version: 1.0.0
 servers:
   - url: http://localhost:8080/api/v1
@@ -620,7 +630,7 @@ components:
   schemas:
     Note:
       type: object
-      required: [slug, title, content, created_at, updated_at, version, tags]
+      required: [slug, title, content, created_at, updated_at, version, tags, incoming_links, outgoing_links]
       properties:
         slug:
           type: string
@@ -655,10 +665,25 @@ components:
           items:
             $ref: "#/components/schemas/Tag"
           description: Tags attached to this note; empty array when none, never absent.
+        incoming_links:
+          type: array
+          items:
+            $ref: "#/components/schemas/NoteLink"
+          description: >
+            Backlinks: other notes whose content wikilinks to this note. Empty
+            array when none, never absent. See NoteLink.
+        outgoing_links:
+          type: array
+          items:
+            $ref: "#/components/schemas/NoteLink"
+          description: >
+            Notes this note's content wikilinks to, resolved to existing notes
+            only (dangling links to non-existent notes are omitted). Empty array
+            when none, never absent. See NoteLink.
 
     NoteSummary:
       type: object
-      required: [slug, title, created_at, updated_at, excerpt, version, tags]
+      required: [slug, title, created_at, updated_at, excerpt, version, tags, incoming_links, outgoing_links]
       properties:
         slug:
           type: string
@@ -685,6 +710,38 @@ components:
           items:
             $ref: "#/components/schemas/Tag"
           description: Tags attached to this note; empty array when none, never absent.
+        incoming_links:
+          type: array
+          items:
+            $ref: "#/components/schemas/NoteLink"
+          description: >
+            Backlinks: other notes whose content wikilinks to this note. Empty
+            array when none, never absent. See NoteLink.
+        outgoing_links:
+          type: array
+          items:
+            $ref: "#/components/schemas/NoteLink"
+          description: >
+            Notes this note's content wikilinks to, resolved to existing notes
+            only (dangling links to non-existent notes are omitted). Empty array
+            when none, never absent. See NoteLink.
+
+    NoteLink:
+      type: object
+      required: [slug, title]
+      description: >
+        A reference to another note in the wikilink graph: the target note's
+        addressable slug and its current title. Only links whose target note
+        exists are represented; tag links ([[#slug]]) are not part of this graph.
+      properties:
+        slug:
+          type: string
+          maxLength: 100
+          pattern: "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
 
     NoteList:
       type: object

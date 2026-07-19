@@ -1,7 +1,9 @@
 package repository
 
 import (
+	"context"
 	"database/sql"
+	"fmt"
 
 	"github.com/mikaelstaldal/go-server-common/sqlite"
 )
@@ -16,13 +18,48 @@ var migrations = [][]string{
 	schemaV3,
 	schemaV4,
 	schemaV5,
+	schemaV6,
 }
+
+// linksSchemaVersion is the schema version that introduces the note_links table
+// (schemaV6). A database whose user_version is below this when OpenDB runs has
+// never had its wikilinks indexed, so OpenDB performs the one-time backfill.
+const linksSchemaVersion = 6
 
 // OpenDB opens (creating if absent) the SQLite database at path, applies the
 // requested PRAGMAs, and runs any outstanding schema migrations. extraPragmas
 // are passed verbatim as `_pragma=` query values (e.g. "synchronous=NORMAL").
+//
+// When the database predates linksSchemaVersion, OpenDB additionally runs a
+// one-time backfill of the note_links index (see backfillNoteLinks): the
+// note_links schema is created by an SQL migration, but populating it requires
+// parsing note content for wikilinks, which cannot be expressed in SQL. The
+// pre-migration user_version is read before migrating (via an Open with no
+// migrations applied, which still opens with the correct PRAGMAs) so the
+// backfill runs exactly once, on the upgrade that first creates the table.
 func OpenDB(path string, busyTimeout int, extraPragmas ...string) (*sql.DB, error) {
-	return sqlite.Open(path, busyTimeout, migrations, extraPragmas...)
+	// Open without applying migrations so the pre-migration user_version is
+	// observable; sqlite.Open still configures PRAGMAs and sets WAL on a fresh DB.
+	db, err := sqlite.Open(path, busyTimeout, nil, extraPragmas...)
+	if err != nil {
+		return nil, err
+	}
+	var prevVersion int
+	if err := db.QueryRow("PRAGMA user_version").Scan(&prevVersion); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("read user_version: %w", err)
+	}
+	if err := sqlite.Migrate(db, migrations); err != nil {
+		_ = db.Close()
+		return nil, err
+	}
+	if prevVersion < linksSchemaVersion {
+		if err := backfillNoteLinks(context.Background(), db); err != nil {
+			_ = db.Close()
+			return nil, fmt.Errorf("backfill note links: %w", err)
+		}
+	}
+	return db, nil
 }
 
 // InitSchema brings the database up to the latest schema version, applying any
@@ -35,6 +72,28 @@ func InitSchema(db *sql.DB) error {
 // CreateDataDir ensures the directory holding the database file exists.
 func CreateDataDir(dbPath string) error {
 	return sqlite.CreateDataDir(dbPath)
+}
+
+// schemaV6 adds the note_links index: one row per outgoing wikilink from a note
+// to another note's slug. target_slug is stored as text (not a note id) so a
+// link to a not-yet-created note is retained and resolves automatically once
+// that note exists; deleting the source note cascades its rows away, and a link
+// pointing at a deleted note simply becomes dangling (dropped by the read-time
+// JOIN). Mirrors the note_tags precedent (schemaV4). Existing notes are indexed
+// once by backfillNoteLinks (see OpenDB) since populating this needs content
+// parsing that SQL cannot express.
+var schemaV6 = []string{
+	`CREATE TABLE IF NOT EXISTS note_links (
+		source_note_id INTEGER NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
+		target_slug    TEXT NOT NULL,
+		PRIMARY KEY (source_note_id, target_slug)
+	)`,
+
+	// The composite PK (source_note_id, target_slug) already indexes the
+	// outgoing direction ("links from note N"). The backlink direction ("notes
+	// linking to slug S") needs its own index since target_slug is not a PK
+	// prefix.
+	`CREATE INDEX IF NOT EXISTS idx_note_links_target_slug ON note_links(target_slug)`,
 }
 
 // schemaV5 drops the tags.name column: a tag is now identified solely by its

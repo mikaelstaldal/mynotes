@@ -87,6 +87,24 @@ func (r *NoteRepository) GetBySlug(ctx context.Context, slug string) (model.Note
 	if n.Tags == nil {
 		n.Tags = []model.Tag{}
 	}
+
+	outgoing, err := outgoingLinksForNoteIDs(ctx, r.db, []int64{n.ID})
+	if err != nil {
+		return model.Note{}, err
+	}
+	n.OutgoingLinks = outgoing[n.ID]
+	if n.OutgoingLinks == nil {
+		n.OutgoingLinks = []model.NoteLink{}
+	}
+
+	incoming, err := incomingLinksForSlugs(ctx, r.db, []string{n.Slug})
+	if err != nil {
+		return model.Note{}, err
+	}
+	n.IncomingLinks = incoming[n.Slug]
+	if n.IncomingLinks == nil {
+		n.IncomingLinks = []model.NoteLink{}
+	}
 	return n, nil
 }
 
@@ -187,6 +205,70 @@ func setNoteTags(ctx context.Context, tx *sql.Tx, noteID int64, tagIDs []int64) 
 	return nil
 }
 
+// setNoteLinks fully replaces a note's outgoing wikilinks (delete-then-insert),
+// keyed by target slug. Must be called inside a write transaction alongside the
+// note write it belongs to, so the index stays consistent with content. targets
+// is the extractNoteLinks output for the note's current content; an empty slice
+// clears the note's links.
+func setNoteLinks(ctx context.Context, tx *sql.Tx, noteID int64, targets []string) error {
+	if _, err := tx.ExecContext(ctx, `DELETE FROM note_links WHERE source_note_id = ?`, noteID); err != nil {
+		return err
+	}
+	for _, target := range targets {
+		if _, err := tx.ExecContext(ctx,
+			`INSERT INTO note_links (source_note_id, target_slug) VALUES (?, ?)`, noteID, target); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// backfillNoteLinks indexes the wikilinks of every existing note in one pass.
+// It is the one-time migration companion for schemaV6 (see OpenDB): the table is
+// created by SQL, but populating it needs content parsing SQL cannot do. It is
+// idempotent — setNoteLinks replaces each note's rows — so re-running it is
+// safe. Runs each note's write in its own transaction to keep memory flat over a
+// large database.
+func backfillNoteLinks(ctx context.Context, db *sql.DB) error {
+	rows, err := db.QueryContext(ctx, `SELECT id, slug, content FROM notes`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	type noteContent struct {
+		id      int64
+		slug    string
+		content string
+	}
+	var notes []noteContent
+	for rows.Next() {
+		var n noteContent
+		if err := rows.Scan(&n.id, &n.slug, &n.content); err != nil {
+			return err
+		}
+		notes = append(notes, n)
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+
+	for _, n := range notes {
+		tx, err := db.BeginTx(ctx, nil)
+		if err != nil {
+			return err
+		}
+		if err := setNoteLinks(ctx, tx, n.id, extractNoteLinks(n.content, n.slug)); err != nil {
+			_ = tx.Rollback()
+			return err
+		}
+		if err := tx.Commit(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // Create inserts a row with created_at/updated_at set to now and no tags, and
 // returns the stored note. A duplicate slug surfaces as ErrConflict.
 func (r *NoteRepository) Create(ctx context.Context, slug, title, content string) (model.Note, error) {
@@ -223,14 +305,17 @@ func (r *NoteRepository) CreateWithTimes(ctx context.Context, slug, title, conte
 		return model.Note{}, err
 	}
 
+	id, err := res.LastInsertId()
+	if err != nil {
+		return model.Note{}, err
+	}
 	if len(tagIDs) > 0 {
-		id, err := res.LastInsertId()
-		if err != nil {
-			return model.Note{}, err
-		}
 		if err := setNoteTags(ctx, tx, id, tagIDs); err != nil {
 			return model.Note{}, err
 		}
+	}
+	if err := setNoteLinks(ctx, tx, id, extractNoteLinks(content, slug)); err != nil {
+		return model.Note{}, err
 	}
 
 	if err := tx.Commit(); err != nil {
@@ -292,14 +377,25 @@ func (r *NoteRepository) Update(ctx context.Context, slug string, title, content
 		}
 	}
 
-	if err := tx.Commit(); err != nil {
-		return model.Note{}, err
-	}
-
 	finalSlug := slug
 	if newSlug != nil {
 		finalSlug = *newSlug
 	}
+
+	// Re-index outgoing links only when content changed (content != nil). A
+	// title-only or tag-only edit leaves the note's own links untouched; the
+	// titles other notes see for this note are resolved by JOIN at read time, so
+	// no re-index is needed there either.
+	if content != nil {
+		if err := setNoteLinks(ctx, tx, existingID, extractNoteLinks(*content, finalSlug)); err != nil {
+			return model.Note{}, err
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return model.Note{}, err
+	}
+
 	return r.GetBySlug(ctx, finalSlug)
 }
 
@@ -383,6 +479,114 @@ func attachTags(ctx context.Context, db *sql.DB, notes []model.NoteSummary, ids 
 		notes[i].Tags = byID[id]
 		if notes[i].Tags == nil {
 			notes[i].Tags = []model.Tag{}
+		}
+	}
+	return nil
+}
+
+// outgoingLinksForNoteIDs returns each given note's outgoing links — the notes
+// it wikilinks to — batched into one query. Only links whose target note exists
+// are returned (the JOIN drops dangling targets), each carrying the target's
+// current title. A note with no resolvable outgoing links has no map entry.
+func outgoingLinksForNoteIDs(ctx context.Context, q queryer, ids []int64) (map[int64][]model.NoteLink, error) {
+	if len(ids) == 0 {
+		return map[int64][]model.NoteLink{}, nil
+	}
+	placeholders := make([]string, len(ids))
+	args := make([]any, len(ids))
+	for i, id := range ids {
+		placeholders[i] = "?"
+		args[i] = id
+	}
+	rows, err := q.QueryContext(ctx, `
+		SELECT nl.source_note_id, n.slug, n.title
+		FROM note_links nl
+		JOIN notes n ON n.slug = nl.target_slug
+		WHERE nl.source_note_id IN (`+strings.Join(placeholders, ",")+`)
+		ORDER BY nl.source_note_id, n.title COLLATE NOCASE`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := make(map[int64][]model.NoteLink)
+	for rows.Next() {
+		var (
+			sourceID int64
+			l        model.NoteLink
+		)
+		if err := rows.Scan(&sourceID, &l.Slug, &l.Title); err != nil {
+			return nil, err
+		}
+		out[sourceID] = append(out[sourceID], l)
+	}
+	return out, rows.Err()
+}
+
+// incomingLinksForSlugs returns each given note's incoming links (backlinks) —
+// the notes that wikilink to it — keyed by the linked-to slug, batched into one
+// query. The source note always exists, so every backlink carries a title. A
+// slug with no backlinks has no map entry.
+func incomingLinksForSlugs(ctx context.Context, q queryer, slugs []string) (map[string][]model.NoteLink, error) {
+	if len(slugs) == 0 {
+		return map[string][]model.NoteLink{}, nil
+	}
+	placeholders := make([]string, len(slugs))
+	args := make([]any, len(slugs))
+	for i, slug := range slugs {
+		placeholders[i] = "?"
+		args[i] = slug
+	}
+	rows, err := q.QueryContext(ctx, `
+		SELECT nl.target_slug, n.slug, n.title
+		FROM note_links nl
+		JOIN notes n ON n.id = nl.source_note_id
+		WHERE nl.target_slug IN (`+strings.Join(placeholders, ",")+`)
+		ORDER BY nl.target_slug, n.title COLLATE NOCASE`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := make(map[string][]model.NoteLink)
+	for rows.Next() {
+		var (
+			target string
+			l      model.NoteLink
+		)
+		if err := rows.Scan(&target, &l.Slug, &l.Title); err != nil {
+			return nil, err
+		}
+		out[target] = append(out[target], l)
+	}
+	return out, rows.Err()
+}
+
+// attachLinks batches one outgoing lookup (by note id) and one incoming lookup
+// (by slug) for the whole page — never one query per row — and assigns each
+// summary's OutgoingLinks/IncomingLinks, defaulting to an empty (non-nil) slice.
+// ids is aligned with notes (same order).
+func attachLinks(ctx context.Context, db *sql.DB, notes []model.NoteSummary, ids []int64) error {
+	slugs := make([]string, len(notes))
+	for i := range notes {
+		slugs[i] = notes[i].Slug
+	}
+	outgoing, err := outgoingLinksForNoteIDs(ctx, db, ids)
+	if err != nil {
+		return err
+	}
+	incoming, err := incomingLinksForSlugs(ctx, db, slugs)
+	if err != nil {
+		return err
+	}
+	for i := range notes {
+		notes[i].OutgoingLinks = outgoing[ids[i]]
+		if notes[i].OutgoingLinks == nil {
+			notes[i].OutgoingLinks = []model.NoteLink{}
+		}
+		notes[i].IncomingLinks = incoming[notes[i].Slug]
+		if notes[i].IncomingLinks == nil {
+			notes[i].IncomingLinks = []model.NoteLink{}
 		}
 	}
 	return nil
@@ -502,6 +706,9 @@ func (r *NoteRepository) querySummaries(ctx context.Context, countQuery string, 
 	if err := attachTags(ctx, r.db, notes, ids); err != nil {
 		return nil, 0, err
 	}
+	if err := attachLinks(ctx, r.db, notes, ids); err != nil {
+		return nil, 0, err
+	}
 	return notes, total, nil
 }
 
@@ -592,6 +799,9 @@ func (r *NoteRepository) search(ctx context.Context, q, tagSlug string, limit, o
 		return nil, 0, err
 	}
 	if err := attachTags(ctx, r.db, notes, ids); err != nil {
+		return nil, 0, err
+	}
+	if err := attachLinks(ctx, r.db, notes, ids); err != nil {
 		return nil, 0, err
 	}
 	return notes, total, nil

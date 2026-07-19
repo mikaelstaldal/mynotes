@@ -41,27 +41,43 @@ func toAPITags(tags []model.Tag) []api.Tag {
 	return out
 }
 
+func toAPINoteLink(l model.NoteLink) api.NoteLink {
+	return api.NoteLink{Slug: l.Slug, Title: l.Title}
+}
+
+func toAPINoteLinks(links []model.NoteLink) []api.NoteLink {
+	out := make([]api.NoteLink, len(links))
+	for i, l := range links {
+		out[i] = toAPINoteLink(l)
+	}
+	return out
+}
+
 func toAPI(n model.Note) api.Note {
 	return api.Note{
-		Slug:      n.Slug,
-		Title:     n.Title,
-		Content:   n.Content,
-		CreatedAt: n.CreatedAt,
-		UpdatedAt: n.UpdatedAt,
-		Version:   n.Version,
-		Tags:      toAPITags(n.Tags),
+		Slug:          n.Slug,
+		Title:         n.Title,
+		Content:       n.Content,
+		CreatedAt:     n.CreatedAt,
+		UpdatedAt:     n.UpdatedAt,
+		Version:       n.Version,
+		Tags:          toAPITags(n.Tags),
+		IncomingLinks: toAPINoteLinks(n.IncomingLinks),
+		OutgoingLinks: toAPINoteLinks(n.OutgoingLinks),
 	}
 }
 
 func toAPISummary(n model.NoteSummary) api.NoteSummary {
 	return api.NoteSummary{
-		Slug:      n.Slug,
-		Title:     n.Title,
-		Excerpt:   n.Excerpt,
-		CreatedAt: n.CreatedAt,
-		UpdatedAt: n.UpdatedAt,
-		Version:   n.Version,
-		Tags:      toAPITags(n.Tags),
+		Slug:          n.Slug,
+		Title:         n.Title,
+		Excerpt:       n.Excerpt,
+		CreatedAt:     n.CreatedAt,
+		UpdatedAt:     n.UpdatedAt,
+		Version:       n.Version,
+		Tags:          toAPITags(n.Tags),
+		IncomingLinks: toAPINoteLinks(n.IncomingLinks),
+		OutgoingLinks: toAPINoteLinks(n.OutgoingLinks),
 	}
 }
 

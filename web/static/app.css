@@ -204,6 +204,25 @@ mark { background: #fef08a; color: var(--fg); border-radius: 2px; padding: 0 1px
 
 .note-view { display: flex; flex-direction: column; gap: 0.8rem; }
 
+.note-backlinks {
+  max-width: 65ch;
+  margin-top: 0.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+}
+
+.note-backlinks h2 {
+  margin: 0 0 0.5rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.note-backlinks ul { list-style: none; margin: 0; padding: 0; }
+.note-backlinks li + li { margin-top: 0.3rem; }
+
 .note-header {
   display: flex;
   align-items: flex-start;
