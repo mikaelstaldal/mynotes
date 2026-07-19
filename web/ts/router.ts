@@ -52,8 +52,17 @@ export function setNavigationGuard(fn: NavigationGuard | null): void {
 // originated) and can be read back via history.state.
 export function navigate(path: string, state: unknown = null): void {
   if (guard && !guard()) return;
-  history.pushState(state, '', base + path);
-  // pushState alone does not fire popstate; dispatch one so listeners update.
+  // Navigating to the path we're already on replaces the current history entry
+  // rather than stacking a duplicate. This matters when a note created in place
+  // (after following a link to a non-existent note) is saved: the editor and the
+  // resulting note view share the same URL, so a push would leave two identical
+  // entries and require two back-button presses to leave.
+  if (path === currentPath()) {
+    history.replaceState(state, '', base + path);
+  } else {
+    history.pushState(state, '', base + path);
+  }
+  // push/replaceState alone does not fire popstate; dispatch one so listeners update.
   window.dispatchEvent(new PopStateEvent('popstate', { state }));
 }
 
@@ -79,7 +88,11 @@ export function onRouteChange(cb: (route: Route) => void): () => void {
     // href may already carry the base prefix (e.g. from ${base}/notes/slug in
     // templates); strip it before calling navigate, which re-adds it.
     const localPath = base && href.startsWith(base) ? href.slice(base.length) : href;
-    navigate(localPath);
+    // Record where this navigation started so that, if it lands on a
+    // non-existent note, the new-note editor's Cancel can return to the
+    // originating note (e.g. a wiki link to a note that doesn't exist yet)
+    // instead of falling back to the main page.
+    navigate(localPath, { returnTo: currentPath() });
   };
   document.addEventListener('click', onClick);
 

@@ -25,6 +25,17 @@ export function titleFromContent(text: string): string | null {
   return null;
 }
 
+// Derive a human-friendly title suggestion from a slug by running the
+// title-to-slug algorithm backwards as far as possible: hyphens become spaces
+// and the first letter is capitalized. Lost information (original case, dropped
+// punctuation and accents) cannot be recovered, so this is only a suggestion.
+// Returns '' for an empty slug.
+export function titleFromSlug(slug: string): string {
+  const spaced = slug.replace(/-+/g, ' ').trim();
+  if (!spaced) return '';
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
+}
+
 // Derive a title from a filename: strip .md/.markdown extension, trim,
 // truncate to 200 runes with …, or fall back to "Untitled".
 export function titleFromFilename(name: string): string {

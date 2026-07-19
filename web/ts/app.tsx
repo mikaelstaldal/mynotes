@@ -2,7 +2,8 @@ import { render } from 'preact';
 import { useState, useEffect, useCallback } from 'preact/hooks';
 import { currentRoute, onRouteChange, type Route } from './router.js';
 import { getConfig, saveConfig } from './util/config.js';
-import type { SortField, SortOrder } from './api/client.js';
+import { isValidSlug } from './util/slug.js';
+import { api, type SortField, type SortOrder } from './api/client.js';
 import { NoteList } from './views/NoteList.js';
 import { NotesOverview } from './views/NotesOverview.js';
 import { NoteEditor } from './views/NoteEditor.js';
@@ -31,6 +32,29 @@ function App() {
     setSortOrder(order);
     saveConfig({ ...getConfig(), sortField: field, sortOrder: order });
   }, []);
+
+  // Navigating to a tag that doesn't exist yet (via a /tags/<slug> URL or a tag
+  // link in a note) auto-creates it as an empty tag, so the tag becomes real and
+  // shows up in the sidebar's tag dropdown. Existing tags are left untouched, and
+  // malformed slugs the backend would reject are ignored.
+  useEffect(() => {
+    if (route.type !== 'list' || !route.tag || !isValidSlug(route.tag)) return;
+    const tag = route.tag;
+    let cancelled = false;
+    (async () => {
+      try {
+        const { tags } = await api.tags.list();
+        if (cancelled || tags.some(t => t.slug === tag)) return;
+        await api.tags.create({ slug: tag });
+        if (cancelled) return;
+        refreshList();
+      } catch {
+        // Best-effort: a failure here (e.g. a race that created the tag first, or
+        // a transient error) just leaves the tag view empty, as it was before.
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [route, refreshList]);
 
   const activeSlug = (route.type === 'view' || route.type === 'edit') ? route.slug : undefined;
 

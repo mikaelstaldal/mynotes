@@ -93,9 +93,10 @@ identity exists but is never exposed as the URL key.
   itself (tag links prefix it with `#`). `slug` must match the slug pattern
   (`^[a-z0-9]+(?:-[a-z0-9]+)*$`); anything else is left as literal text. This is a
   client render-time transform only — the reference is stored verbatim in the
-  Markdown, is not validated against existing notes/tags (a link to a non-existent
-  note 404s when followed; a link to a non-existent tag simply lists no notes),
-  and the `[[`/`]]` delimiters do not collide with CommonMark, raw HTML, SVG, or
+  Markdown and is not validated against existing notes/tags (following a link to a
+  non-existent note or tag creates it — see the routing section for the note-editor
+  and tag auto-create behaviour), and the `[[`/`]]` delimiters do not collide with
+  CommonMark, raw HTML, SVG, or
   MathML. The editor offers toolbar buttons to insert a note link or a tag link;
   each opens a picker that autocompletes by case-insensitive prefix match on the
   note title / tag slug.
@@ -240,6 +241,20 @@ a right main panel shows the selected note or editor. URLs are real paths
 Routes: no-note-selected (`/`), tag-filtered note list (`/tags/{slug}`),
 new-note editor (`/new`), read view of a note (`/notes/{slug}`), and
 existing-note editor (`/notes/{slug}/edit`).
+
+- **Navigating to a non-existent note** (`/notes/{slug}` for a slug that doesn't
+  exist — whether typed as a URL or reached by following a wikilink) opens the
+  new-note editor pre-filled with that slug (forced, so the created note gets it)
+  and a title suggested by reversing the slug algorithm (hyphens → spaces, first
+  letter capitalised). The suggestion alone does not enable saving; a manual edit
+  is required. Cancelling returns to the note that linked here when reached via a
+  link, otherwise to `/`. Saving creates the note in place (no duplicate history
+  entry, so a single back press leaves it).
+- **Navigating to a non-existent tag** (`/tags/{slug}` for a slug that doesn't
+  exist — typed as a URL or reached by following a `[[#slug]]` tag link)
+  auto-creates it as an empty tag (no notes attached), so it becomes real and
+  appears in the sidebar tag dropdown. Malformed slugs the backend would reject
+  are ignored.
 
 - **Sidebar (always visible):** debounced search box, results showing title,
   updated time, excerpt with highlights when searching, and tags. A sort

@@ -4,7 +4,9 @@ import { navigate } from '../router.js';
 import { base } from '../basepath.js';
 import { showToast } from '../util/toast.js';
 import { renderNote } from '../util/markdown.js';
+import { titleFromSlug } from '../util/title.js';
 import { NoteActions } from '../components/NoteActions.js';
+import { NoteEditor } from './NoteEditor.js';
 
 function formatDateTime(iso: string): string {
   const d = new Date(iso);
@@ -25,6 +27,9 @@ export function NoteView({ slug, onDelete }: Props) {
   const [note, setNote] = useState<Note | null>(null);
   const [notFound, setNotFound] = useState(false);
   const [loading, setLoading] = useState(true);
+  // Bumped after a not-found note is created so this view re-fetches and shows
+  // the new note even though the URL (slug) is unchanged.
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -48,7 +53,7 @@ export function NoteView({ slug, onDelete }: Props) {
       }
     })();
     return () => { cancelled = true; };
-  }, [slug]);
+  }, [slug, reloadKey]);
 
   useEffect(() => {
     if (!note) return;
@@ -65,10 +70,15 @@ export function NoteView({ slug, onDelete }: Props) {
   if (loading) return <p class="muted">Loading…</p>;
 
   if (notFound) {
+    // The note doesn't exist yet: open the new-note editor pre-filled with the
+    // requested slug and a title suggested from it. On save, refresh the sidebar
+    // and re-fetch here (the URL stays the same) so the created note is shown.
     return (
-      <div class="note-view">
-        <p class="muted">Note not found.</p>
-      </div>
+      <NoteEditor
+        initialSlug={slug}
+        initialTitle={titleFromSlug(slug)}
+        onSave={() => { onDelete?.(); setReloadKey(k => k + 1); }}
+      />
     );
   }
 

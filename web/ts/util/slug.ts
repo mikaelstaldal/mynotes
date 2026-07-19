@@ -1,3 +1,11 @@
+// The shared slug pattern (mirrors openapi.yaml's slug constraints): lowercase
+// alphanumerics in hyphen-separated groups, at most 100 chars. Used to skip
+// server round-trips for slugs the backend would reject anyway.
+const SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+export function isValidSlug(slug: string): boolean {
+  return slug.length <= 100 && SLUG_RE.test(slug);
+}
+
 // Mirror the server's generateSlug: lowercase + NFKD accent-fold + drop combining
 // marks + drop remaining non-ASCII, collapse non-alphanumeric ASCII into hyphens,
 // trim trailing hyphens, truncate to 100 chars. Falls back to "note" when empty.

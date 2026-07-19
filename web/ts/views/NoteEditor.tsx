@@ -90,15 +90,19 @@ type Layout = 'split' | 'editor' | 'preview';
 
 interface Props {
   slug?: string;
+  // New-note pre-fill: when the user navigates to a non-existent /notes/<slug>,
+  // the editor opens with that slug forced and a title suggested from it.
+  initialSlug?: string;
+  initialTitle?: string;
   onSave?: () => void;
 }
 
-export function NoteEditor({ slug, onSave }: Props) {
+export function NoteEditor({ slug, initialSlug, initialTitle, onSave }: Props) {
   const editing = slug !== undefined;
 
-  const [title, setTitle] = useState('');
-  const [slugOverride, setSlugOverride] = useState('');   // new: explicit slug when overriding
-  const [slugOverrideActive, setSlugOverrideActive] = useState(false);
+  const [title, setTitle] = useState(initialTitle ?? '');
+  const [slugOverride, setSlugOverride] = useState(initialSlug ?? '');   // new: explicit slug when overriding
+  const [slugOverrideActive, setSlugOverrideActive] = useState(initialSlug !== undefined);
   const [tags, setTags] = useState<Tag[]>([]);
   const [loading, setLoading] = useState(editing);
   const [saving, setSaving] = useState(false);
@@ -118,7 +122,7 @@ export function NoteEditor({ slug, onSave }: Props) {
   const headingMenuRef = useRef<HTMLDivElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const viewRef = useRef<EditorView | null>(null);
-  const titleTouchedRef = useRef(false);    // true once user manually edits title
+  const titleTouchedRef = useRef(initialTitle !== undefined);    // true once user manually edits title (or a title was pre-filled)
   // Snapshot of (title, content, slug, tags) at last successful save or load —
   // dirty baseline. tags is a sorted slug array for order-independent diffing.
   const snapshotRef = useRef<{ title: string; content: string; slug: string | undefined; tags: string[] }>({
