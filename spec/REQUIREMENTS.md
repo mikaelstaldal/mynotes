@@ -62,9 +62,9 @@ identity exists but is never exposed as the URL key.
 
 ## Markdown handling
 
-- Content is stored as Markdown source verbatim; rendering for the read view
-  happens in the browser. The server converts Markdown to HTML (including
-  AsciiMath → MathML) only for the download-html endpoint.
+- Content is stored as Markdown source verbatim; all rendering to HTML (read
+  view, editor preview, and the Download HTML / print export) happens in the
+  browser. The server never converts Markdown to HTML.
 - Supported syntax: CommonMark plus GFM tables, strikethrough, task lists, and
   autolinks; bare URLs/emails auto-link; images render. Task-list markers
   (`- [ ]` / `- [x]`) render as disabled (read-only) checkboxes.
@@ -79,13 +79,12 @@ identity exists but is never exposed as the URL key.
   Markdown. In the browser read view it is converted to MathML by the vendored
   `asciimath2ml` library (not MathJax), with the generated `<math>` passing
   through the same DOMPurify sanitization gate as all other rendered HTML. The
-  server's download-html endpoint performs the same conversion with a Go port of
-  that library (`internal/asciimath`), so a downloaded document — whether from
-  the web UI's "Download HTML" button or a direct API consumer such as the
-  Android app — contains the same MathML as the on-screen view. The generated
-  `<math>` passes through the server's bluemonday sanitize pass (whose allow-list
-  already covers the MathML element/attribute set). The editor toolbar has a math
-  button that wraps the selection in `$…$`.
+  web UI's Download HTML / print export reuses that same render pipeline, so an
+  exported document contains the same MathML as the on-screen view. A direct API
+  consumer (such as the Android app) that renders `content` itself must run the
+  AsciiMath transform; consumers that pass `content` through unchanged receive
+  the literal `$…$` source. The editor toolbar has a math button that wraps the
+  selection in `$…$`.
 - **Mermaid diagrams:** a fenced code block with the `mermaid` info string
   (```` ```mermaid ````, the Obsidian convention) renders as a diagram
   (flowchart, sequence, etc.). The diagram source is stored verbatim in the
@@ -94,9 +93,9 @@ identity exists but is never exposed as the URL key.
   converts the block to SVG in the browser read view and editor preview,
   following the light/dark theme, with Mermaid's `securityLevel: 'strict'`
   plus a dedicated DOMPurify pass sanitizing the output. A malformed diagram
-  falls back to showing its source. The server's download-html endpoint does
-  **not** render diagrams — a downloaded document keeps the `mermaid` block as
-  a plain code block (there is no JS runtime in the exported HTML). The editor
+  falls back to showing its source. The web UI's Download HTML / print export
+  renders diagrams too (it reuses the same browser render pipeline), so exported
+  documents contain the rendered SVG. The editor
   toolbar has a button that inserts a starter `mermaid` block.
 - **Wikilinks:** the non-standard `[[…]]` syntax links to another note or a tag's
   note list. `[[slug]]` links to a note (`/notes/{slug}`); `[[#slug]]` (with a `#`
@@ -265,7 +264,7 @@ The API manages notes keyed by slug. Operations:
   (`{ "notes": [ … ] }`). A note with no headings is a validation error. The
   source note is left unchanged.
 - **Download Markdown** — `GET /notes/{slug}/download-markdown` returns the raw Markdown as a `.md` file (filename derived from slug).
-- **Download HTML** — `GET /notes/{slug}/download-html` converts the note to HTML on the server and returns a complete HTML document as a `.html` file. Internal artifact image references (`![alt](/api/v1/artifacts/{sha256})`) are inlined so the downloaded document renders standalone, without a live server: bitmap artifacts (PNG, JPEG, GIF, WebP) up to 16 MiB become base64 `data:` URLs, while SVG and MathML artifacts are spliced in as inline `<svg>`/`<math>` elements (a `data:` URL for SVG is disallowed by the sanitize policy). A bitmap artifact larger than 16 MiB is replaced by an inline broken-image icon (SVG) rather than embedded, to keep exported documents from ballooning. Lucide icon references (`![name](/api/v1/icons/lucide/{name})`) are likewise inlined as the icon's `<svg>` (from the `internal/icons` embedded set). The spliced markup passes through the same render-time sanitization as the rest of the document. Unknown or unresolvable references are left as-is. AsciiMath (`$…$` / `$$…$$`) is converted to MathML by the server's Go port of `asciimath2ml` (`internal/asciimath`), so the exported document contains the same math markup as the on-screen view. The **web UI's "Download HTML" button** is a plain link to this endpoint (like Download Markdown).
+- **Download HTML** — a **web-UI-only** feature (no server endpoint): the browser renders the note to a complete, standalone HTML document and downloads it as a `.html` file (filename derived from slug). It reuses the read-view render pipeline (markdown-it + DOMPurify, AsciiMath → MathML, inline Lucide icon `<svg>`) and additionally renders Mermaid diagrams to SVG, so the exported file matches the on-screen view — including diagrams, which a server render cannot produce. Internal artifact image references (`![alt](/api/v1/artifacts/{sha256})`) are fetched and inlined as base64 `data:` URLs so the document renders standalone, without a live server (an SVG loaded via `<img src="data:">` cannot execute script, so it stays inert); an artifact larger than 16 MiB is replaced by an inline broken-image icon, and unknown or unresolvable references are left as-is. A small embedded stylesheet approximates the read view (light/dark via `prefers-color-scheme`). The **Print** action reuses the same generated document, loaded into an off-screen iframe whose print dialog is invoked.
 - **Import HTML** — `POST /import-html` accepts a `text/html` request body
   and converts it to Markdown server-side. The title is taken from the HTML
   `<title>` element; if absent, the plain text of the first `h1`–`h6` element is

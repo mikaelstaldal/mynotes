@@ -66,10 +66,12 @@ export function navigate(path: string, state: unknown = null): void {
   window.dispatchEvent(new PopStateEvent('popstate', { state }));
 }
 
-// Returns true for paths that the SPA owns. API and external URLs are excluded
-// so that download links and absolute URLs get real browser navigations.
+// Returns true for paths that the SPA owns. An in-app path is always
+// root-relative (e.g. /notes/slug or <base>/notes/slug); anything else — an
+// absolute URL, a protocol-relative //host path, an /api/ endpoint, or a
+// blob:/data:/mailto: scheme — gets a real browser navigation.
 function isInAppPath(href: string): boolean {
-  if (href.startsWith('http://') || href.startsWith('https://') || href.startsWith('//')) return false;
+  if (!href.startsWith('/') || href.startsWith('//')) return false;
   // Strip the base prefix before checking for the /api/ segment.
   const local = base && href.startsWith(base) ? href.slice(base.length) : href;
   return !local.startsWith('/api/');
@@ -82,6 +84,9 @@ export function onRouteChange(cb: (route: Route) => void): () => void {
   const onClick = (e: MouseEvent) => {
     const a = (e.target as Element).closest('a');
     if (!a) return;
+    // Let the browser handle download anchors (e.g. the client-side "Download
+    // HTML" blob: link) and anything targeting another browsing context.
+    if (a.hasAttribute('download') || a.target) return;
     const href = a.getAttribute('href');
     if (!href || !isInAppPath(href)) return;
     e.preventDefault();

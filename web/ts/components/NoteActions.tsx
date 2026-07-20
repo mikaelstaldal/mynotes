@@ -3,6 +3,7 @@ import { api, NotFoundError } from '../api/client.js';
 import { navigate, currentPath } from '../router.js';
 import { base } from '../basepath.js';
 import { showToast } from '../util/toast.js';
+import { downloadNoteHtml, noteHtmlDocument } from '../util/export.js';
 import { SplitDialog } from './SplitDialog.js';
 
 interface Props {
@@ -31,13 +32,13 @@ export function NoteActions({ slug, title, toolbarClass, showView, onDeleted, on
   const [splitting, setSplitting] = useState(false);
   const [showSplit, setShowSplit] = useState(false);
 
-  // Print reuses the server-rendered Download HTML document (standalone, with
-  // internal images inlined): it is loaded into an off-screen iframe whose
-  // print dialog is then invoked, so the printout matches the exported file
-  // rather than the surrounding app chrome.
+  // Print reuses the same standalone HTML document as Download HTML (built in
+  // the browser, with Mermaid diagrams rendered and internal images inlined): it
+  // is loaded into an off-screen iframe whose print dialog is then invoked, so
+  // the printout matches the exported file rather than the surrounding app chrome.
   async function handlePrint() {
     try {
-      const html = await api.notes.exportHtml(slug);
+      const html = await noteHtmlDocument(slug);
       const iframe = document.createElement('iframe');
       iframe.setAttribute('aria-hidden', 'true');
       iframe.style.position = 'fixed';
@@ -63,6 +64,19 @@ export function NoteActions({ slug, title, toolbarClass, showView, onDeleted, on
         showToast('Note not found');
       } else {
         showToast(`Failed to print: ${(e as Error).message}`);
+      }
+    }
+  }
+
+  // Build the standalone HTML document in the browser and download it as a file.
+  async function handleDownloadHtml() {
+    try {
+      await downloadNoteHtml(slug);
+    } catch (e) {
+      if (e instanceof NotFoundError) {
+        showToast('Note not found');
+      } else {
+        showToast(`Failed to download HTML: ${(e as Error).message}`);
       }
     }
   }
@@ -126,7 +140,7 @@ export function NoteActions({ slug, title, toolbarClass, showView, onDeleted, on
           <a class="btn-icon" href={`${base}/notes/${slug}`} title="View" aria-label="View">👁</a>
         )}
         <a class="btn-icon" href={`${base}/api/v1/notes/${slug}/download-markdown`} title="Download Markdown" aria-label="Download Markdown">𝖬⬇</a>
-        <a class="btn-icon" href={`${base}/api/v1/notes/${slug}/download-html`} title="Download HTML" aria-label="Download HTML">HTML</a>
+        <button class="btn-icon" title="Download HTML" aria-label="Download HTML" onClick={handleDownloadHtml}>HTML</button>
         <button class="btn-icon" title="Print" aria-label="Print" onClick={handlePrint}>🖨</button>
         <button class="btn-icon" title="Split by headings" aria-label="Split by headings" onClick={() => setShowSplit(true)} disabled={splitting}>✂</button>
         <button class="btn-icon" title="Edit" aria-label="Edit" onClick={() => navigate(`/notes/${slug}/edit`, { returnTo: currentPath() })}>✎</button>

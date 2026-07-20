@@ -91,7 +91,7 @@ func newPolicy() *bluemonday.Policy {
 
 	// GFM task lists render each "[ ]"/"[x]" list marker as a disabled checkbox.
 	// Allow only that exact shape — <input type="checkbox" disabled [checked]> —
-	// so the rendered checkbox survives the download-html sanitize pass and the
+	// so the rendered checkbox survives the embedded-HTML validation pass and the
 	// removal-only compare stays in parity with the DOMPurify render-time gate. The
 	// type value is pinned to "checkbox"; any other input (e.g. type="text") loses
 	// its attributes here and so diverges from its re-serialization and is rejected.

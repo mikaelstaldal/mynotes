@@ -231,38 +231,6 @@ func (h *Handler) DownloadNoteMarkdown(ctx context.Context, params api.DownloadN
 	}, nil
 }
 
-// DownloadNoteHtml converts the note content from Markdown to HTML on the server
-// and returns a complete HTML document with a Content-Disposition attachment header.
-// An unknown slug maps to the operation's typed 404 (*api.Error).
-func (h *Handler) DownloadNoteHtml(ctx context.Context, params api.DownloadNoteHtmlParams) (api.DownloadNoteHtmlRes, error) {
-	n, err := h.notes.Get(ctx, params.Slug)
-	if err != nil {
-		if errors.Is(err, service.ErrNotFound) {
-			return &api.Error{Error: err.Error()}, nil
-		}
-		return nil, err
-	}
-	// Inline internal bitmap artifacts as data: URLs so the downloaded document
-	// renders standalone, without a live server to serve the artifact endpoint.
-	resolve := func(sha256hex string) ([]byte, string, bool) {
-		a, err := h.artifacts.Get(ctx, sha256hex)
-		if err != nil {
-			return nil, "", false
-		}
-		return a.Content, a.ContentType, true
-	}
-	htmlDoc, err := service.RenderToHTML(n.Title, n.Content, resolve)
-	if err != nil {
-		return nil, err
-	}
-	return &api.DownloadNoteHtmlOKHeaders{
-		ContentDisposition:    `attachment; filename="` + n.Slug + `.html"`,
-		XContentTypeOptions:   "nosniff",
-		ContentSecurityPolicy: "sandbox",
-		Response:              api.DownloadNoteHtmlOK{Data: strings.NewReader(htmlDoc)},
-	}, nil
-}
-
 func toAPIArtifact(a model.Artifact) api.Artifact {
 	return api.Artifact{
 		SHA256:      a.SHA256,
