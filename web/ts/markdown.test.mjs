@@ -367,6 +367,26 @@ test('a non-task list item is left as an ordinary bullet', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Mermaid diagrams — the ```mermaid fenced block must survive rendering as a
+// <code class="language-mermaid"> placeholder for the client-side renderer
+// (util/mermaid.ts) to turn into SVG after insertion. The SVG rendering itself
+// needs a real browser (getBBox), so only the synchronous placeholder is tested
+// here.
+// ---------------------------------------------------------------------------
+
+test('a ```mermaid block renders a language-mermaid code placeholder', () => {
+  const out = renderNote('```mermaid\nflowchart TD\n  A --> B\n```');
+  assertPresent(out, '<code class="language-mermaid">', 'mermaid code class');
+  assertPresent(out, 'flowchart TD', 'diagram source preserved');
+});
+
+test('markup inside a ```mermaid block stays inert (escaped, not executed)', () => {
+  const out = renderNote('```mermaid\n<script>alert(1)</script>\n```');
+  assertAbsent(out, '<script', 'no live script tag');
+  assertPresent(out, '&lt;script&gt;', 'source is HTML-escaped inside <code>');
+});
+
+// ---------------------------------------------------------------------------
 // Internal note wikilinks — [[slug]] / [[slug|label]]
 // ---------------------------------------------------------------------------
 // base resolves to '' under jsdom (no <base href>), so hrefs are /notes/<slug>.

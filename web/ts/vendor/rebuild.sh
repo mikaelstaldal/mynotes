@@ -61,6 +61,14 @@ import DOMPurify from "dompurify";
 export default DOMPurify;
 EOF
 
+# Mermaid ships an ESM build; re-export its default so esbuild bundles the whole
+# diagram engine (it registers diagram types via dynamic import()) into one
+# self-contained file. The web UI lazy-imports this bundle only when a note
+# actually contains a ```mermaid block (see web/ts/util/mermaid.ts).
+cat > "$WORK_DIR/mermaid-entry.mjs" <<'EOF'
+export { default } from "mermaid";
+EOF
+
 mkdir -p "$BROWSER_OUT"
 
 # The entry files live in $WORK_DIR (/tmp), so esbuild's default upward search
@@ -88,7 +96,14 @@ esbuild "$WORK_DIR/asciimath-entry.mjs" \
   --banner:js='/*! asciimath2ml 1.0.8 | MIT License | Copyright (c) 2024 Tommi Johtela | https://github.com/johtela/asciimath2ml */' \
   --outfile="$BROWSER_OUT/asciimath.js"
 
-echo "Wrote $BROWSER_OUT/{codemirror,markdown-it,dompurify,asciimath}.js"
+# Mermaid is large; --bundle inlines its dynamically-imported diagram modules
+# into the single output file (no code-splitting), keeping it a plain ESM module
+# loadable via the import map like the others.
+esbuild "$WORK_DIR/mermaid-entry.mjs" \
+  --bundle --format=esm --platform=browser --minify \
+  --outfile="$BROWSER_OUT/mermaid.js"
+
+echo "Wrote $BROWSER_OUT/{codemirror,markdown-it,dompurify,asciimath,mermaid}.js"
 
 # --- 1b. Emoji dataset for the editor's emoji picker ------------------------
 #

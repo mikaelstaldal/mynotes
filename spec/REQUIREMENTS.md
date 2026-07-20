@@ -86,6 +86,18 @@ identity exists but is never exposed as the URL key.
   `<math>` passes through the server's bluemonday sanitize pass (whose allow-list
   already covers the MathML element/attribute set). The editor toolbar has a math
   button that wraps the selection in `$…$`.
+- **Mermaid diagrams:** a fenced code block with the `mermaid` info string
+  (```` ```mermaid ````, the Obsidian convention) renders as a diagram
+  (flowchart, sequence, etc.). The diagram source is stored verbatim in the
+  Markdown. This is a **web-UI render-time feature only**: the vendored
+  [Mermaid](https://mermaid.js.org/) library (lazy-loaded on first use)
+  converts the block to SVG in the browser read view and editor preview,
+  following the light/dark theme, with Mermaid's `securityLevel: 'strict'`
+  plus a dedicated DOMPurify pass sanitizing the output. A malformed diagram
+  falls back to showing its source. The server's download-html endpoint does
+  **not** render diagrams — a downloaded document keeps the `mermaid` block as
+  a plain code block (there is no JS runtime in the exported HTML). The editor
+  toolbar has a button that inserts a starter `mermaid` block.
 - **Wikilinks:** the non-standard `[[…]]` syntax links to another note or a tag's
   note list. `[[slug]]` links to a note (`/notes/{slug}`); `[[#slug]]` (with a `#`
   sigil) links to a tag's note list (`/tags/{slug}`). `[[slug|Display text]]` (or

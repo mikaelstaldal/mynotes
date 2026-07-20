@@ -12,6 +12,7 @@ import { base } from '../basepath.js';
 import { navigate, setNavigationGuard } from '../router.js';
 import { showToast } from '../util/toast.js';
 import { renderNote, sanitizeSVGOrMathML, rawHtmlBlockSeparator } from '../util/markdown.js';
+import { renderMermaidBlocks } from '../util/mermaid.js';
 import { titleFromContent } from '../util/title.js';
 import { slugFromTitle } from '../util/slug.js';
 import { LinkPicker } from '../components/LinkPicker.js';
@@ -121,6 +122,7 @@ export function NoteEditor({ slug, initialSlug, initialTitle, onSave }: Props) {
   const [conflictOpen, setConflictOpen] = useState(false);
 
   const editorContainerRef = useRef<HTMLDivElement>(null);
+  const previewPaneRef = useRef<HTMLDivElement>(null);
   const headingMenuRef = useRef<HTMLDivElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const viewRef = useRef<EditorView | null>(null);
@@ -309,6 +311,14 @@ export function NoteEditor({ slug, initialSlug, initialTitle, onSave }: Props) {
       }
     }
   }, []);
+
+  // Render any ```mermaid diagrams in the preview pane after each (debounced)
+  // preview update; the per-<pre> guard in renderMermaidBlocks makes re-runs safe.
+  useEffect(() => {
+    const el = previewPaneRef.current;
+    if (!el) return;
+    void renderMermaidBlocks(el);
+  }, [previewHtml]);
 
   // Create CodeMirror editor once content is available.
   // For /new: runs on mount (loading is already false).
@@ -705,6 +715,38 @@ export function NoteEditor({ slug, initialSlug, initialTitle, onSave }: Props) {
     view.focus();
   }
 
+  // Insert a ```mermaid diagram block (rendered to SVG in the preview/read view).
+  // Mirrors insertCodeBlock's blank-line padding; with no selection it seeds a
+  // small starter diagram so the preview renders something immediately.
+  function insertMermaidBlock() {
+    const view = viewRef.current;
+    if (!view) return;
+    const { from, to } = view.state.selection.main;
+    const selected = view.state.sliceDoc(from, to);
+    const before = view.state.sliceDoc(0, from);
+    const after = view.state.sliceDoc(to);
+    let prefix = '';
+    if (before.length > 0) {
+      if (before.endsWith('\n\n')) prefix = '';
+      else if (before.endsWith('\n')) prefix = '\n';
+      else prefix = '\n\n';
+    }
+    let suffix = '\n\n';
+    if (after.length === 0) suffix = '\n';
+    else if (after.startsWith('\n\n')) suffix = '';
+    else if (after.startsWith('\n')) suffix = '\n';
+    const body = selected || 'flowchart TD\n  A[Start] --> B[End]';
+    const insert = `${prefix}\`\`\`mermaid\n${body}\n\`\`\`${suffix}`;
+    // With a selection, drop the cursor past the whole block; otherwise select
+    // the seeded body so the user can type over it.
+    const bodyStart = from + prefix.length + '```mermaid\n'.length;
+    const selection = selected
+      ? EditorSelection.cursor(from + insert.length)
+      : EditorSelection.range(bodyStart, bodyStart + body.length);
+    view.dispatch({ changes: { from, to, insert }, selection });
+    view.focus();
+  }
+
   async function handleFileEmbed(e: Event) {
     const input = e.target as HTMLInputElement;
     const file = input.files?.[0];
@@ -986,6 +1028,13 @@ export function NoteEditor({ slug, initialSlug, initialTitle, onSave }: Props) {
               <polyline class="fmt-even fmt-stroke" points="11 8 13 10 11 12"/>
             </svg>
           </button>
+          <button type="button" class="btn-icon" title="Mermaid diagram" aria-label="Mermaid diagram" onClick={insertMermaidBlock}>
+            <svg viewBox="0 0 18 18">
+              <rect class="fmt-stroke" height="5" width="7" x="2" y="2"/>
+              <rect class="fmt-stroke" height="5" width="7" x="9" y="11"/>
+              <polyline class="fmt-even fmt-stroke" points="5.5 7 5.5 13.5 9 13.5"/>
+            </svg>
+          </button>
           <span class="fmt-sep" role="separator" />
           <button type="button" class="btn-icon" title="Internal link" aria-label="Internal link" onClick={() => setPickerOpen(true)}>
             <svg viewBox="0 0 18 18">
@@ -1046,7 +1095,7 @@ export function NoteEditor({ slug, initialSlug, initialTitle, onSave }: Props) {
           )}
           <div class="editor-cm" ref={editorContainerRef} />
         </div>
-        <div class="preview-pane note-content" dangerouslySetInnerHTML={{ __html: previewHtml }} />
+        <div class="preview-pane note-content" ref={previewPaneRef} dangerouslySetInnerHTML={{ __html: previewHtml }} />
       </div>
 
       {pickerOpen && (

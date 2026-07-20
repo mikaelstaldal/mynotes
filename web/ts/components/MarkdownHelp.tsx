@@ -54,7 +54,13 @@ const SECTIONS: Section[] = [
       { syntax: '---', desc: 'Horizontal rule' },
       { syntax: '> Quote', desc: 'Blockquote' },
       { syntax: '```\ncode\n```', desc: 'Fenced code block' },
+      { syntax: '```mermaid\nflowchart TD\n  A --> B\n```', desc: 'Mermaid diagram' },
     ],
+    note: {
+      text: 'See the ',
+      linkText: 'Mermaid diagram syntax',
+      href: 'https://mermaid.js.org/intro/',
+    },
   },
   {
     title: 'Links & images',

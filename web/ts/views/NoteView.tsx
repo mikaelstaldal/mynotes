@@ -1,9 +1,10 @@
-import { useState, useEffect, useMemo } from 'preact/hooks';
+import { useState, useEffect, useMemo, useRef } from 'preact/hooks';
 import { api, NotFoundError, type Note } from '../api/client.js';
 import { navigate } from '../router.js';
 import { base } from '../basepath.js';
 import { showToast } from '../util/toast.js';
 import { renderNote } from '../util/markdown.js';
+import { renderMermaidBlocks } from '../util/mermaid.js';
 import { titleFromSlug } from '../util/title.js';
 import { NoteActions } from '../components/NoteActions.js';
 import { NoteEditor } from './NoteEditor.js';
@@ -67,6 +68,14 @@ export function NoteView({ slug, onDelete }: Props) {
     return renderNote(note.content);
   }, [note]);
 
+  // Render any ```mermaid diagrams once the sanitized HTML is in the DOM.
+  const contentRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = contentRef.current;
+    if (!el) return;
+    void renderMermaidBlocks(el);
+  }, [renderedContent]);
+
   if (loading) return <p class="muted">Loading…</p>;
 
   if (notFound) {
@@ -109,7 +118,7 @@ export function NoteView({ slug, onDelete }: Props) {
           onDeleted={() => { onDelete?.(); navigate('/'); }}
         />
       </div>
-      <div class="note-content" dangerouslySetInnerHTML={{ __html: renderedContent }} />
+      <div class="note-content" ref={contentRef} dangerouslySetInnerHTML={{ __html: renderedContent }} />
       {note.incoming_links.length > 0 && (
         <section class="note-backlinks">
           <h2>Linked from</h2>

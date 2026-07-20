@@ -19,7 +19,8 @@
       "dompurify": ["./vendor/node_modules/dompurify/dist/purify.es.d.mts"],
       "emoji-data": ["./vendor/emoji.d.ts"],
       "lucide-icons": ["./vendor/lucide.d.ts"],
-      "asciimath": ["./vendor/asciimath.d.ts"]
+      "asciimath": ["./vendor/asciimath.d.ts"],
+      "mermaid": ["./vendor/mermaid.d.ts"]
     },
     "lib": ["ES2020", "DOM", "DOM.Iterable"]
   },

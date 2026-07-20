@@ -326,6 +326,22 @@ mark { background: #fef08a; color: var(--fg); border-radius: 2px; padding: 0 1px
   font-size: inherit;
 }
 
+/* Rendered Mermaid diagram: centered, never wider than the content column. */
+.note-content .mermaid-diagram {
+  margin: 0.9rem 0;
+  text-align: center;
+}
+
+.note-content .mermaid-diagram svg {
+  max-width: 100%;
+  height: auto;
+}
+
+/* A diagram that failed to render keeps its source visible, flagged in red. */
+.note-content pre.mermaid-error {
+  border-color: var(--danger);
+}
+
 .note-content blockquote {
   margin: 0.75em 0;
   padding: 0.5em 1em;

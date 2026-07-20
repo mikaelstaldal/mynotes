@@ -216,8 +216,8 @@ Full trip is tagged [[#travel]] and [[#personal]].
 
 const mathNote = "# Math & Diagrams\n" + `
 MyNotes renders math written in **AsciiMath** syntax, plus **MathML** and **SVG**
-embedded directly in Markdown, so you can drop equations and simple diagrams
-straight into your notes.
+embedded directly in Markdown, and **Mermaid** diagrams in fenced code blocks, so
+you can drop equations and diagrams straight into your notes.
 
 ## AsciiMath
 
@@ -277,4 +277,42 @@ A little inline SVG, drawn with basic shapes:
 </svg>
 
 Both are validated at write time and safely re-rendered on read.
+
+## Mermaid diagrams
+
+Fenced code blocks tagged ` + "`mermaid`" + ` render as diagrams in your browser as
+you read. A flowchart of the note-writing loop:
+
+` + "```mermaid" + `
+flowchart LR
+    Write["Write Markdown"] --> Preview["Live preview"]
+    Preview --> Save["Save note"]
+    Save --> Link["Link and tag"]
+    Link --> Write
+` + "```" + `
+
+A sequence diagram of saving a note:
+
+` + "```mermaid" + `
+sequenceDiagram
+    participant You
+    participant UI as Web UI
+    participant API
+    participant DB as SQLite
+    You->>UI: Edit note
+    UI->>API: PATCH /notes/{slug}
+    API->>DB: Save
+    DB-->>API: OK
+    API-->>UI: Updated note
+    UI-->>You: Preview refreshed
+` + "```" + `
+
+And a pie chart of where the time goes:
+
+` + "```mermaid" + `
+pie title How I spend note time
+    "Writing" : 45
+    "Organizing" : 30
+    "Searching" : 25
+` + "```" + `
 `
