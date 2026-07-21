@@ -89,7 +89,7 @@ export function TagManager({ listKey, onMutate, onOpenTag }: Props) {
                 aria-label={`Delete tag ${tag.slug}`}
                 disabled={deleting === tag.slug}
                 onClick={() => void handleDelete(tag)}
-              >🗑</button>
+              >❌︎</button>
             </li>
           ))}
         </ul>
