@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'preact/hooks';
 import { api, type TagSummary } from '../api/client.js';
 import { showToast } from '../util/toast.js';
+import { useSlowLoading } from '../util/loading.js';
 
 interface Props {
   // Bumped by the app whenever notes/tags change elsewhere, so the counts here
@@ -17,6 +18,8 @@ interface Props {
 export function TagManager({ listKey, onMutate, onOpenTag }: Props) {
   const [tags, setTags] = useState<TagSummary[]>([]);
   const [loading, setLoading] = useState(true);
+  // Delayed mirror of `loading` for the visible indicator; see util/loading.ts.
+  const slowLoading = useSlowLoading(loading);
   // Slug currently being deleted, so its row's button can disable itself and we
   // don't fire overlapping deletes.
   const [deleting, setDeleting] = useState<string | null>(null);
@@ -59,10 +62,14 @@ export function TagManager({ listKey, onMutate, onOpenTag }: Props) {
 
   return (
     <div class="item-list">
-      {loading && tags.length === 0 ? (
-        <p class="muted">Loading…</p>
-      ) : tags.length === 0 ? (
-        <p class="muted">No tags yet.</p>
+      {tags.length === 0 ? (
+        // Quick loads stay blank; the indicator (and the empty-state text) only
+        // appear once the load has outlasted the delay / actually settled.
+        slowLoading ? (
+          <p class="muted">Loading…</p>
+        ) : loading ? null : (
+          <p class="muted">No tags yet.</p>
+        )
       ) : (
         <ul class="tag-manager-list">
           {tags.map(tag => (

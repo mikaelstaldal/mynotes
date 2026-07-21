@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'preact/hooks';
 import { api, type Tag } from '../api/client.js';
+import { useSlowLoading } from '../util/loading.js';
 
 interface Props {
   onSelect: (slug: string) => void;
@@ -14,6 +15,8 @@ export function TagLinkPicker({ onSelect, onClose }: Props) {
   const [query, setQuery] = useState('');
   const [allTags, setAllTags] = useState<Tag[]>([]);
   const [loading, setLoading] = useState(true);
+  // Delayed mirror of `loading` for the visible indicator; see util/loading.ts.
+  const slowLoading = useSlowLoading(loading);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -58,9 +61,9 @@ export function TagLinkPicker({ onSelect, onClose }: Props) {
           value={query}
           onInput={(e) => setQuery((e.target as HTMLInputElement).value)}
         />
-        {loading ? (
+        {slowLoading ? (
           <p class="link-picker-empty muted">Loading…</p>
-        ) : results.length === 0 ? (
+        ) : loading ? null : results.length === 0 ? (
           <p class="link-picker-empty muted">No tags found</p>
         ) : (
           <ul class="link-picker-list">

@@ -15,6 +15,7 @@ import { renderNote, sanitizeSVGOrMathML, rawHtmlBlockSeparator } from '../util/
 import { renderMermaidBlocks } from '../util/mermaid.js';
 import { titleFromContent } from '../util/title.js';
 import { slugFromTitle } from '../util/slug.js';
+import { useSlowLoading } from '../util/loading.js';
 import { LinkPicker } from '../components/LinkPicker.js';
 import { TagLinkPicker } from '../components/TagLinkPicker.js';
 import { TagPicker } from '../components/TagPicker.js';
@@ -107,6 +108,8 @@ export function NoteEditor({ slug, initialSlug, initialTitle, onSave }: Props) {
   const [slugOverrideActive, setSlugOverrideActive] = useState(initialSlug !== undefined);
   const [tags, setTags] = useState<Tag[]>([]);
   const [loading, setLoading] = useState(editing);
+  // Delayed mirror of `loading` for the visible indicator; see util/loading.ts.
+  const slowLoading = useSlowLoading(loading);
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [layout, setLayout] = useState<Layout>('split');
@@ -814,7 +817,9 @@ export function NoteEditor({ slug, initialSlug, initialTitle, onSave }: Props) {
     view.focus();
   }
 
-  if (loading) return <p class="muted">Loading…</p>;
+  // Quick loads stay blank rather than flash the indicator; the editor mounts as
+  // soon as the fetch settles (this gate still keys off the real `loading`).
+  if (loading) return slowLoading ? <p class="muted">Loading…</p> : null;
 
   const slugPreviewVal = slugFromTitle(title);
 

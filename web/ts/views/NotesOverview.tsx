@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'preact/hooks';
 import { api, type NoteSummary, type SortField, type SortOrder } from '../api/client.js';
 import { showToast } from '../util/toast.js';
+import { useSlowLoading } from '../util/loading.js';
 import { NoteRows } from './NoteRows.js';
 
 const LIMIT = 50;
@@ -21,6 +22,8 @@ export function NotesOverview({ activeTags, listKey, onMutate, sortField, sortOr
   const [offset, setOffset] = useState(0);
   const [total, setTotal] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
+  // Delayed mirror of `loading` for the visible indicator; see util/loading.ts.
+  const slowLoading = useSlowLoading(loading);
   const [exhausted, setExhausted] = useState(false);
   const shownRef = useRef(new Set<string>());
   const genRef = useRef(0);
@@ -71,11 +74,11 @@ export function NotesOverview({ activeTags, listKey, onMutate, sortField, sortOr
   // them to reflect the AND filter.
   const heading = activeTags.length ? activeTags.join(' + ') : 'All notes';
 
-  if (loading && rows.length === 0) {
-    return <p class="muted">Loading…</p>;
-  }
-
-  if (!loading && rows.length === 0) {
+  if (rows.length === 0) {
+    if (slowLoading) return <p class="muted">Loading…</p>;
+    // A quick load is in flight: stay blank rather than flash the indicator or
+    // the empty prompt. Only show the prompt once the load has actually settled.
+    if (loading) return null;
     return <p class="muted select-prompt">Select a note or create a new one.</p>;
   }
 
@@ -83,7 +86,7 @@ export function NotesOverview({ activeTags, listKey, onMutate, sortField, sortOr
     <div class="item-list">
       <h1 class="note-title overview-heading">{heading}</h1>
       <NoteRows rows={rows} showActions onMutate={onMutate} />
-      {loading && rows.length > 0 && <p class="muted">Loading…</p>}
+      {slowLoading && rows.length > 0 && <p class="muted">Loading…</p>}
       {showLoadMore && (
         <div class="load-more">
           <button onClick={() => void loadPage(activeTags, offset, genRef.current)}>

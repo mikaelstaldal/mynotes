@@ -5,6 +5,7 @@ import { base } from '../basepath.js';
 import { showToast } from '../util/toast.js';
 import { renderNote } from '../util/markdown.js';
 import { renderMermaidBlocks } from '../util/mermaid.js';
+import { useSlowLoading } from '../util/loading.js';
 import { titleFromSlug } from '../util/title.js';
 import { NoteActions } from '../components/NoteActions.js';
 import { NoteEditor } from './NoteEditor.js';
@@ -28,6 +29,8 @@ export function NoteView({ slug, onDelete }: Props) {
   const [note, setNote] = useState<Note | null>(null);
   const [notFound, setNotFound] = useState(false);
   const [loading, setLoading] = useState(true);
+  // Delayed mirror of `loading` for the visible indicator; see util/loading.ts.
+  const slowLoading = useSlowLoading(loading);
   // Bumped after a not-found note is created so this view re-fetches and shows
   // the new note even though the URL (slug) is unchanged.
   const [reloadKey, setReloadKey] = useState(0);
@@ -76,7 +79,9 @@ export function NoteView({ slug, onDelete }: Props) {
     void renderMermaidBlocks(el);
   }, [renderedContent]);
 
-  if (loading) return <p class="muted">Loading…</p>;
+  // Quick loads stay blank rather than flash the indicator; it appears only if
+  // the fetch outlasts the delay.
+  if (loading) return slowLoading ? <p class="muted">Loading…</p> : null;
 
   if (notFound) {
     // The note doesn't exist yet: open the new-note editor pre-filled with the
