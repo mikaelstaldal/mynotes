@@ -5,10 +5,18 @@
 import { base } from './basepath.js';
 
 export type Route =
-  | { type: 'list'; tag?: string }
+  | { type: 'list'; tags: string[] }
   | { type: 'new' }
   | { type: 'view'; slug: string }
   | { type: 'edit'; slug: string };
+
+const SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+
+// Build the SPA path for a set of tag filters: '/' when empty, else
+// /tags/<a,b,c>. Slugs never contain a comma, so it is a safe separator.
+export function tagsPath(tags: string[]): string {
+  return tags.length ? `/tags/${tags.join(',')}` : '/';
+}
 
 // Strip the deployment base prefix so parseRoute always sees a root-relative path.
 function stripBase(pathname: string): string {
@@ -23,9 +31,13 @@ function parseRoute(pathname: string): Route {
     if (parts[2] === 'edit') return { type: 'edit', slug: parts[1] };
     return { type: 'view', slug: parts[1] };
   }
-  // Tag permalink: /tags/<slug>.
-  if (parts[0] === 'tags' && parts[1]) return { type: 'list', tag: parts[1] };
-  return { type: 'list' };
+  // Tag permalink: /tags/<slug> or /tags/<a,b,c> (comma-separated, AND filter).
+  // Keep only well-formed slugs and drop duplicates so the filter is normalized.
+  if (parts[0] === 'tags' && parts[1]) {
+    const tags = [...new Set(parts[1].split(',').filter(s => SLUG_RE.test(s)))];
+    return { type: 'list', tags };
+  }
+  return { type: 'list', tags: [] };
 }
 
 export function currentRoute(): Route {

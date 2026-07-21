@@ -6,7 +6,7 @@ import { NoteRows } from './NoteRows.js';
 const LIMIT = 50;
 
 interface Props {
-  activeTag?: string;
+  activeTags: string[];
   listKey?: number;
   onMutate?: () => void;
   sortField: SortField;
@@ -14,9 +14,9 @@ interface Props {
 }
 
 // Main-panel overview shown when no note is selected. Lists every note (or every
-// note carrying the active tag). Falls back to a prompt only when the list is
-// genuinely empty.
-export function NotesOverview({ activeTag, listKey, onMutate, sortField, sortOrder }: Props) {
+// note carrying all of the active tags). Falls back to a prompt only when the
+// list is genuinely empty.
+export function NotesOverview({ activeTags, listKey, onMutate, sortField, sortOrder }: Props) {
   const [rows, setRows] = useState<NoteSummary[]>([]);
   const [offset, setOffset] = useState(0);
   const [total, setTotal] = useState<number | null>(null);
@@ -25,11 +25,11 @@ export function NotesOverview({ activeTag, listKey, onMutate, sortField, sortOrd
   const shownRef = useRef(new Set<string>());
   const genRef = useRef(0);
 
-  const loadPage = useCallback(async (tag: string | undefined, pageOffset: number, gen: number) => {
+  const loadPage = useCallback(async (tags: string[], pageOffset: number, gen: number) => {
     setLoading(true);
     const safeOffset = Math.max(0, pageOffset);
     try {
-      const res = await api.notes.list({ tag, sort: sortField, order: sortOrder, limit: LIMIT, offset: safeOffset });
+      const res = await api.notes.list({ tags, sort: sortField, order: sortOrder, limit: LIMIT, offset: safeOffset });
       if (genRef.current !== gen) return;
       setTotal(res.total);
       if (res.notes.length === 0) {
@@ -50,7 +50,10 @@ export function NotesOverview({ activeTag, listKey, onMutate, sortField, sortOrd
     }
   }, [sortField, sortOrder]);
 
-  // Reset accumulated rows whenever the tag filter or listKey changes.
+  // Reset accumulated rows whenever the tag filter or listKey changes. tagKey
+  // collapses the tags array to a stable string so a fresh array identity each
+  // render doesn't retrigger the load.
+  const tagKey = activeTags.join(',');
   useEffect(() => {
     const gen = ++genRef.current;
     shownRef.current = new Set();
@@ -58,14 +61,15 @@ export function NotesOverview({ activeTag, listKey, onMutate, sortField, sortOrd
     setOffset(0);
     setTotal(null);
     setExhausted(false);
-    void loadPage(activeTag, 0, gen);
-  }, [activeTag, loadPage, listKey]);
+    void loadPage(activeTags, 0, gen);
+    // activeTags is keyed via tagKey; loadPage is stable per sort field/order.
+  }, [tagKey, loadPage, listKey]);
 
   const showLoadMore = !exhausted && total !== null && rows.length < total && !loading;
 
-  // A tag's slug is its display label, so the active-tag filter heading is just
-  // the slug itself.
-  const heading = activeTag || 'All notes';
+  // A tag's slug is its display label; when several are active the heading joins
+  // them to reflect the AND filter.
+  const heading = activeTags.length ? activeTags.join(' + ') : 'All notes';
 
   if (loading && rows.length === 0) {
     return <p class="muted">Loading…</p>;
@@ -82,7 +86,7 @@ export function NotesOverview({ activeTag, listKey, onMutate, sortField, sortOrd
       {loading && rows.length > 0 && <p class="muted">Loading…</p>}
       {showLoadMore && (
         <div class="load-more">
-          <button onClick={() => void loadPage(activeTag, offset, genRef.current)}>
+          <button onClick={() => void loadPage(activeTags, offset, genRef.current)}>
             Load more
           </button>
         </div>

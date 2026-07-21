@@ -415,3 +415,23 @@ func TestUpdate_TagsOnlyFieldIsSufficientToNotBeEmptyPatch(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, updated.Tags, 1)
 }
+
+// TestListDeDupesTagSlugs verifies the service collapses repeated tag slugs
+// before the repository's has-all-tags check, so ["work","work"] matches notes
+// carrying "work" rather than demanding two distinct tags (which would match
+// nothing).
+func TestListDeDupesTagSlugs(t *testing.T) {
+	svc, tagRepo := newTestServiceWithTags(t)
+	ctx := context.Background()
+
+	_, err := tagRepo.Create(ctx, "work")
+	require.NoError(t, err)
+	_, err = svc.Create(ctx, "Report", nil, nil, []string{"work"})
+	require.NoError(t, err)
+
+	notes, total, err := svc.List(ctx, "", []string{"work", "work"}, false, "updated", "desc", 50, 0)
+	require.NoError(t, err)
+	assert.Equal(t, 1, total)
+	require.Len(t, notes, 1)
+	assert.Equal(t, "Report", notes[0].Title)
+}

@@ -33,28 +33,34 @@ function App() {
     saveConfig({ ...getConfig(), sortField: field, sortOrder: order });
   }, []);
 
-  // Navigating to a tag that doesn't exist yet (via a /tags/<slug> URL or a tag
-  // link in a note) auto-creates it as an empty tag, so the tag becomes real and
-  // shows up in the sidebar's tag dropdown. Existing tags are left untouched, and
-  // malformed slugs the backend would reject are ignored.
+  // Navigating to a tag filter that names tags which don't exist yet (via a
+  // /tags/<slug> URL or a tag link in a note) auto-creates each as an empty tag,
+  // so they become real and show up in the sidebar's tag picker. Existing tags
+  // are left untouched, and malformed slugs the backend would reject are ignored.
+  const routeTagsKey = route.type === 'list' ? route.tags.join(',') : '';
   useEffect(() => {
-    if (route.type !== 'list' || !route.tag || !isValidSlug(route.tag)) return;
-    const tag = route.tag;
+    if (route.type !== 'list' || route.tags.length === 0) return;
+    const wanted = route.tags.filter(isValidSlug);
+    if (wanted.length === 0) return;
     let cancelled = false;
     (async () => {
       try {
         const { tags } = await api.tags.list();
-        if (cancelled || tags.some(t => t.slug === tag)) return;
-        await api.tags.create({ slug: tag });
+        const existing = new Set(tags.map(t => t.slug));
+        const missing = wanted.filter(t => !existing.has(t));
+        if (cancelled || missing.length === 0) return;
+        await Promise.all(missing.map(slug => api.tags.create({ slug })));
         if (cancelled) return;
         refreshList();
       } catch {
-        // Best-effort: a failure here (e.g. a race that created the tag first, or
+        // Best-effort: a failure here (e.g. a race that created a tag first, or
         // a transient error) just leaves the tag view empty, as it was before.
       }
     })();
     return () => { cancelled = true; };
-  }, [route, refreshList]);
+    // routeTagsKey collapses the tags array to a stable string so a new array
+    // identity on each render doesn't retrigger this effect.
+  }, [routeTagsKey, refreshList]);
 
   const activeSlug = (route.type === 'view' || route.type === 'edit') ? route.slug : undefined;
 
@@ -65,7 +71,7 @@ function App() {
           <a class="brand sidebar-brand" href="/">MyNotes</a>
           <NoteList
             activeSlug={activeSlug}
-            activeTag={route.type === 'list' ? route.tag : undefined}
+            activeTags={route.type === 'list' ? route.tags : []}
             listKey={listKey}
             onMutate={refreshList}
             sortField={sortField}
@@ -76,7 +82,7 @@ function App() {
         <main>
           {route.type === 'list' && (
             <NotesOverview
-              activeTag={route.tag}
+              activeTags={route.tags}
               listKey={listKey}
               onMutate={refreshList}
               sortField={sortField}

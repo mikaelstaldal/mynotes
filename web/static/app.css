@@ -1304,3 +1304,27 @@ a.tag-chip:hover { border-color: var(--primary); color: var(--primary); }
   font-size: 0.85rem;
   padding: 0.2rem 0.4rem;
 }
+
+/* Multi-tag filter: the "Tags" label sits at the top-left while the chips and
+   the add-tag picker stack (and wrap) beside it. */
+.tag-filter-row-tags {
+  align-items: flex-start;
+}
+
+.tag-filter-controls {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.tag-filter-controls .tag-chips {
+  margin-top: 0;
+}
+
+.tag-filter-controls .tag-filter-select {
+  flex: none;
+  align-self: flex-start;
+  max-width: 100%;
+}

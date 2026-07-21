@@ -77,20 +77,22 @@ func NewNoteService(repo *repository.NoteRepository, tags *repository.TagReposit
 }
 
 // List returns a page of note summaries and the total matching count. limit and
-// offset are clamped to a sane window. tagSlug, when non-empty, restricts
-// results to notes carrying that tag. titlePrefix, when set, matches query as a
-// case-insensitive prefix of the note title instead of a full-text search. sort
-// and order select the browse ordering (see repository.browseOrderClause) and
-// are normalized here so only known-safe values reach the SQL builder; they are
-// ignored for the search and title-prefix branches.
-func (s *NoteService) List(ctx context.Context, query, tagSlug string, titlePrefix bool, sort, order string, limit, offset int) ([]model.NoteSummary, int, error) {
+// offset are clamped to a sane window. tagSlugs, when non-empty, restricts
+// results to notes carrying ALL of the given tags (AND); the slugs are de-duped
+// here so a repeated slug does not distort the has-all-tags match. titlePrefix,
+// when set, matches query as a case-insensitive prefix of the note title instead
+// of a full-text search. sort and order select the browse ordering (see
+// repository.browseOrderClause) and are normalized here so only known-safe
+// values reach the SQL builder; they are ignored for the search and title-prefix
+// branches.
+func (s *NoteService) List(ctx context.Context, query string, tagSlugs []string, titlePrefix bool, sort, order string, limit, offset int) ([]model.NoteSummary, int, error) {
 	if limit <= 0 || limit > 200 {
 		limit = 50
 	}
 	if offset < 0 {
 		offset = 0
 	}
-	return s.repo.List(ctx, query, tagSlug, titlePrefix, normalizeSort(sort), normalizeOrder(order), limit, offset)
+	return s.repo.List(ctx, query, dedupeStrings(tagSlugs), titlePrefix, normalizeSort(sort), normalizeOrder(order), limit, offset)
 }
 
 // normalizeSort maps an untrusted sort field to a known value, defaulting to

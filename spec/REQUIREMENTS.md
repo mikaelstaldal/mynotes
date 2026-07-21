@@ -209,15 +209,17 @@ which also serves as its display label.
 - Notes reference tags by slug in create/update requests; `Note` and
   `NoteSummary` API responses embed the full tag (slug) so the client does not
   need extra round-trips to display them.
-- Notes can be listed filtered to a single tag (by slug), combinable with a
-  full-text search query.
+- Notes can be listed filtered by one or more tags (by slug). Multiple tags AND
+  together — a note must carry every requested tag to match — and the whole tag
+  filter is combinable with a full-text search query.
 
 ## REST behavior (user-observable)
 
 The API manages notes keyed by slug. Operations:
 
 - **List/search notes** — optional query `q`, an optional `tag` filter (by
-  tag slug, combinable with `q`), an optional `titlePrefix` flag, optional
+  tag slug; the `tag` parameter may be repeated to AND several tags together,
+  combinable with `q`), an optional `titlePrefix` flag, optional
   `sort`/`order` for the browse list, plus paging (`limit`, `offset`).
   Returns a page of summaries (slug, title, updated time, excerpt, tags) and
   the total match count.
@@ -233,8 +235,10 @@ The API manages notes keyed by slug. Operations:
     the note title (autocomplete style, ordered by title) instead of a
     full-text search; body content is not matched. Ignored when `q` is empty.
     Used by the web UI's internal-link picker.
-  - Present `tag` restricts results to notes carrying that tag; an unknown
-    tag slug simply matches no notes (not an error).
+  - Present `tag` restricts results to notes carrying that tag; repeating `tag`
+    requires notes to carry ALL of the given tags (AND). An unknown tag slug
+    simply matches no notes (not an error). The single-value form (`tag=x`) is
+    a one-element filter and behaves as before (backward compatible).
   - `total` reflects all matching rows, independent of the page window. Paging
     past the end returns an empty page, not an error.
 - **Create a note** — title (required), content (optional, defaults empty), slug

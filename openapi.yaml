@@ -131,13 +131,19 @@ paths:
         - name: tag
           in: query
           description: >
-            Optional tag slug filter. When combined with `q`, both filters
-            apply (AND semantics).
+            Optional tag slug filter. May be repeated; a note must carry ALL
+            supplied tags to match (AND semantics). When combined with `q`, that
+            filter also applies (AND). The single-value form (`tag=x`) is a
+            one-element filter and behaves as before.
           required: false
+          explode: true
           schema:
-            type: string
-            maxLength: 100
-            pattern: "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+            type: array
+            maxItems: 20
+            items:
+              type: string
+              maxLength: 100
+              pattern: "^[a-z0-9]+(?:-[a-z0-9]+)*$"
         - name: titlePrefix
           in: query
           description: >

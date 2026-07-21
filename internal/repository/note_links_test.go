@@ -190,7 +190,7 @@ func TestNoteLinksInListSummaries(t *testing.T) {
 	_, err = repo.Create(ctx, "two", "Two", "see [[one]]")
 	require.NoError(t, err)
 
-	notes, _, err := repo.List(ctx, "", "", false, SortTitle, OrderAsc, 50, 0)
+	notes, _, err := repo.List(ctx, "", nil, false, SortTitle, OrderAsc, 50, 0)
 	require.NoError(t, err)
 	require.Len(t, notes, 2)
 	byslug := map[string]model.NoteSummary{}

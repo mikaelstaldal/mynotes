@@ -588,6 +588,28 @@ func TestListNotesFilteredByTag(t *testing.T) {
 	assert.ElementsMatch(t, []string{"Report", "Both"}, titles)
 }
 
+func TestListNotesFilteredByMultipleTags(t *testing.T) {
+	srv := newServer(t)
+	work := createTag(t, srv, `{"slug":"work"}`)
+	home := createTag(t, srv, `{"slug":"home"}`)
+
+	createNote(t, srv, `{"title":"Report","tags":["`+work.Slug+`"]}`)
+	createNote(t, srv, `{"title":"Chores","tags":["`+home.Slug+`"]}`)
+	createNote(t, srv, `{"title":"Both","tags":["`+work.Slug+`","`+home.Slug+`"]}`)
+
+	// Repeated tag params AND together: only the note carrying both matches.
+	res, err := http.Get(srv.URL + "/api/v1/notes?tag=" + work.Slug + "&tag=" + home.Slug)
+	require.NoError(t, err)
+	defer res.Body.Close()
+	require.Equal(t, http.StatusOK, res.StatusCode)
+
+	var list api.NoteList
+	require.NoError(t, json.NewDecoder(res.Body).Decode(&list))
+	assert.Equal(t, 1, list.Total)
+	require.Len(t, list.Notes, 1)
+	assert.Equal(t, "Both", list.Notes[0].Title)
+}
+
 func TestDeleteTagDetachesFromNotes(t *testing.T) {
 	srv := newServer(t)
 	tag := createTag(t, srv, `{"slug":"work"}`)

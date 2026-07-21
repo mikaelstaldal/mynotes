@@ -122,10 +122,11 @@ async function request<T>(
 
 export const api = {
   notes: {
-    list: (opts: { q?: string; tag?: string; titlePrefix?: boolean; sort?: SortField; order?: SortOrder; limit?: number; offset?: number } = {}) => {
+    list: (opts: { q?: string; tags?: string[]; titlePrefix?: boolean; sort?: SortField; order?: SortOrder; limit?: number; offset?: number } = {}) => {
       const p = new URLSearchParams();
       if (opts.q) p.set('q', opts.q);
-      if (opts.tag) p.set('tag', opts.tag);
+      // Repeatable `tag` param — a note must carry every one (AND, server-side).
+      if (opts.tags) opts.tags.forEach(t => p.append('tag', t));
       if (opts.titlePrefix) p.set('titlePrefix', 'true');
       if (opts.sort) p.set('sort', opts.sort);
       if (opts.order) p.set('order', opts.order);

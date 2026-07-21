@@ -415,23 +415,56 @@ func (r *NoteRepository) Delete(ctx context.Context, slug string) error {
 // (newest-first, no FTS reference); non-empty → search (FTS MATCH, bm25 rank).
 // total is a second COUNT(*) over the same predicate, independent of
 // limit/offset (best-effort, not transactionally consistent with the page).
-// List returns a page of note summaries and the total matching count. tagSlug,
-// when non-empty, restricts results to notes carrying that tag (combined with
-// the FTS filter via AND when both are present).
+// List returns a page of note summaries and the total matching count. tagSlugs,
+// when non-empty, restricts results to notes carrying ALL of the given tags (AND
+// semantics), combined with the FTS or title-prefix filter via AND when present.
+// Callers must de-dupe tagSlugs first (the has-all-tags check counts distinct
+// matched slugs against len(tagSlugs)); the service layer does this.
 // sort and order select the browse-list ordering (see browseOrderClause). They
 // only affect the browse branch: full-text search is always relevance-ordered
 // and the title-prefix autocomplete is always title-ordered.
-func (r *NoteRepository) List(ctx context.Context, query, tagSlug string, titlePrefix bool, sort, order string, limit, offset int) ([]model.NoteSummary, int, error) {
+func (r *NoteRepository) List(ctx context.Context, query string, tagSlugs []string, titlePrefix bool, sort, order string, limit, offset int) ([]model.NoteSummary, int, error) {
 	if titlePrefix {
 		if prefix := strings.TrimSpace(query); prefix != "" {
-			return r.searchTitlePrefix(ctx, prefix, tagSlug, limit, offset)
+			return r.searchTitlePrefix(ctx, prefix, tagSlugs, limit, offset)
 		}
-		return r.browse(ctx, tagSlug, sort, order, limit, offset)
+		return r.browse(ctx, tagSlugs, sort, order, limit, offset)
 	}
 	if q := sanitizeFTSQuery(query); q != "" {
-		return r.search(ctx, q, tagSlug, limit, offset)
+		return r.search(ctx, q, tagSlugs, limit, offset)
 	}
-	return r.browse(ctx, tagSlug, sort, order, limit, offset)
+	return r.browse(ctx, tagSlugs, sort, order, limit, offset)
+}
+
+// sqlPlaceholders returns "?,?,…" with n placeholders, for a SQL IN (…) list.
+func sqlPlaceholders(n int) string {
+	return strings.TrimSuffix(strings.Repeat("?,", n), ",")
+}
+
+// anyArgs widens a []string to the []any a query call expects.
+func anyArgs(ss []string) []any {
+	out := make([]any, len(ss))
+	for i, s := range ss {
+		out[i] = s
+	}
+	return out
+}
+
+// tagFilterSubquery returns a scalar subquery selecting the ids of notes that
+// carry ALL of tagSlugs (AND semantics), together with its positional args.
+// Splice it into a main query as `n.id IN (<subquery>)`; keeping the has-all-
+// tags check in a subquery leaves the outer query flat, which matters for the
+// FTS branch (snippet()/rank cannot run under a GROUP BY). tagSlugs must be
+// non-empty and de-duped (the HAVING count compares distinct matched slugs
+// against len(tagSlugs)); the service layer de-dupes.
+func tagFilterSubquery(tagSlugs []string) (string, []any) {
+	sub := `
+			SELECT nt.note_id FROM note_tags nt
+			JOIN tags t ON t.id = nt.tag_id
+			WHERE t.slug IN (` + sqlPlaceholders(len(tagSlugs)) + `)
+			GROUP BY nt.note_id
+			HAVING COUNT(DISTINCT t.slug) = ?`
+	return sub, append(anyArgs(tagSlugs), len(tagSlugs))
 }
 
 // Browse sort fields and order directions. The service normalizes untrusted
@@ -592,11 +625,11 @@ func attachLinks(ctx context.Context, db *sql.DB, notes []model.NoteSummary, ids
 	return nil
 }
 
-func (r *NoteRepository) browse(ctx context.Context, tagSlug, sort, order string, limit, offset int) ([]model.NoteSummary, int, error) {
+func (r *NoteRepository) browse(ctx context.Context, tagSlugs []string, sort, order string, limit, offset int) ([]model.NoteSummary, int, error) {
 	var countQuery, listQuery string
 	var countArgs, listArgs []any
 
-	if tagSlug == "" {
+	if len(tagSlugs) == 0 {
 		countQuery = `SELECT COUNT(*) FROM notes`
 		listQuery = `
 			SELECT id, slug, title, created_at, updated_at, substr(content, 1, 501), version
@@ -605,21 +638,16 @@ func (r *NoteRepository) browse(ctx context.Context, tagSlug, sort, order string
 			LIMIT ? OFFSET ?`
 		listArgs = []any{limit, offset}
 	} else {
-		countQuery = `
-			SELECT COUNT(*) FROM notes n
-			JOIN note_tags nt ON nt.note_id = n.id
-			JOIN tags t ON t.id = nt.tag_id
-			WHERE t.slug = ?`
-		countArgs = []any{tagSlug}
+		sub, tagArgs := tagFilterSubquery(tagSlugs)
+		countQuery = `SELECT COUNT(*) FROM notes n WHERE n.id IN (` + sub + `)`
+		countArgs = tagArgs
 		listQuery = `
 			SELECT n.id, n.slug, n.title, n.created_at, n.updated_at, substr(n.content, 1, 501), n.version
 			FROM notes n
-			JOIN note_tags nt ON nt.note_id = n.id
-			JOIN tags t ON t.id = nt.tag_id
-			WHERE t.slug = ?
+			WHERE n.id IN (` + sub + `)
 			` + browseOrderClause(sort, order, "n.") + `
 			LIMIT ? OFFSET ?`
-		listArgs = []any{tagSlug, limit, offset}
+		listArgs = append(append([]any{}, tagArgs...), limit, offset)
 	}
 
 	return r.querySummaries(ctx, countQuery, countArgs, listQuery, listArgs)
@@ -628,14 +656,14 @@ func (r *NoteRepository) browse(ctx context.Context, tagSlug, sort, order string
 // searchTitlePrefix returns notes whose title begins with prefix, matched
 // case-insensitively (autocomplete style) via a LIKE anchored at the start;
 // LIKE wildcards in the input are escaped so they match literally. Results are
-// ordered by title. tagSlug, when non-empty, restricts to notes carrying that
-// tag.
-func (r *NoteRepository) searchTitlePrefix(ctx context.Context, prefix, tagSlug string, limit, offset int) ([]model.NoteSummary, int, error) {
+// ordered by title. tagSlugs, when non-empty, restricts to notes carrying ALL
+// of the given tags.
+func (r *NoteRepository) searchTitlePrefix(ctx context.Context, prefix string, tagSlugs []string, limit, offset int) ([]model.NoteSummary, int, error) {
 	pattern := escapeLike(prefix) + "%"
 	var countQuery, listQuery string
 	var countArgs, listArgs []any
 
-	if tagSlug == "" {
+	if len(tagSlugs) == 0 {
 		countQuery = `SELECT COUNT(*) FROM notes WHERE title LIKE ? ESCAPE '\'`
 		countArgs = []any{pattern}
 		listQuery = `
@@ -646,21 +674,18 @@ func (r *NoteRepository) searchTitlePrefix(ctx context.Context, prefix, tagSlug 
 			LIMIT ? OFFSET ?`
 		listArgs = []any{pattern, limit, offset}
 	} else {
+		sub, tagArgs := tagFilterSubquery(tagSlugs)
 		countQuery = `
 			SELECT COUNT(*) FROM notes n
-			JOIN note_tags nt ON nt.note_id = n.id
-			JOIN tags t ON t.id = nt.tag_id
-			WHERE t.slug = ? AND n.title LIKE ? ESCAPE '\'`
-		countArgs = []any{tagSlug, pattern}
+			WHERE n.title LIKE ? ESCAPE '\' AND n.id IN (` + sub + `)`
+		countArgs = append([]any{pattern}, tagArgs...)
 		listQuery = `
 			SELECT n.id, n.slug, n.title, n.created_at, n.updated_at, substr(n.content, 1, 501), n.version
 			FROM notes n
-			JOIN note_tags nt ON nt.note_id = n.id
-			JOIN tags t ON t.id = nt.tag_id
-			WHERE t.slug = ? AND n.title LIKE ? ESCAPE '\'
+			WHERE n.title LIKE ? ESCAPE '\' AND n.id IN (` + sub + `)
 			ORDER BY n.title ASC, n.id DESC
 			LIMIT ? OFFSET ?`
-		listArgs = []any{tagSlug, pattern, limit, offset}
+		listArgs = append(append([]any{pattern}, tagArgs...), limit, offset)
 	}
 
 	return r.querySummaries(ctx, countQuery, countArgs, listQuery, listArgs)
@@ -712,12 +737,12 @@ func (r *NoteRepository) querySummaries(ctx context.Context, countQuery string, 
 	return notes, total, nil
 }
 
-func (r *NoteRepository) search(ctx context.Context, q, tagSlug string, limit, offset int) ([]model.NoteSummary, int, error) {
+func (r *NoteRepository) search(ctx context.Context, q string, tagSlugs []string, limit, offset int) ([]model.NoteSummary, int, error) {
 	var total int
 	var countQuery, listQuery string
 	var countArgs, listArgs []any
 
-	if tagSlug == "" {
+	if len(tagSlugs) == 0 {
 		countQuery = `SELECT COUNT(*) FROM notes_fts WHERE notes_fts MATCH ?`
 		countArgs = []any{q}
 		// snippet() marks matched terms with sentinel control chars U+0002/U+0003
@@ -737,13 +762,15 @@ func (r *NoteRepository) search(ctx context.Context, q, tagSlug string, limit, o
 			LIMIT ? OFFSET ?`
 		listArgs = []any{q, limit, offset}
 	} else {
+		// Keep the FTS query flat (has-all-tags via an IN subquery, not a JOIN +
+		// GROUP BY on the outer query) so snippet()/rank stay usable — FTS5
+		// auxiliary functions cannot run in an aggregated context.
+		sub, tagArgs := tagFilterSubquery(tagSlugs)
 		countQuery = `
 			SELECT COUNT(*) FROM notes_fts
 			JOIN notes n ON n.id = notes_fts.rowid
-			JOIN note_tags nt ON nt.note_id = n.id
-			JOIN tags t ON t.id = nt.tag_id
-			WHERE notes_fts MATCH ? AND t.slug = ?`
-		countArgs = []any{q, tagSlug}
+			WHERE notes_fts MATCH ? AND n.id IN (` + sub + `)`
+		countArgs = append([]any{q}, tagArgs...)
 		listQuery = `
 			SELECT n.id, n.slug, n.title, n.created_at, n.updated_at,
 			       snippet(notes_fts, 1, char(2), char(3), '…', 30),
@@ -751,12 +778,10 @@ func (r *NoteRepository) search(ctx context.Context, q, tagSlug string, limit, o
 			       n.version
 			FROM notes n
 			JOIN notes_fts ON notes_fts.rowid = n.id
-			JOIN note_tags nt ON nt.note_id = n.id
-			JOIN tags t ON t.id = nt.tag_id
-			WHERE notes_fts MATCH ? AND t.slug = ?
+			WHERE notes_fts MATCH ? AND n.id IN (` + sub + `)
 			ORDER BY notes_fts.rank, n.id DESC
 			LIMIT ? OFFSET ?`
-		listArgs = []any{q, tagSlug, limit, offset}
+		listArgs = append(append([]any{q}, tagArgs...), limit, offset)
 	}
 
 	if err := r.db.QueryRowContext(ctx, countQuery, countArgs...).Scan(&total); err != nil {

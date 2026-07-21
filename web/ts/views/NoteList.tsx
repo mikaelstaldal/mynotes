@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'preact/hooks';
-import { api, NotFoundError, type NoteSummary, type Tag, type SortField, type SortOrder } from '../api/client.js';
-import { navigate } from '../router.js';
+import { api, type NoteSummary, type Tag, type SortField, type SortOrder } from '../api/client.js';
+import { navigate, tagsPath } from '../router.js';
 import { showToast } from '../util/toast.js';
 import { NoteRows } from './NoteRows.js';
 
@@ -24,7 +24,7 @@ const SORT_OPTIONS: { value: `${SortField}:${SortOrder}`; label: string }[] = [
 
 interface Props {
   activeSlug?: string;
-  activeTag?: string;
+  activeTags: string[];
   listKey?: number;
   onMutate?: () => void;
   sortField: SortField;
@@ -32,7 +32,7 @@ interface Props {
   onSortChange: (field: SortField, order: SortOrder) => void;
 }
 
-export function NoteList({ activeSlug, activeTag, listKey, onMutate, sortField, sortOrder, onSortChange }: Props) {
+export function NoteList({ activeSlug, activeTags, listKey, onMutate, sortField, sortOrder, onSortChange }: Props) {
   // Two mutually-exclusive search inputs: a full-text query over content+title,
   // and an autocomplete-style case-insensitive prefix filter on the title only.
   // Typing in one clears the other; the title filter takes precedence when both
@@ -50,7 +50,6 @@ export function NoteList({ activeSlug, activeTag, listKey, onMutate, sortField, 
   const [loading, setLoading] = useState(false);
   const [exhausted, setExhausted] = useState(false);
   const [allTags, setAllTags] = useState<Tag[]>([]);
-  const [removingTag, setRemovingTag] = useState(false);
   const shownRef = useRef(new Set<string>());
   const genRef = useRef(0);
   const uploadRef = useRef<HTMLInputElement>(null);
@@ -82,7 +81,7 @@ export function NoteList({ activeSlug, activeTag, listKey, onMutate, sortField, 
     })();
   }, [listKey]);
 
-  const loadPage = useCallback(async (q: string, tag: string | undefined, prefix: boolean, pageOffset: number, gen: number) => {
+  const loadPage = useCallback(async (q: string, tags: string[], prefix: boolean, pageOffset: number, gen: number) => {
     setLoading(true);
     const cappedQ = capRunes(q, MAX_Q_RUNES);
     // Clamp limit/offset to the ranges declared in openapi.yaml.
@@ -91,7 +90,7 @@ export function NoteList({ activeSlug, activeTag, listKey, onMutate, sortField, 
     try {
       const res = await api.notes.list({
         q: cappedQ || undefined,
-        tag,
+        tags,
         titlePrefix: prefix,
         sort: sortField,
         order: sortOrder,
@@ -119,7 +118,9 @@ export function NoteList({ activeSlug, activeTag, listKey, onMutate, sortField, 
   }, [sortField, sortOrder]);
 
   // Reset accumulated rows and offset whenever the debounced query, match mode,
-  // tag filter, or listKey changes.
+  // tag filter, or listKey changes. tagKey collapses the tags array to a stable
+  // string so a fresh array identity each render doesn't retrigger the load.
+  const tagKey = activeTags.join(',');
   useEffect(() => {
     const gen = ++genRef.current;
     shownRef.current = new Set();
@@ -127,8 +128,9 @@ export function NoteList({ activeSlug, activeTag, listKey, onMutate, sortField, 
     setOffset(0);
     setTotal(null);
     setExhausted(false);
-    void loadPage(debounced.q, activeTag, debounced.titlePrefix, 0, gen);
-  }, [debounced, activeTag, loadPage, listKey]);
+    void loadPage(debounced.q, activeTags, debounced.titlePrefix, 0, gen);
+    // activeTags is keyed via tagKey.
+  }, [debounced, tagKey, loadPage, listKey]);
 
   async function handleUpload(e: Event) {
     const file = (e.target as HTMLInputElement).files?.[0];
@@ -158,40 +160,13 @@ export function NoteList({ activeSlug, activeTag, listKey, onMutate, sortField, 
     if (uploadRef.current) uploadRef.current.value = '';
   }
 
-  // Remove the currently-filtered tag. The server detaches it from every note
-  // (the notes themselves are kept), so this works whether the tag is empty or
-  // still attached to notes. Afterwards drop the filter and refresh the list so
-  // the deleted tag disappears from the dropdown.
-  //
-  // Confirm only when the tag still carries notes: an empty tag has nothing to
-  // lose, so removing it is a no-cost action. Count with a dedicated query
-  // (limit 0, just the total) so any active search/title filter doesn't skew it;
-  // if the count can't be fetched, err on the side of confirming.
-  async function handleRemoveTag() {
-    if (!activeTag) return;
-    let hasNotes = true;
-    try {
-      const res = await api.notes.list({ tag: activeTag, limit: 1, offset: 0 });
-      hasNotes = res.total > 0;
-    } catch {
-      // Leave hasNotes = true so we still confirm.
-    }
-    if (hasNotes && !confirm(`Remove tag “${activeTag}”? Notes with this tag are kept, but will no longer carry it.`)) return;
-    setRemovingTag(true);
-    try {
-      await api.tags.delete(activeTag);
-    } catch (e) {
-      if (!(e instanceof NotFoundError)) {
-        showToast(`Failed to remove tag: ${(e as Error).message}`);
-        setRemovingTag(false);
-        return;
-      }
-      // Already gone: fall through to clear the filter and refresh.
-    }
-    setRemovingTag(false);
-    navigate('/');
-    onMutate?.();
-  }
+  // Navigate to the note list filtered by the given tag set (AND). An empty set
+  // clears the filter (back to "All notes").
+  const setTagFilter = (tags: string[]) => navigate(tagsPath(tags));
+
+  // Tags offered by the "add tag" picker: every known tag not already in the
+  // active filter.
+  const availableTags = allTags.filter(t => !activeTags.includes(t.slug));
 
   const showLoadMore = !exhausted && total !== null && rows.length < total && !loading;
 
@@ -254,39 +229,46 @@ export function NoteList({ activeSlug, activeTag, listKey, onMutate, sortField, 
         </label>
       </div>
 
-      {allTags.length > 0 && (
-        <div class="tag-filter-row">
-          <label class="tag-filter-label">
-            <span class="tag-filter-name">Tag</span>
-            <select
-              class="tag-filter-select"
-              value={activeTag ?? ''}
-              onChange={(e) => {
-                const slug = (e.target as HTMLSelectElement).value;
-                navigate(slug ? `/tags/${slug}` : '/');
-              }}
-            >
-              <option value="">All tags</option>
-              {allTags.map(t => (
-                <option key={t.slug} value={t.slug}>{t.slug}</option>
-              ))}
-              {/* A filter active for a tag that has since been deleted: keep it
-                  selectable (as its slug) so the dropdown reflects reality
-                  instead of silently snapping back to "All tags". */}
-              {activeTag && !allTags.some(t => t.slug === activeTag) && (
-                <option value={activeTag}>{activeTag}</option>
-              )}
-            </select>
-          </label>
-          {activeTag && (
-            <button
-              class="danger btn-icon"
-              onClick={handleRemoveTag}
-              disabled={removingTag}
-              title={removingTag ? 'Removing tag…' : `Remove tag “${activeTag}”`}
-              aria-label={removingTag ? 'Removing tag…' : `Remove tag “${activeTag}”`}
-            >❌︎</button>
-          )}
+      {(activeTags.length > 0 || allTags.length > 0) && (
+        <div class="tag-filter-row tag-filter-row-tags">
+          <span class="tag-filter-name">Tags</span>
+          <div class="tag-filter-controls">
+            {/* Active filters as removable chips. Multiple tags AND together:
+                a note must carry every one. A chip may name a tag that has since
+                been deleted (still in the URL); it stays removable regardless. */}
+            {activeTags.length > 0 && (
+              <div class="tag-chips">
+                {activeTags.map(slug => (
+                  <span key={slug} class="tag-chip">
+                    {slug}
+                    <button
+                      type="button"
+                      class="tag-chip-remove"
+                      title={`Remove filter “${slug}”`}
+                      aria-label={`Remove tag filter ${slug}`}
+                      onClick={() => setTagFilter(activeTags.filter(t => t !== slug))}
+                    >×</button>
+                  </span>
+                ))}
+              </div>
+            )}
+            {availableTags.length > 0 && (
+              <select
+                class="tag-filter-select"
+                value=""
+                aria-label="Add tag filter"
+                onChange={(e) => {
+                  const slug = (e.target as HTMLSelectElement).value;
+                  if (slug) setTagFilter([...activeTags, slug]);
+                }}
+              >
+                <option value="">{activeTags.length ? 'Add another tag…' : 'Filter by tag…'}</option>
+                {availableTags.map(t => (
+                  <option key={t.slug} value={t.slug}>{t.slug}</option>
+                ))}
+              </select>
+            )}
+          </div>
         </div>
       )}
 
@@ -306,7 +288,7 @@ export function NoteList({ activeSlug, activeTag, listKey, onMutate, sortField, 
 
       {showLoadMore && (
         <div class="load-more">
-          <button onClick={() => void loadPage(debounced.q, activeTag, debounced.titlePrefix, offset, genRef.current)}>
+          <button onClick={() => void loadPage(debounced.q, activeTags, debounced.titlePrefix, offset, genRef.current)}>
             Load more
           </button>
         </div>

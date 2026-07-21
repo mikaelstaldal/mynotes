@@ -133,7 +133,7 @@ func TestSplit_UnknownTagIsValidationErrorAndCreatesNothing(t *testing.T) {
 	assert.ErrorIs(t, err, ErrValidation)
 
 	// The tag is resolved before any note is written, so nothing was created.
-	_, total, err := svc.List(ctx, "", "", false, "updated", "desc", 50, 0)
+	_, total, err := svc.List(ctx, "", nil, false, "updated", "desc", 50, 0)
 	require.NoError(t, err)
 	assert.Equal(t, 1, total, "only the original note exists")
 }
