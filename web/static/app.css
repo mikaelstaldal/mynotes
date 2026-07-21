@@ -1281,15 +1281,26 @@ a.tag-chip:hover { border-color: var(--primary); color: var(--primary); }
   grid-template-areas:
     "title   actions"
     "date    actions"
-    "excerpt actions"
-    "tags    actions";
+    "excerpt actions";
   grid-template-columns: 1fr auto;
   column-gap: 0.5rem;
 }
-.note-row-actions {
+/* Right-hand column: the action toolbar with the note's tag chips stacked
+   directly beneath it, both right-aligned. Keeping the chips here fills the
+   space beside the note text rather than adding a full-width row below. */
+.note-row-side {
   grid-area: actions;
   align-self: start;
-  justify-self: end;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.3rem;
+}
+.note-row-side .tag-chips {
+  margin-top: 0;
+  justify-content: flex-end;
+}
+.note-row-actions {
   margin-top: 0;
   margin-bottom: 0;
   flex-wrap: wrap;

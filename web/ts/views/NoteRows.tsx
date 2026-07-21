@@ -41,6 +41,18 @@ interface Props {
   onMutate?: () => void;
 }
 
+function TagChips({ tags }: { tags: NoteSummary['tags'] }) {
+  if (tags.length === 0) return null;
+  return (
+    <div class="tag-chips">
+      {tags.map(t => (
+        <a key={t.slug} class="tag-chip" href={`${base}/tags/${t.slug}`}
+          onClick={(e) => e.stopPropagation()}>{t.slug}</a>
+      ))}
+    </div>
+  );
+}
+
 // Presentational list of note rows shared by the sidebar list and the
 // main-panel overview. Must be rendered inside an `.item-list` container so the
 // per-row border styling applies.
@@ -61,23 +73,24 @@ export function NoteRows({ rows, activeSlug, showActions, onMutate }: Props) {
                 dangerouslySetInnerHTML={{ __html: renderExcerpt(n.excerpt) }}
               />
             )}
-            {n.tags.length > 0 && (
-              <div class="tag-chips">
-                {n.tags.map(t => (
-                  <a key={t.slug} class="tag-chip" href={`${base}/tags/${t.slug}`}
-                    onClick={(e) => e.stopPropagation()}>{t.slug}</a>
-                ))}
+            {/* In the overview (showActions) the toolbar and the tag chips
+                share a right-hand column so the chips fill the space beside the
+                excerpt instead of adding a full-width row. The sidebar list
+                keeps the chips beneath the note text. */}
+            {showActions ? (
+              <div class="note-row-side">
+                <NoteActions
+                  slug={n.slug}
+                  title={n.title}
+                  toolbarClass="note-row-actions"
+                  showView
+                  onDeleted={onMutate}
+                  onSplit={onMutate}
+                />
+                <TagChips tags={n.tags} />
               </div>
-            )}
-            {showActions && (
-              <NoteActions
-                slug={n.slug}
-                title={n.title}
-                toolbarClass="note-row-actions"
-                showView
-                onDeleted={onMutate}
-                onSplit={onMutate}
-              />
+            ) : (
+              <TagChips tags={n.tags} />
             )}
           </div>
         </li>
