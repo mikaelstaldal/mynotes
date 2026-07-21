@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -65,16 +66,50 @@ func TestTagList(t *testing.T) {
 	_, err = repo.Create(ctx, "mango")
 	require.NoError(t, err)
 
-	tags, err := repo.List(ctx)
+	tags, err := repo.ListWithCounts(ctx)
 	require.NoError(t, err)
 	require.Len(t, tags, 3)
 	assert.Equal(t, []string{"apple", "mango", "zebra"},
 		[]string{tags[0].Slug, tags[1].Slug, tags[2].Slug}, "sorted by slug, case-insensitive")
+	for _, tag := range tags {
+		assert.Zero(t, tag.NoteCount, "unused tag %q reports zero notes", tag.Slug)
+	}
+}
+
+func TestTagListWithCounts(t *testing.T) {
+	ctx := context.Background()
+	db := newTestDB(t)
+	tagRepo := NewTagRepository(db)
+	noteRepo := NewNoteRepository(db)
+
+	work, err := tagRepo.Create(ctx, "work")
+	require.NoError(t, err)
+	home, err := tagRepo.Create(ctx, "home")
+	require.NoError(t, err)
+	_, err = tagRepo.Create(ctx, "unused")
+	require.NoError(t, err)
+
+	// "work" on two notes, "home" on one of them, "unused" on none.
+	now := time.Now().UTC()
+	_, err = noteRepo.CreateWithTime(ctx, "n1", "N1", "a", now, []int64{work.ID, home.ID})
+	require.NoError(t, err)
+	_, err = noteRepo.CreateWithTime(ctx, "n2", "N2", "b", now, []int64{work.ID})
+	require.NoError(t, err)
+
+	tags, err := tagRepo.ListWithCounts(ctx)
+	require.NoError(t, err)
+	counts := make(map[string]int, len(tags))
+	for _, tg := range tags {
+		counts[tg.Slug] = tg.NoteCount
+	}
+	assert.Equal(t, 2, counts["work"])
+	assert.Equal(t, 1, counts["home"])
+	assert.Equal(t, 0, counts["unused"])
 }
 
 func TestTagListEmpty(t *testing.T) {
 	repo := NewTagRepository(newTestDB(t))
-	tags, err := repo.List(context.Background())
+	tags, err := repo.ListWithCounts(context.Background())
 	require.NoError(t, err)
 	assert.Empty(t, tags)
 	assert.NotNil(t, tags)

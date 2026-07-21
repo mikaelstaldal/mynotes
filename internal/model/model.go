@@ -59,6 +59,14 @@ type Tag struct {
 	CreatedAt time.Time
 }
 
+// TagSummary is the tag-listing projection: a tag's Slug plus NoteCount, the
+// number of notes currently carrying it. It powers the tag-management view,
+// where a tag with attached notes is deleted only after confirmation.
+type TagSummary struct {
+	Slug      string
+	NoteCount int
+}
+
 // Artifact is a binary blob stored content-addressed by SHA-256. SHA256 is the
 // hex-encoded digest (64 lowercase chars) and serves as the primary key.
 type Artifact struct {

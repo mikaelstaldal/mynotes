@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'preact/hooks';
-import { api, type NoteSummary, type Tag, type SortField, type SortOrder } from '../api/client.js';
+import { api, type NoteSummary, type TagSummary, type SortField, type SortOrder } from '../api/client.js';
 import { navigate, tagsPath } from '../router.js';
 import { showToast } from '../util/toast.js';
 import { NoteRows } from './NoteRows.js';
@@ -49,7 +49,7 @@ export function NoteList({ activeSlug, activeTags, listKey, onMutate, sortField,
   const [total, setTotal] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const [exhausted, setExhausted] = useState(false);
-  const [allTags, setAllTags] = useState<Tag[]>([]);
+  const [allTags, setAllTags] = useState<TagSummary[]>([]);
   const shownRef = useRef(new Set<string>());
   const genRef = useRef(0);
   const uploadRef = useRef<HTMLInputElement>(null);
@@ -195,7 +195,6 @@ export function NoteList({ activeSlug, activeTags, listKey, onMutate, sortField,
             if (v) setTextInput('');
           }}
         />
-        <button class="btn-icon" title="Reload list" aria-label="Reload list" onClick={() => onMutate?.()}>↺</button>
         <button class="primary btn-icon" title="New note" aria-label="New note" onClick={() => navigate('/new')}>+</button>
         <button class="btn-icon" title="Upload note (Markdown or HTML)" aria-label="Upload note" onClick={() => uploadRef.current?.click()}>⬆</button>
         <input

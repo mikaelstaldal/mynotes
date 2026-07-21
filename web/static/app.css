@@ -47,11 +47,20 @@ body {
   text-decoration: none;
 }
 
-.sidebar-brand {
-  display: block;
-  padding: 0.5rem 0;
-  margin-bottom: 0.5rem;
+/* Header row shared by both sidebar tabs: brand on the left, the tab strip in
+   the middle, the reload button on the right — all sitting on one baseline (the
+   header's bottom border, which doubles as the tab strip's baseline). */
+.sidebar-header {
+  display: flex;
+  align-items: stretch;
+  gap: 0.6rem;
+  margin-bottom: 0.75rem;
   border-bottom: 1px solid var(--border);
+}
+
+.sidebar-brand {
+  flex: none;
+  align-self: center;
 }
 
 .app-body {
@@ -1146,6 +1155,73 @@ mark { background: #fef08a; color: var(--fg); border-radius: 2px; padding: 0 1px
   margin: 0.5rem 0 0;
   font-size: 0.85rem;
   color: var(--muted);
+}
+
+/* ── Sidebar tabs ───────────────────────────────────────────────── */
+
+.sidebar-tabs {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.25rem;
+  flex: 1;
+  min-width: 0;
+}
+
+/* Underline-style tabs: each reaches the header baseline and the active one
+   paints a coloured underline over the header's 1px border (via the -1px
+   margin), giving the classic "connected tab" look rather than plain buttons. */
+.sidebar-tab {
+  padding: 0.5rem 0.75rem;
+  margin-bottom: -1px;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
+.sidebar-tab:hover:not(.active) {
+  color: var(--fg);
+}
+
+.sidebar-tab.active {
+  color: var(--primary);
+  border-bottom-color: var(--primary);
+}
+
+.sidebar-reload {
+  flex: none;
+  align-self: center;
+}
+
+/* ── Tag management ─────────────────────────────────────────────── */
+
+.tag-manager-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0;
+}
+
+.tag-manager-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+}
+
+.tag-manager-count {
+  flex: none;
+  font-size: 0.8rem;
+}
+
+.tag-manager-delete {
+  flex: none;
 }
 
 /* ── Tags ───────────────────────────────────────────────────────── */

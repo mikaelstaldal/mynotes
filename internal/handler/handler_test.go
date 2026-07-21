@@ -437,6 +437,7 @@ func TestCreateAndListTags(t *testing.T) {
 	require.NoError(t, json.NewDecoder(res.Body).Decode(&list))
 	require.Len(t, list.Tags, 1)
 	assert.Equal(t, "work", list.Tags[0].Slug)
+	assert.Equal(t, 0, list.Tags[0].NoteCount, "a freshly created tag carries no notes")
 }
 
 func TestCreateTagSlugConflictIs409(t *testing.T) {

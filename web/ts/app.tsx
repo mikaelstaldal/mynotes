@@ -1,6 +1,6 @@
 import { render } from 'preact';
 import { useState, useEffect, useCallback } from 'preact/hooks';
-import { currentRoute, onRouteChange, type Route } from './router.js';
+import { currentRoute, onRouteChange, navigate, tagsPath, type Route } from './router.js';
 import { getConfig, saveConfig } from './util/config.js';
 import { isValidSlug } from './util/slug.js';
 import { api, type SortField, type SortOrder } from './api/client.js';
@@ -8,13 +8,17 @@ import { NoteList } from './views/NoteList.js';
 import { NotesOverview } from './views/NotesOverview.js';
 import { NoteEditor } from './views/NoteEditor.js';
 import { NoteView } from './views/NoteView.js';
+import { TagManager } from './views/TagManager.js';
 import { Toast } from './components/Toast.js';
+
+type SidebarTab = 'notes' | 'tags';
 
 function App() {
   const [route, setRoute] = useState<Route>(currentRoute());
   const [listKey, setListKey] = useState(0);
   const [sortField, setSortField] = useState<SortField>(() => getConfig().sortField);
   const [sortOrder, setSortOrder] = useState<SortOrder>(() => getConfig().sortOrder);
+  const [sidebarTab, setSidebarTab] = useState<SidebarTab>('notes');
 
   useEffect(() => onRouteChange(setRoute), []);
 
@@ -24,6 +28,13 @@ function App() {
   }, []);
 
   const refreshList = useCallback(() => setListKey(k => k + 1), []);
+
+  // From the tag-management tab, opening a tag filters the note list by it and
+  // returns to the notes tab so the filtered result is visible in the sidebar.
+  const openTag = useCallback((slug: string) => {
+    setSidebarTab('notes');
+    navigate(tagsPath([slug]));
+  }, []);
 
   // Persist the sort choice so it survives reloads, and drive both the sidebar
   // list and the main-panel overview from the same state.
@@ -68,16 +79,46 @@ function App() {
     <>
       <div class="app-body">
         <aside class="sidebar">
-          <a class="brand sidebar-brand" href="/">MyNotes</a>
-          <NoteList
-            activeSlug={activeSlug}
-            activeTags={route.type === 'list' ? route.tags : []}
-            listKey={listKey}
-            onMutate={refreshList}
-            sortField={sortField}
-            sortOrder={sortOrder}
-            onSortChange={changeSort}
-          />
+          <div class="sidebar-header">
+            <a class="brand sidebar-brand" href="/">MyNotes</a>
+            <div class="sidebar-tabs" role="tablist">
+              <button
+                role="tab"
+                aria-selected={sidebarTab === 'notes'}
+                class={`sidebar-tab${sidebarTab === 'notes' ? ' active' : ''}`}
+                onClick={() => setSidebarTab('notes')}
+              >Notes</button>
+              <button
+                role="tab"
+                aria-selected={sidebarTab === 'tags'}
+                class={`sidebar-tab${sidebarTab === 'tags' ? ' active' : ''}`}
+                onClick={() => setSidebarTab('tags')}
+              >Tags</button>
+            </div>
+            <button
+              class="btn-icon sidebar-reload"
+              title={sidebarTab === 'notes' ? 'Reload notes' : 'Reload tags'}
+              aria-label={sidebarTab === 'notes' ? 'Reload notes' : 'Reload tags'}
+              onClick={refreshList}
+            >↺</button>
+          </div>
+          {sidebarTab === 'notes' ? (
+            <NoteList
+              activeSlug={activeSlug}
+              activeTags={route.type === 'list' ? route.tags : []}
+              listKey={listKey}
+              onMutate={refreshList}
+              sortField={sortField}
+              sortOrder={sortOrder}
+              onSortChange={changeSort}
+            />
+          ) : (
+            <TagManager
+              listKey={listKey}
+              onMutate={refreshList}
+              onOpenTag={openTag}
+            />
+          )}
         </aside>
         <main>
           {route.type === 'list' && (

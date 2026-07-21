@@ -18,9 +18,9 @@ func NewTagService(repo *repository.TagRepository) *TagService {
 	return &TagService{repo: repo}
 }
 
-// List returns every tag, sorted by slug.
-func (s *TagService) List(ctx context.Context) ([]model.Tag, error) {
-	return s.repo.List(ctx)
+// List returns every tag with its note count, sorted by slug.
+func (s *TagService) List(ctx context.Context) ([]model.TagSummary, error) {
+	return s.repo.ListWithCounts(ctx)
 }
 
 // Create stores a new tag identified solely by its slug (which is also its

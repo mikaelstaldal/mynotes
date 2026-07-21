@@ -32,23 +32,29 @@ func scanTag(s interface{ Scan(...any) error }) (model.Tag, error) {
 	return t, nil
 }
 
-// List returns every tag sorted by slug (case-insensitive). The dataset is
-// expected to stay small for a single-user tool, so this has no paging.
-func (r *TagRepository) List(ctx context.Context) ([]model.Tag, error) {
+// ListWithCounts returns every tag sorted by slug (case-insensitive), each
+// paired with the number of notes carrying it (0 for an unused tag). A LEFT
+// JOIN keeps tags with no notes in the result. The dataset is expected to stay
+// small for a single-user tool, so this has no paging.
+func (r *TagRepository) ListWithCounts(ctx context.Context) ([]model.TagSummary, error) {
 	rows, err := r.db.QueryContext(ctx,
-		`SELECT id, slug, created_at FROM tags ORDER BY slug COLLATE NOCASE`)
+		`SELECT t.slug, COUNT(nt.note_id)
+		   FROM tags t
+		   LEFT JOIN note_tags nt ON nt.tag_id = t.id
+		  GROUP BY t.id, t.slug
+		  ORDER BY t.slug COLLATE NOCASE`)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	tags := make([]model.Tag, 0)
+	tags := make([]model.TagSummary, 0)
 	for rows.Next() {
-		t, err := scanTag(rows)
-		if err != nil {
+		var ts model.TagSummary
+		if err := rows.Scan(&ts.Slug, &ts.NoteCount); err != nil {
 			return nil, err
 		}
-		tags = append(tags, t)
+		tags = append(tags, ts)
 	}
 	return tags, rows.Err()
 }

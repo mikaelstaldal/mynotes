@@ -15,6 +15,7 @@ export type UpdateNoteRequest = components['schemas']['UpdateNoteRequest'];
 export type SplitNoteResponse = components['schemas']['SplitNoteResponse'];
 export type Artifact = components['schemas']['Artifact'];
 export type Tag = components['schemas']['Tag'];
+export type TagSummary = components['schemas']['TagSummary'];
 export type NoteLink = components['schemas']['NoteLink'];
 export type TagList = components['schemas']['TagList'];
 export type CreateTagRequest = components['schemas']['CreateTagRequest'];

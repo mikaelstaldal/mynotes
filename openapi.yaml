@@ -304,7 +304,9 @@ paths:
     get:
       operationId: listTags
       summary: List all tags
-      description: Returns all tags sorted by slug. Powers client-side autocomplete.
+      description: >
+        Returns all tags sorted by slug, each with the number of notes carrying
+        it. Powers client-side autocomplete and the tag-management view.
       responses:
         "200":
           description: All tags.
@@ -856,6 +858,19 @@ components:
           maxLength: 100
           pattern: "^[a-z0-9]+(?:-[a-z0-9]+)*$"
 
+    TagSummary:
+      type: object
+      required: [slug, note_count]
+      properties:
+        slug:
+          type: string
+          maxLength: 100
+          pattern: "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+        note_count:
+          type: integer
+          minimum: 0
+          description: Number of notes currently carrying this tag.
+
     TagList:
       type: object
       required: [tags]
@@ -863,7 +878,7 @@ components:
         tags:
           type: array
           items:
-            $ref: "#/components/schemas/Tag"
+            $ref: "#/components/schemas/TagSummary"
 
     CreateTagRequest:
       type: object

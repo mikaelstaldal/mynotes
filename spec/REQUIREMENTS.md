@@ -206,6 +206,9 @@ which also serves as its display label.
   existing tag is an error (409), never silently suffixed.
 - Deleting a tag detaches it from every note that had it; there is no
   orphan-prevention (mirrors artifact deletion).
+- Listing tags returns every tag sorted by slug, each with a **note count** —
+  the number of notes currently carrying it (0 for an unused tag). This powers
+  both client-side autocomplete and the tag-management view.
 - Notes reference tags by slug in create/update requests; `Note` and
   `NoteSummary` API responses embed the full tag (slug) so the client does not
   need extra round-trips to display them.
@@ -314,23 +317,29 @@ existing-note editor (`/notes/{slug}/edit`).
   appears in the sidebar tag dropdown. Malformed slugs the backend would reject
   are ignored.
 
-- **Sidebar (always visible):** debounced search box, results showing title,
-  updated time, excerpt with highlights when searching, and tags. A sort
-  dropdown selects the browse order — by updated time, created time, or title,
-  each ascending or descending; the choice is persisted (localStorage) and
-  drives both the sidebar and the main-panel overview. It has no effect while a
-  search query is active (results stay relevance-ordered). A tag
-  filter dropdown lists every tag that exists (not just tags visible in the
-  currently loaded notes), so a tag can be selected to filter even when no
-  matching note is currently on screen; selecting "All tags" clears the
-  filter. While a tag is selected, a "Remove tag" button beside the dropdown
-  deletes that tag (after a confirmation): the tag is detached from every note
-  that carried it — the notes themselves are kept — and the filter is then
-  cleared. Empty and
-  loading states. A "Load more" button pages through results (accumulating and
-  de-duplicating rows by slug); resets on query or tag-filter change. Shows
-  the total count. "New note" and "Upload note" actions. The currently open
-  note is highlighted in the list.
+- **Sidebar (always visible):** a two-tab panel — a **Notes** tab (the default)
+  and a **Tags** tab — under the brand.
+  - **Notes tab:** debounced search box, results showing title,
+    updated time, excerpt with highlights when searching, and tags. A sort
+    dropdown selects the browse order — by updated time, created time, or title,
+    each ascending or descending; the choice is persisted (localStorage) and
+    drives both the sidebar and the main-panel overview. It has no effect while a
+    search query is active (results stay relevance-ordered). A tag
+    filter lists every tag that exists (not just tags visible in the
+    currently loaded notes), so a tag can be selected to filter even when no
+    matching note is currently on screen; multiple tags AND together, each shown
+    as a removable chip (removing a chip drops that tag from the filter only — it
+    does not delete the tag). Empty and
+    loading states. A "Load more" button pages through results (accumulating and
+    de-duplicating rows by slug); resets on query or tag-filter change. Shows
+    the total count. "New note" and "Upload note" actions. The currently open
+    note is highlighted in the list.
+  - **Tags tab:** lists every tag sorted by slug, each with the number of notes
+    carrying it and a delete button. Clicking a tag's name filters the note list
+    by it and switches back to the Notes tab. Deleting a tag that is still
+    attached to one or more notes asks for confirmation first (the notes
+    themselves are kept, just untagged); deleting an unused tag (zero notes) does
+    not prompt. The list refreshes after a delete.
 - **Upload Markdown or HTML:** pick a single `.md`/`.markdown`/text or
   `.html`/`.htm` file. For Markdown files, the title is derived client-side (first
   heading, else filename without extension, else "Untitled") and the note is created

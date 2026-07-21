@@ -174,7 +174,11 @@ func (h *Handler) ListTags(ctx context.Context) (*api.TagList, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &api.TagList{Tags: toAPITags(tags)}, nil
+	out := make([]api.TagSummary, len(tags))
+	for i, t := range tags {
+		out[i] = api.TagSummary{Slug: t.Slug, NoteCount: t.NoteCount}
+	}
+	return &api.TagList{Tags: out}, nil
 }
 
 func (h *Handler) CreateTag(ctx context.Context, req *api.CreateTagRequest) (*api.Tag, error) {
