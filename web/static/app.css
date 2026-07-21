@@ -1389,26 +1389,20 @@ a.tag-chip:hover { border-color: var(--primary); color: var(--primary); }
   padding: 0.2rem 0.4rem;
 }
 
-/* Multi-tag filter: the "Tags" label sits at the top-left while the chips and
-   the add-tag picker stack (and wrap) beside it. */
-.tag-filter-row-tags {
-  align-items: flex-start;
+/* Multi-tag filter: the "Tags" label and the add-tag picker share one row so
+   the picker stays put; the active-filter chips wrap onto their own line below
+   rather than shoving the picker down as they are added/removed. */
+.tag-filter-tags {
+  margin-bottom: 0.5rem;
 }
 
-.tag-filter-controls {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
+.tag-filter-tags .tag-filter-row-tags {
+  margin-bottom: 0;
 }
 
-.tag-filter-controls .tag-chips {
-  margin-top: 0;
-}
-
-.tag-filter-controls .tag-filter-select {
-  flex: none;
-  align-self: flex-start;
-  max-width: 100%;
+/* Always rendered; reserve one chip row so height stays constant between zero
+   and one active tag (0.78rem font × 1.5 line-height + 0.2rem padding + border). */
+.tag-filter-tags .tag-chips {
+  margin-top: 0.35rem;
+  min-height: 1.5rem;
 }

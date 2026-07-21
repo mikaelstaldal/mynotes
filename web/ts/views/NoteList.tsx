@@ -6,6 +6,10 @@ import { NoteRows } from './NoteRows.js';
 
 const LIMIT = 50;
 const MAX_Q_RUNES = 200;
+// Only reveal the "Loading…" indicator once a load has been running this long.
+// Fast loads (the common local tag-switch case) finish first, so the indicator
+// never paints and the list doesn't flicker.
+const LOADING_INDICATOR_DELAY_MS = 400;
 
 function capRunes(s: string, max: number): string {
   return [...s].slice(0, max).join('');
@@ -47,10 +51,20 @@ export function NoteList({ activeSlug, activeTags, listKey, sortField, sortOrder
   const [offset, setOffset] = useState(0);
   const [total, setTotal] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
+  // Delayed mirror of `loading`: only true once a load has outlasted
+  // LOADING_INDICATOR_DELAY_MS. Drives the visible "Loading…" text so quick
+  // loads don't flash it.
+  const [slowLoading, setSlowLoading] = useState(false);
+  const slowTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [exhausted, setExhausted] = useState(false);
   const [allTags, setAllTags] = useState<TagSummary[]>([]);
   const shownRef = useRef(new Set<string>());
   const genRef = useRef(0);
+
+  // Clear any pending indicator timer on unmount.
+  useEffect(() => () => {
+    if (slowTimerRef.current !== null) clearTimeout(slowTimerRef.current);
+  }, []);
 
   // Commit the active input → debounced {query, mode} after 300 ms of no input.
   // The title filter wins when it holds text; otherwise the full-text query
@@ -81,6 +95,10 @@ export function NoteList({ activeSlug, activeTags, listKey, sortField, sortOrder
 
   const loadPage = useCallback(async (q: string, tags: string[], prefix: boolean, pageOffset: number, gen: number) => {
     setLoading(true);
+    if (slowTimerRef.current !== null) clearTimeout(slowTimerRef.current);
+    slowTimerRef.current = setTimeout(() => {
+      if (genRef.current === gen) setSlowLoading(true);
+    }, LOADING_INDICATOR_DELAY_MS);
     const cappedQ = capRunes(q, MAX_Q_RUNES);
     // Clamp limit/offset to the ranges declared in openapi.yaml.
     const safeLimit = Math.max(1, Math.min(200, LIMIT));
@@ -111,7 +129,14 @@ export function NoteList({ activeSlug, activeTags, listKey, sortField, sortOrder
       if (genRef.current !== gen) return;
       showToast(`Failed to load notes: ${(e as Error).message}`);
     } finally {
-      if (genRef.current === gen) setLoading(false);
+      if (slowTimerRef.current !== null) {
+        clearTimeout(slowTimerRef.current);
+        slowTimerRef.current = null;
+      }
+      if (genRef.current === gen) {
+        setLoading(false);
+        setSlowLoading(false);
+      }
     }
   }, [sortField, sortOrder]);
 
@@ -190,28 +215,12 @@ export function NoteList({ activeSlug, activeTags, listKey, sortField, sortOrder
       </div>
 
       {(activeTags.length > 0 || allTags.length > 0) && (
-        <div class="tag-filter-row tag-filter-row-tags">
-          <span class="tag-filter-name">Tags</span>
-          <div class="tag-filter-controls">
-            {/* Active filters as removable chips. Multiple tags AND together:
-                a note must carry every one. A chip may name a tag that has since
-                been deleted (still in the URL); it stays removable regardless. */}
-            {activeTags.length > 0 && (
-              <div class="tag-chips">
-                {activeTags.map(slug => (
-                  <span key={slug} class="tag-chip">
-                    {slug}
-                    <button
-                      type="button"
-                      class="tag-chip-remove"
-                      title={`Remove filter “${slug}”`}
-                      aria-label={`Remove tag filter ${slug}`}
-                      onClick={() => setTagFilter(activeTags.filter(t => t !== slug))}
-                    >×</button>
-                  </span>
-                ))}
-              </div>
-            )}
+        <div class="tag-filter-tags">
+          {/* Keep the add-tag picker on the same row as the "Tags" label so it
+              stays put as chips are added/removed; the chips wrap onto their own
+              line below rather than shoving the picker down. */}
+          <div class="tag-filter-row tag-filter-row-tags">
+            <span class="tag-filter-name">Tags</span>
             {availableTags.length > 0 && (
               <select
                 class="tag-filter-select"
@@ -229,6 +238,25 @@ export function NoteList({ activeSlug, activeTags, listKey, sortField, sortOrder
               </select>
             )}
           </div>
+          {/* Active filters as removable chips. Multiple tags AND together:
+              a note must carry every one. A chip may name a tag that has since
+              been deleted (still in the URL); it stays removable regardless.
+              The container is always rendered (min-height reserves one row) so
+              the layout height stays constant between zero and one tag. */}
+          <div class="tag-chips">
+            {activeTags.map(slug => (
+              <span key={slug} class="tag-chip">
+                {slug}
+                <button
+                  type="button"
+                  class="tag-chip-remove"
+                  title={`Remove filter “${slug}”`}
+                  aria-label={`Remove tag filter ${slug}`}
+                  onClick={() => setTagFilter(activeTags.filter(t => t !== slug))}
+                >×</button>
+              </span>
+            ))}
+          </div>
         </div>
       )}
 
@@ -236,7 +264,7 @@ export function NoteList({ activeSlug, activeTags, listKey, sortField, sortOrder
         <p class="result-count muted">{total} {total === 1 ? 'note' : 'notes'}</p>
       )}
 
-      {loading && rows.length === 0 ? (
+      {slowLoading && rows.length === 0 ? (
         <p class="muted">Loading…</p>
       ) : !loading && rows.length === 0 ? (
         <p class="muted">{debounced.q ? 'No matching notes.' : 'No notes yet.'}</p>
@@ -244,7 +272,7 @@ export function NoteList({ activeSlug, activeTags, listKey, sortField, sortOrder
         <NoteRows rows={rows} activeSlug={activeSlug} />
       )}
 
-      {loading && rows.length > 0 && <p class="muted">Loading…</p>}
+      {slowLoading && rows.length > 0 && <p class="muted">Loading…</p>}
 
       {showLoadMore && (
         <div class="load-more">
