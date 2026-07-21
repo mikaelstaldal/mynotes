@@ -29,10 +29,9 @@ function App() {
 
   const refreshList = useCallback(() => setListKey(k => k + 1), []);
 
-  // From the tag-management tab, opening a tag filters the note list by it and
-  // returns to the notes tab so the filtered result is visible in the sidebar.
+  // From the tag-management tab, opening a tag filters the main-panel note list
+  // by it. The sidebar stays on the tags tab so the tag list remains visible.
   const openTag = useCallback((slug: string) => {
-    setSidebarTab('notes');
     navigate(tagsPath([slug]));
   }, []);
 
