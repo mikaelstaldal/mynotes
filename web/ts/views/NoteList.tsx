@@ -26,13 +26,12 @@ interface Props {
   activeSlug?: string;
   activeTags: string[];
   listKey?: number;
-  onMutate?: () => void;
   sortField: SortField;
   sortOrder: SortOrder;
   onSortChange: (field: SortField, order: SortOrder) => void;
 }
 
-export function NoteList({ activeSlug, activeTags, listKey, onMutate, sortField, sortOrder, onSortChange }: Props) {
+export function NoteList({ activeSlug, activeTags, listKey, sortField, sortOrder, onSortChange }: Props) {
   // Two mutually-exclusive search inputs: a full-text query over content+title,
   // and an autocomplete-style case-insensitive prefix filter on the title only.
   // Typing in one clears the other; the title filter takes precedence when both
@@ -52,7 +51,6 @@ export function NoteList({ activeSlug, activeTags, listKey, onMutate, sortField,
   const [allTags, setAllTags] = useState<TagSummary[]>([]);
   const shownRef = useRef(new Set<string>());
   const genRef = useRef(0);
-  const uploadRef = useRef<HTMLInputElement>(null);
 
   // Commit the active input → debounced {query, mode} after 300 ms of no input.
   // The title filter wins when it holds text; otherwise the full-text query
@@ -132,34 +130,6 @@ export function NoteList({ activeSlug, activeTags, listKey, onMutate, sortField,
     // activeTags is keyed via tagKey.
   }, [debounced, tagKey, loadPage, listKey]);
 
-  async function handleUpload(e: Event) {
-    const file = (e.target as HTMLInputElement).files?.[0];
-    if (!file) return;
-    const text = await file.text();
-
-    if ([...text].length > 1_000_000) {
-      showToast('File too large: must be at most 1,000,000 characters.');
-      if (uploadRef.current) uploadRef.current.value = '';
-      return;
-    }
-
-    const isHtml = /\.html?$/i.test(file.name) || file.type === 'text/html';
-    try {
-      let note;
-      if (isHtml) {
-        note = await api.notes.importHtml(text);
-      } else {
-        note = await api.notes.importMarkdown(text);
-      }
-      onMutate?.();
-      navigate(`/notes/${note.slug}`);
-    } catch (err) {
-      showToast(`Upload failed: ${(err as Error).message}`);
-    }
-    // Reset so the same file can be re-uploaded.
-    if (uploadRef.current) uploadRef.current.value = '';
-  }
-
   // Navigate to the note list filtered by the given tag set (AND). An empty set
   // clears the filter (back to "All notes").
   const setTagFilter = (tags: string[]) => navigate(tagsPath(tags));
@@ -194,15 +164,6 @@ export function NoteList({ activeSlug, activeTags, listKey, onMutate, sortField,
             setTitleInput(v);
             if (v) setTextInput('');
           }}
-        />
-        <button class="primary btn-icon" title="New note" aria-label="New note" onClick={() => navigate('/new')}>+</button>
-        <button class="btn-icon" title="Upload note (Markdown or HTML)" aria-label="Upload note" onClick={() => uploadRef.current?.click()}>⬆</button>
-        <input
-          ref={uploadRef}
-          type="file"
-          accept=".md,.markdown,text/markdown,text/plain,.html,.htm,text/html"
-          style="display:none"
-          onChange={handleUpload}
         />
       </div>
 

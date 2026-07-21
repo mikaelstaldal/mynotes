@@ -1,8 +1,9 @@
 import { render } from 'preact';
-import { useState, useEffect, useCallback } from 'preact/hooks';
+import { useState, useEffect, useCallback, useRef } from 'preact/hooks';
 import { currentRoute, onRouteChange, navigate, tagsPath, type Route } from './router.js';
 import { getConfig, saveConfig } from './util/config.js';
 import { isValidSlug } from './util/slug.js';
+import { showToast } from './util/toast.js';
 import { api, type SortField, type SortOrder } from './api/client.js';
 import { NoteList } from './views/NoteList.js';
 import { NotesOverview } from './views/NotesOverview.js';
@@ -19,6 +20,7 @@ function App() {
   const [sortField, setSortField] = useState<SortField>(() => getConfig().sortField);
   const [sortOrder, setSortOrder] = useState<SortOrder>(() => getConfig().sortOrder);
   const [sidebarTab, setSidebarTab] = useState<SidebarTab>('notes');
+  const uploadRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => onRouteChange(setRoute), []);
 
@@ -28,6 +30,34 @@ function App() {
   }, []);
 
   const refreshList = useCallback(() => setListKey(k => k + 1), []);
+
+  // Upload a Markdown or HTML file as a new note, then open it. Lives here (not
+  // in NoteList) because the trigger buttons sit in the sidebar header.
+  const handleUpload = useCallback(async (e: Event) => {
+    const input = e.target as HTMLInputElement;
+    const file = input.files?.[0];
+    if (!file) return;
+    const text = await file.text();
+
+    if ([...text].length > 1_000_000) {
+      showToast('File too large: must be at most 1,000,000 characters.');
+      input.value = '';
+      return;
+    }
+
+    const isHtml = /\.html?$/i.test(file.name) || file.type === 'text/html';
+    try {
+      const note = isHtml
+        ? await api.notes.importHtml(text)
+        : await api.notes.importMarkdown(text);
+      refreshList();
+      navigate(`/notes/${note.slug}`);
+    } catch (err) {
+      showToast(`Upload failed: ${(err as Error).message}`);
+    }
+    // Reset so the same file can be re-uploaded.
+    input.value = '';
+  }, [refreshList]);
 
   // From the tag-management tab, opening a tag filters the main-panel note list
   // by it. The sidebar stays on the tags tab so the tag list remains visible.
@@ -94,19 +124,43 @@ function App() {
                 onClick={() => setSidebarTab('tags')}
               >Tags</button>
             </div>
-            <button
-              class="btn-icon sidebar-reload"
-              title={sidebarTab === 'notes' ? 'Reload notes' : 'Reload tags'}
-              aria-label={sidebarTab === 'notes' ? 'Reload notes' : 'Reload tags'}
-              onClick={refreshList}
-            >↺</button>
+            <div class="sidebar-actions">
+              {sidebarTab === 'notes' && (
+                <>
+                  <button
+                    class="primary btn-icon"
+                    title="New note"
+                    aria-label="New note"
+                    onClick={() => navigate('/new')}
+                  >+</button>
+                  <button
+                    class="btn-icon"
+                    title="Upload note (Markdown or HTML)"
+                    aria-label="Upload note"
+                    onClick={() => uploadRef.current?.click()}
+                  >⬆</button>
+                  <input
+                    ref={uploadRef}
+                    type="file"
+                    accept=".md,.markdown,text/markdown,text/plain,.html,.htm,text/html"
+                    style="display:none"
+                    onChange={handleUpload}
+                  />
+                </>
+              )}
+              <button
+                class="btn-icon sidebar-reload"
+                title={sidebarTab === 'notes' ? 'Reload notes' : 'Reload tags'}
+                aria-label={sidebarTab === 'notes' ? 'Reload notes' : 'Reload tags'}
+                onClick={refreshList}
+              >↺</button>
+            </div>
           </div>
           {sidebarTab === 'notes' ? (
             <NoteList
               activeSlug={activeSlug}
               activeTags={route.type === 'list' ? route.tags : []}
               listKey={listKey}
-              onMutate={refreshList}
               sortField={sortField}
               sortOrder={sortOrder}
               onSortChange={changeSort}
