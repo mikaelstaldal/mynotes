@@ -61,7 +61,7 @@ export function TagManager({ listKey, onMutate, onOpenTag }: Props) {
   };
 
   return (
-    <div class="item-list">
+    <div class="item-list tag-list">
       {tags.length === 0 ? (
         // Quick loads stay blank; the indicator (and the empty-state text) only
         // appear once the load has outlasted the delay / actually settled.

@@ -156,22 +156,24 @@ function App() {
               >↺</button>
             </div>
           </div>
-          {sidebarTab === 'notes' ? (
-            <NoteList
-              activeSlug={activeSlug}
-              activeTags={route.type === 'list' ? route.tags : []}
-              listKey={listKey}
-              sortField={sortField}
-              sortOrder={sortOrder}
-              onSortChange={changeSort}
-            />
-          ) : (
-            <TagManager
-              listKey={listKey}
-              onMutate={refreshList}
-              onOpenTag={openTag}
-            />
-          )}
+          <div class="sidebar-content">
+            {sidebarTab === 'notes' ? (
+              <NoteList
+                activeSlug={activeSlug}
+                activeTags={route.type === 'list' ? route.tags : []}
+                listKey={listKey}
+                sortField={sortField}
+                sortOrder={sortOrder}
+                onSortChange={changeSort}
+              />
+            ) : (
+              <TagManager
+                listKey={listKey}
+                onMutate={refreshList}
+                onOpenTag={openTag}
+              />
+            )}
+          </div>
         </aside>
         <main>
           {route.type === 'list' && (

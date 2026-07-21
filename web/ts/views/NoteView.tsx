@@ -79,6 +79,17 @@ export function NoteView({ slug, onDelete }: Props) {
     void renderMermaidBlocks(el);
   }, [renderedContent]);
 
+  // While a note is shown, stop main from scrolling as a whole (like the editor
+  // toggles editor-main) so the header stays fixed and only the content scrolls.
+  // Gated on a loaded note so the loading/not-found branches keep main scrolling.
+  const showNote = !!note;
+  useEffect(() => {
+    if (!showNote) return;
+    const main = document.querySelector('main');
+    main?.classList.add('note-view-main');
+    return () => main?.classList.remove('note-view-main');
+  }, [showNote]);
+
   // Quick loads stay blank rather than flash the indicator; it appears only if
   // the fetch outlasts the delay.
   if (loading) return slowLoading ? <p class="muted">Loading…</p> : null;
@@ -123,17 +134,19 @@ export function NoteView({ slug, onDelete }: Props) {
           onDeleted={() => { onDelete?.(); navigate('/'); }}
         />
       </div>
-      <div class="note-content" ref={contentRef} dangerouslySetInnerHTML={{ __html: renderedContent }} />
-      {note.incoming_links.length > 0 && (
-        <section class="note-backlinks">
-          <h2>Linked from</h2>
-          <ul>
-            {note.incoming_links.map(l => (
-              <li key={l.slug}><a class="link" href={`${base}/notes/${l.slug}`}>{l.title}</a></li>
-            ))}
-          </ul>
-        </section>
-      )}
+      <div class="note-view-scroll">
+        <div class="note-content" ref={contentRef} dangerouslySetInnerHTML={{ __html: renderedContent }} />
+        {note.incoming_links.length > 0 && (
+          <section class="note-backlinks">
+            <h2>Linked from</h2>
+            <ul>
+              {note.incoming_links.map(l => (
+                <li key={l.slug}><a class="link" href={`${base}/notes/${l.slug}`}>{l.title}</a></li>
+              ))}
+            </ul>
+          </section>
+        )}
+      </div>
     </div>
   );
 }

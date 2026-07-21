@@ -145,7 +145,10 @@ export function NoteList({ activeSlug, activeTags, listKey, sortField, sortOrder
   const showLoadMore = !exhausted && total !== null && rows.length < total && !loading;
 
   return (
-    <div class="item-list">
+    <div class="item-list notes-list">
+      {/* Search inputs, sort, tag filter and the note count stay fixed at the
+          top; only the note rows below (in .notes-list-scroll) scroll. */}
+      <div class="notes-list-controls">
       <div class="toolbar">
         <input
           type="search"
@@ -242,24 +245,27 @@ export function NoteList({ activeSlug, activeTags, listKey, sortField, sortOrder
       {total !== null && (
         <p class="result-count muted">{total} {total === 1 ? 'note' : 'notes'}</p>
       )}
+      </div>
 
-      {slowLoading && rows.length === 0 ? (
-        <p class="muted">Loading…</p>
-      ) : !loading && rows.length === 0 ? (
-        <p class="muted">{debounced.q ? 'No matching notes.' : 'No notes yet.'}</p>
-      ) : (
-        <NoteRows rows={rows} activeSlug={activeSlug} />
-      )}
+      <div class="notes-list-scroll">
+        {slowLoading && rows.length === 0 ? (
+          <p class="muted">Loading…</p>
+        ) : !loading && rows.length === 0 ? (
+          <p class="muted">{debounced.q ? 'No matching notes.' : 'No notes yet.'}</p>
+        ) : (
+          <NoteRows rows={rows} activeSlug={activeSlug} />
+        )}
 
-      {slowLoading && rows.length > 0 && <p class="muted">Loading…</p>}
+        {slowLoading && rows.length > 0 && <p class="muted">Loading…</p>}
 
-      {showLoadMore && (
-        <div class="load-more">
-          <button onClick={() => void loadPage(debounced.q, activeTags, debounced.titlePrefix, offset, genRef.current)}>
-            Load more
-          </button>
-        </div>
-      )}
+        {showLoadMore && (
+          <div class="load-more">
+            <button onClick={() => void loadPage(debounced.q, activeTags, debounced.titlePrefix, offset, genRef.current)}>
+              Load more
+            </button>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

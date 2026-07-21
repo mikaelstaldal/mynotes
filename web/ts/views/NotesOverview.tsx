@@ -70,6 +70,17 @@ export function NotesOverview({ activeTags, listKey, onMutate, sortField, sortOr
 
   const showLoadMore = !exhausted && total !== null && rows.length < total && !loading;
 
+  // While the list of rows is shown, stop main from scrolling as a whole (like
+  // the editor toggles editor-main) so the heading can stay fixed and only the
+  // rows scroll. Skipped for the loading/empty states, which return early below.
+  const hasRows = rows.length > 0;
+  useEffect(() => {
+    if (!hasRows) return;
+    const main = document.querySelector('main');
+    main?.classList.add('overview-main');
+    return () => main?.classList.remove('overview-main');
+  }, [hasRows]);
+
   // A tag's slug is its display label; when several are active the heading joins
   // them to reflect the AND filter.
   const heading = activeTags.length ? activeTags.join(' + ') : 'All notes';
@@ -83,17 +94,19 @@ export function NotesOverview({ activeTags, listKey, onMutate, sortField, sortOr
   }
 
   return (
-    <div class="item-list">
+    <div class="item-list overview-list">
       <h1 class="note-title overview-heading">{heading}</h1>
-      <NoteRows rows={rows} showActions onMutate={onMutate} />
-      {slowLoading && rows.length > 0 && <p class="muted">Loading…</p>}
-      {showLoadMore && (
-        <div class="load-more">
-          <button onClick={() => void loadPage(activeTags, offset, genRef.current)}>
-            Load more
-          </button>
-        </div>
-      )}
+      <div class="overview-scroll">
+        <NoteRows rows={rows} showActions onMutate={onMutate} />
+        {slowLoading && rows.length > 0 && <p class="muted">Loading…</p>}
+        {showLoadMore && (
+          <div class="load-more">
+            <button onClick={() => void loadPage(activeTags, offset, genRef.current)}>
+              Load more
+            </button>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
