@@ -10,9 +10,10 @@ import { NotesOverview } from './views/NotesOverview.js';
 import { NoteEditor } from './views/NoteEditor.js';
 import { NoteView } from './views/NoteView.js';
 import { TagManager } from './views/TagManager.js';
+import { NotesGraph } from './views/NotesGraph.js';
 import { Toast } from './components/Toast.js';
 
-type SidebarTab = 'notes' | 'tags';
+type SidebarTab = 'notes' | 'tags' | 'graph';
 
 function App() {
   const [route, setRoute] = useState<Route>(currentRoute());
@@ -123,6 +124,12 @@ function App() {
                 class={`sidebar-tab${sidebarTab === 'tags' ? ' active' : ''}`}
                 onClick={() => setSidebarTab('tags')}
               >Tags</button>
+              <button
+                role="tab"
+                aria-selected={sidebarTab === 'graph'}
+                class={`sidebar-tab${sidebarTab === 'graph' ? ' active' : ''}`}
+                onClick={() => setSidebarTab('graph')}
+              >Graph</button>
             </div>
             <div class="sidebar-actions">
               {sidebarTab === 'notes' && (
@@ -150,14 +157,14 @@ function App() {
               )}
               <button
                 class="btn-icon sidebar-reload"
-                title={sidebarTab === 'notes' ? 'Reload notes' : 'Reload tags'}
-                aria-label={sidebarTab === 'notes' ? 'Reload notes' : 'Reload tags'}
+                title={sidebarTab === 'notes' ? 'Reload notes' : sidebarTab === 'tags' ? 'Reload tags' : 'Reload graph'}
+                aria-label={sidebarTab === 'notes' ? 'Reload notes' : sidebarTab === 'tags' ? 'Reload tags' : 'Reload graph'}
                 onClick={refreshList}
               >↺</button>
             </div>
           </div>
           <div class="sidebar-content">
-            {sidebarTab === 'notes' ? (
+            {sidebarTab === 'notes' && (
               <NoteList
                 activeSlug={activeSlug}
                 activeTags={route.type === 'list' ? route.tags : []}
@@ -166,12 +173,16 @@ function App() {
                 sortOrder={sortOrder}
                 onSortChange={changeSort}
               />
-            ) : (
+            )}
+            {sidebarTab === 'tags' && (
               <TagManager
                 listKey={listKey}
                 onMutate={refreshList}
                 onOpenTag={openTag}
               />
+            )}
+            {sidebarTab === 'graph' && (
+              <NotesGraph listKey={listKey} activeSlug={activeSlug} />
             )}
           </div>
         </aside>

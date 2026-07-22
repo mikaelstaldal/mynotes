@@ -122,6 +122,77 @@ body {
   overflow-y: auto;
 }
 
+/* Graph tab: the rendered diagram scrolls on both axes within the 420px sidebar
+   (large graphs pan rather than shrink to fit). */
+.sidebar-graph-wrap {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.sidebar-graph {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 0.5rem;
+}
+
+.sidebar-graph-msg {
+  flex: none;
+  padding: 0.5rem;
+}
+
+/* Nodes are clickable (navigate to the note); intrinsic diagram size, so wide
+   graphs scroll instead of scaling down to illegibility. */
+.sidebar-graph g.node {
+  cursor: pointer;
+}
+
+.sidebar-graph .mermaid-diagram svg {
+  height: auto;
+}
+
+/* Highlight the node for the note open in the main panel. Mermaid injects an
+   id-scoped <style> for node shapes, so !important is needed to win over it. */
+.sidebar-graph .graph-node-current rect,
+.sidebar-graph .graph-node-current polygon,
+.sidebar-graph .graph-node-current circle,
+.sidebar-graph .graph-node-current path {
+  stroke: var(--primary) !important;
+  stroke-width: 3px !important;
+}
+
+/* Tag → color key for the node fills, pinned below the scrolling diagram. */
+.sidebar-graph-legend {
+  flex: none;
+  list-style: none;
+  margin: 0;
+  padding: 0.4rem 0.5rem;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.15rem 0.6rem;
+  font-size: 0.78rem;
+  color: var(--muted);
+  max-height: 30%;
+  overflow-y: auto;
+}
+
+.sidebar-graph-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.sidebar-graph-swatch {
+  width: 0.8rem;
+  height: 0.8rem;
+  border-radius: 3px;
+  border: 1px solid var(--border);
+  flex: none;
+}
+
 .sidebar .toolbar {
   flex-wrap: wrap;
 }

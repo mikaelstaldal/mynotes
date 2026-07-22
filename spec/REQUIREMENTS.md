@@ -317,8 +317,8 @@ existing-note editor (`/notes/{slug}/edit`).
   appears in the sidebar tag dropdown. Malformed slugs the backend would reject
   are ignored.
 
-- **Sidebar (always visible):** a two-tab panel — a **Notes** tab (the default)
-  and a **Tags** tab — under the brand.
+- **Sidebar (always visible):** a three-tab panel — a **Notes** tab (the default),
+  a **Tags** tab, and a **Graph** tab — under the brand.
   - **Notes tab:** debounced search box, results showing title,
     updated time, excerpt with highlights when searching, and tags. A sort
     dropdown selects the browse order — by updated time, created time, or title,
@@ -340,6 +340,17 @@ existing-note editor (`/notes/{slug}/edit`).
     attached to one or more notes asks for confirmation first (the notes
     themselves are kept, just untagged); deleting an unused tag (zero notes) does
     not prompt. The list refreshes after a delete.
+  - **Graph tab:** visualizes the note-link graph (from the `outgoing_links` /
+    `incoming_links` index) as a Mermaid diagram. Only notes that participate in
+    at least one link are drawn — a directed edge per note-to-note wikilink;
+    isolated (unlinked) notes are omitted. Each node is filled with a colour
+    derived from the note's tag (a deterministic colour per tag slug; a note with
+    several tags is coloured by its alphabetically-first tag, and untagged notes
+    get a neutral fill). A legend below the diagram maps each tag colour (plus
+    "(untagged)" when applicable). Hovering a node shows a tooltip listing all of
+    the note's tags (or "No tags"). Clicking a node opens that note, and the note
+    currently open in the main panel is highlighted. The diagram scrolls on both
+    axes within the sidebar. Empty and loading states.
 - **Upload Markdown or HTML:** pick a single `.md`/`.markdown`/text or
   `.html`/`.htm` file. For Markdown files, the title is derived client-side (first
   heading, else filename without extension, else "Untitled") and the note is created
