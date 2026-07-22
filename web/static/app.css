@@ -908,6 +908,7 @@ main.note-view-main {
   padding: 0.75rem 1rem;
   min-height: 100%;
   caret-color: var(--fg);
+  max-width: 82ch; /* We want to wrap at column 80, for some reason we need to have 82ch for that to happen. */
 }
 
 /* Subtle cursor line highlight */
