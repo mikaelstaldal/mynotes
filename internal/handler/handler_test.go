@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -233,7 +234,55 @@ func TestDownloadNoteMarkdown(t *testing.T) {
 
 	body, err := io.ReadAll(res.Body)
 	require.NoError(t, err)
-	assert.Equal(t, "# Heading\n\nbody", string(body), "raw verbatim Markdown body")
+	md := string(body)
+	assert.True(t, strings.HasPrefix(md, "---\n"), "starts with a YAML frontmatter block")
+	assert.Contains(t, md, "title: Notes\n")
+	assert.Contains(t, md, "slug: "+created.Slug+"\n")
+	assert.Contains(t, md, "date:")
+	assert.True(t, strings.HasSuffix(md, "---\n# Heading\n\nbody"),
+		"frontmatter is followed by the verbatim Markdown body")
+}
+
+// The downloaded Markdown (frontmatter + body) re-imports to a note with the
+// same title, slug, created_at, and tags — the round-trip the frontmatter
+// guarantees.
+func TestDownloadMarkdownRoundTrips(t *testing.T) {
+	srv := newServer(t)
+	createTag(t, srv, `{"slug":"work"}`)
+	createTag(t, srv, `{"slug":"todo"}`)
+	created := createNote(t, srv, `{"title":"Round: Trip","content":"# Heading\n\nbody","tags":["work","todo"]}`)
+
+	res, err := http.Get(srv.URL + "/api/v1/notes/" + created.Slug + "/download-markdown")
+	require.NoError(t, err)
+	defer res.Body.Close()
+	require.Equal(t, http.StatusOK, res.StatusCode)
+	body, err := io.ReadAll(res.Body)
+	require.NoError(t, err)
+	assert.Contains(t, string(body), "tags:", "the downloaded document carries the note's tags")
+
+	// Re-import the downloaded document under a fresh slug is not possible (the
+	// slug collides), so delete the original first, then import verbatim.
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodDelete,
+		srv.URL+"/api/v1/notes/"+created.Slug, nil)
+	require.NoError(t, err)
+	delRes, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	delRes.Body.Close()
+
+	imp := importContent(t, srv, string(body), "text/markdown")
+	defer imp.Body.Close()
+	require.Equal(t, http.StatusCreated, imp.StatusCode)
+	var reimported api.Note
+	require.NoError(t, json.NewDecoder(imp.Body).Decode(&reimported))
+
+	assert.Equal(t, created.Title, reimported.Title)
+	assert.Equal(t, created.Slug, reimported.Slug)
+	assert.WithinDuration(t, created.CreatedAt, reimported.CreatedAt, time.Second)
+	gotTags := make([]string, len(reimported.Tags))
+	for i, tg := range reimported.Tags {
+		gotTags[i] = tg.Slug
+	}
+	assert.ElementsMatch(t, []string{"work", "todo"}, gotTags)
 }
 
 func TestDownloadMarkdownUnknownReturns404(t *testing.T) {
@@ -253,7 +302,8 @@ func TestDownloadMarkdownUnknownReturns404(t *testing.T) {
 func TestDownloadMarkdownEmptyContentNote(t *testing.T) {
 	srv := newServer(t)
 	// content is absent → service coalesces it to "". The download is still a
-	// well-formed 200 with the attachment header and an empty raw body.
+	// well-formed 200 with the attachment header; the body is the frontmatter
+	// block followed by an empty content section.
 	created := createNote(t, srv, `{"title":"Empty"}`)
 	require.Empty(t, created.Content)
 
@@ -268,7 +318,11 @@ func TestDownloadMarkdownEmptyContentNote(t *testing.T) {
 
 	body, err := io.ReadAll(res.Body)
 	require.NoError(t, err)
-	assert.Empty(t, body, "empty-content note downloads as an empty body")
+	md := string(body)
+	assert.True(t, strings.HasPrefix(md, "---\n"), "starts with a YAML frontmatter block")
+	assert.Contains(t, md, "title: Empty\n")
+	assert.True(t, strings.HasSuffix(md, "---\n"),
+		"empty-content note downloads as frontmatter followed by an empty body")
 }
 
 func TestListReturnsSummaries(t *testing.T) {
@@ -405,6 +459,38 @@ func TestImportMarkdownTitleFromHeading(t *testing.T) {
 	require.NoError(t, json.NewDecoder(res.Body).Decode(&note))
 	assert.Equal(t, "My Markdown Note", note.Title)
 	assert.Contains(t, note.Content, "Some content here.")
+}
+
+// Importing Markdown with a frontmatter `tags` array attaches the tags to the
+// note and creates any that did not exist — verified end-to-end over HTTP,
+// including the tag becoming visible in GET /tags.
+func TestImportMarkdownFrontmatterTagsCreated(t *testing.T) {
+	srv := newServer(t)
+	md := "---\ntitle: Tagged Import\ntags: [work, todo]\n---\n\nBody.\n"
+	res := importContent(t, srv, md, "text/markdown")
+	defer res.Body.Close()
+	require.Equal(t, http.StatusCreated, res.StatusCode)
+	var note api.Note
+	require.NoError(t, json.NewDecoder(res.Body).Decode(&note))
+
+	got := make([]string, len(note.Tags))
+	for i, tg := range note.Tags {
+		got[i] = tg.Slug
+	}
+	assert.ElementsMatch(t, []string{"work", "todo"}, got)
+
+	// The created tags are now listable.
+	listRes, err := http.Get(srv.URL + "/api/v1/tags")
+	require.NoError(t, err)
+	defer listRes.Body.Close()
+	require.Equal(t, http.StatusOK, listRes.StatusCode)
+	var list api.TagList
+	require.NoError(t, json.NewDecoder(listRes.Body).Decode(&list))
+	listed := make([]string, len(list.Tags))
+	for i, tg := range list.Tags {
+		listed[i] = tg.Slug
+	}
+	assert.Subset(t, listed, []string{"work", "todo"})
 }
 
 func TestImportMarkdownNoTitleRejected(t *testing.T) {

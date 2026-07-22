@@ -370,7 +370,9 @@ func (s *NoteService) ImportHTML(ctx context.Context, htmlContent string) (model
 // the content after stripping frontmatter. An empty title is a validation
 // error (400 Bad Request). The frontmatter `date` field sets created_at when
 // present (otherwise current time). The frontmatter `slug` field is used
-// verbatim when present (otherwise derived from the title).
+// verbatim when present (otherwise derived from the title). The frontmatter
+// `tags` field attaches tags by slug; any tag that does not yet exist is
+// created (an invalid tag slug is a validation error).
 func (s *NoteService) ImportMarkdown(ctx context.Context, markdownContent string) (model.Note, error) {
 	fm, content := parseFrontmatter(markdownContent)
 
@@ -387,7 +389,43 @@ func (s *NoteService) ImportMarkdown(ctx context.Context, markdownContent string
 		slugPtr = &fm.Slug
 	}
 
-	return s.createNote(ctx, title, &content, slugPtr, fm.Date, time.Time{}, nil)
+	if err := s.ensureTags(ctx, fm.Tags); err != nil {
+		return model.Note{}, err
+	}
+
+	return s.createNote(ctx, title, &content, slugPtr, fm.Date, time.Time{}, fm.Tags)
+}
+
+// ensureTags creates any tag in slugs that does not already exist, so an
+// imported note can carry tags that were never explicitly created via
+// POST /tags. Each slug is validated against the shared slug pattern before
+// creation; an invalid slug is a validation error. A create that loses a race
+// to a concurrent one (ErrConflict) is ignored — the tag exists either way.
+func (s *NoteService) ensureTags(ctx context.Context, slugs []string) error {
+	dedup := dedupeStrings(slugs)
+	if len(dedup) == 0 {
+		return nil
+	}
+	found, err := s.tags.GetBySlugs(ctx, dedup)
+	if err != nil {
+		return err
+	}
+	existing := make(map[string]bool, len(found))
+	for _, t := range found {
+		existing[t.Slug] = true
+	}
+	for _, slug := range dedup {
+		if existing[slug] {
+			continue
+		}
+		if err := validateSlug(slug); err != nil {
+			return err
+		}
+		if _, err := s.tags.Create(ctx, slug); err != nil && !errors.Is(err, ErrConflict) {
+			return err
+		}
+	}
+	return nil
 }
 
 // firstATXHeading scans Markdown content for the first ATX heading line,

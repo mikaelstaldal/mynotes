@@ -218,9 +218,11 @@ func (h *Handler) ImportNote(ctx context.Context, req api.ImportNoteReq) (*api.N
 	return &out, nil
 }
 
-// DownloadNoteMarkdown returns the note content as a raw text/markdown body with a
-// Content-Disposition attachment header. An unknown slug maps to the operation's
-// typed 404 (*api.Error), keeping the JSON error shape.
+// DownloadNoteMarkdown returns the note as a text/markdown body with a
+// Content-Disposition attachment header. The body is a YAML frontmatter block
+// (title, slug, date) prepended to the verbatim Markdown content, round-trip
+// compatible with the Markdown import feature. An unknown slug maps to the
+// operation's typed 404 (*api.Error), keeping the JSON error shape.
 func (h *Handler) DownloadNoteMarkdown(ctx context.Context, params api.DownloadNoteMarkdownParams) (api.DownloadNoteMarkdownRes, error) {
 	n, err := h.notes.Get(ctx, params.Slug)
 	if err != nil {
@@ -231,7 +233,7 @@ func (h *Handler) DownloadNoteMarkdown(ctx context.Context, params api.DownloadN
 	}
 	return &api.DownloadNoteMarkdownOKHeaders{
 		ContentDisposition: `attachment; filename="` + n.Slug + `.md"`,
-		Response:           api.DownloadNoteMarkdownOK{Data: strings.NewReader(n.Content)},
+		Response:           api.DownloadNoteMarkdownOK{Data: strings.NewReader(service.MarkdownWithFrontmatter(n))},
 	}, nil
 }
 

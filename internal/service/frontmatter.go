@@ -7,7 +7,43 @@ import (
 	"time"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/mikaelstaldal/mynotes/internal/model"
 )
+
+// MarkdownWithFrontmatter renders a note as a downloadable Markdown document: a
+// YAML frontmatter block carrying title, slug, date (created_at as RFC 3339 in
+// UTC), and tags (the note's tag slugs, omitted when the note has none),
+// followed by the note's verbatim Markdown content. yaml.Marshal handles
+// escaping/quoting of the field values.
+//
+// A single newline separates the closing delimiter from the content — exactly
+// what parseFrontmatter consumes — so the round-trip is idempotent:
+// parseFrontmatter returns the original content unchanged (a blank separator
+// line would instead be re-attached to the content and accumulate one newline
+// per download → import cycle).
+func MarkdownWithFrontmatter(n model.Note) string {
+	tags := make([]string, len(n.Tags))
+	for i, t := range n.Tags {
+		tags[i] = t.Slug
+	}
+	fm := struct {
+		Title string   `yaml:"title"`
+		Slug  string   `yaml:"slug"`
+		Date  string   `yaml:"date"`
+		Tags  []string `yaml:"tags,omitempty"`
+	}{
+		Title: n.Title,
+		Slug:  n.Slug,
+		Date:  n.CreatedAt.UTC().Format(time.RFC3339),
+		Tags:  tags,
+	}
+	b, err := yaml.Marshal(fm)
+	if err != nil {
+		return n.Content // fall back to the raw body on the impossible marshal error
+	}
+	return "---\n" + string(b) + "---\n" + n.Content
+}
 
 // frontmatterData holds the structured fields extracted from a Markdown
 // frontmatter block. Zero values mean "field was absent".
@@ -15,6 +51,7 @@ type frontmatterData struct {
 	Title string
 	Date  time.Time // zero if absent or unparseable
 	Slug  string    // empty if absent
+	Tags  []string  // tag slugs; nil if absent
 }
 
 // parseFrontmatter detects and strips YAML (--- delimiters), TOML (+++
@@ -88,11 +125,12 @@ func parseYAMLFrontmatter(fmText string) frontmatterData {
 		Title string      `yaml:"title"`
 		Date  interface{} `yaml:"date"`
 		Slug  string      `yaml:"slug"`
+		Tags  []string    `yaml:"tags"`
 	}
 	if err := yaml.Unmarshal([]byte(fmText), &raw); err != nil {
 		return frontmatterData{}
 	}
-	result := frontmatterData{Title: raw.Title, Slug: raw.Slug}
+	result := frontmatterData{Title: raw.Title, Slug: raw.Slug, Tags: raw.Tags}
 	switch v := raw.Date.(type) {
 	case time.Time:
 		result.Date = v
@@ -114,6 +152,9 @@ var (
 	tomlSlugSingleRe  = regexp.MustCompile(`(?m)^slug\s*=\s*'([^']*)'`)
 	// date value: quoted string or bare TOML date (starts YYYY-MM-DD, no trailing text on line)
 	tomlDateRe = regexp.MustCompile(`(?m)^date\s*=\s*(?:"([^"]*)"|'([^']*)'|([0-9]{4}-[0-9]{2}-[0-9]{2}[^\s#]*))`)
+	// tags = ["a", "b"] — single-line array; each element then read by tomlTagItemRe.
+	tomlTagsRe    = regexp.MustCompile(`(?m)^tags\s*=\s*\[([^\]]*)\]`)
+	tomlTagItemRe = regexp.MustCompile(`"((?:[^"\\]|\\.)*)"|'([^']*)'`)
 )
 
 func parseTOMLFrontmatter(fmText string) frontmatterData {
@@ -121,7 +162,27 @@ func parseTOMLFrontmatter(fmText string) frontmatterData {
 		Title: tomlStringField(fmText, tomlTitleDoubleRe, tomlTitleSingleRe),
 		Slug:  tomlStringField(fmText, tomlSlugDoubleRe, tomlSlugSingleRe),
 		Date:  tomlDate(fmText),
+		Tags:  tomlTags(fmText),
 	}
+}
+
+// tomlTags reads a single-line TOML array of quoted strings
+// (tags = ["a", 'b']). Multi-line arrays are not supported. Returns nil when
+// the field is absent or empty.
+func tomlTags(fmText string) []string {
+	m := tomlTagsRe.FindStringSubmatch(fmText)
+	if m == nil {
+		return nil
+	}
+	var tags []string
+	for _, item := range tomlTagItemRe.FindAllStringSubmatch(m[1], -1) {
+		if item[1] != "" {
+			tags = append(tags, item[1])
+		} else {
+			tags = append(tags, item[2])
+		}
+	}
+	return tags
 }
 
 func tomlStringField(fmText string, doubleRe, singleRe *regexp.Regexp) string {
@@ -156,14 +217,15 @@ func tomlDate(fmText string) time.Time {
 func parseJSONFrontmatter(content string) (frontmatterData, string, bool) {
 	dec := json.NewDecoder(strings.NewReader(content))
 	var raw struct {
-		Title string `json:"title"`
-		Date  string `json:"date"`
-		Slug  string `json:"slug"`
+		Title string   `json:"title"`
+		Date  string   `json:"date"`
+		Slug  string   `json:"slug"`
+		Tags  []string `json:"tags"`
 	}
 	if err := dec.Decode(&raw); err != nil {
 		return frontmatterData{}, "", false
 	}
-	data := frontmatterData{Title: raw.Title, Slug: raw.Slug}
+	data := frontmatterData{Title: raw.Title, Slug: raw.Slug, Tags: raw.Tags}
 	if t, ok := parseDate(raw.Date); ok {
 		data.Date = t
 	}

@@ -2,11 +2,14 @@ package service
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/mikaelstaldal/mynotes/internal/model"
 )
 
 // mustDate parses a "2006-01-02" string and panics on failure — test helper only.
@@ -34,6 +37,7 @@ func TestParseFrontmatter(t *testing.T) {
 		wantTitle string
 		wantSlug  string
 		wantDate  time.Time // zero means "not expected"
+		wantTags  []string  // nil means "not expected"
 		wantBody  string
 	}{
 		// --- YAML ---
@@ -49,6 +53,20 @@ func TestParseFrontmatter(t *testing.T) {
 			input:     "---\ntitle: Hello\nslug: custom-slug\n---\nBody.",
 			wantTitle: "Hello",
 			wantSlug:  "custom-slug",
+			wantBody:  "Body.",
+		},
+		{
+			name:      "yaml flow-sequence tags",
+			input:     "---\ntitle: T\ntags: [work, todo]\n---\nBody.",
+			wantTitle: "T",
+			wantTags:  []string{"work", "todo"},
+			wantBody:  "Body.",
+		},
+		{
+			name:      "yaml block-sequence tags",
+			input:     "---\ntitle: T\ntags:\n  - work\n  - home\n---\nBody.",
+			wantTitle: "T",
+			wantTags:  []string{"work", "home"},
 			wantBody:  "Body.",
 		},
 		{
@@ -94,6 +112,13 @@ func TestParseFrontmatter(t *testing.T) {
 			name:      "toml single-quoted title",
 			input:     "+++\ntitle = 'Single Quoted'\n+++\nBody.",
 			wantTitle: "Single Quoted",
+			wantBody:  "Body.",
+		},
+		{
+			name:      "toml array tags",
+			input:     "+++\ntitle = \"T\"\ntags = [\"work\", 'todo']\n+++\nBody.",
+			wantTitle: "T",
+			wantTags:  []string{"work", "todo"},
 			wantBody:  "Body.",
 		},
 		{
@@ -146,8 +171,16 @@ func TestParseFrontmatter(t *testing.T) {
 			wantBody:  "Body.",
 		},
 		{
+			name:      "json array tags",
+			input:     "{\"title\":\"T\",\"tags\":[\"work\",\"todo\"]}\n\nBody.",
+			wantTitle: "T",
+			wantTags:  []string{"work", "todo"},
+			wantBody:  "Body.",
+		},
+		{
 			name:     "json no title field",
 			input:    "{\"tags\": [\"a\"]}\n\nBody.",
+			wantTags: []string{"a"},
 			wantBody: "Body.",
 		},
 		{
@@ -185,6 +218,7 @@ func TestParseFrontmatter(t *testing.T) {
 			fm, gotBody := parseFrontmatter(tc.input)
 			assert.Equal(t, tc.wantTitle, fm.Title, "title")
 			assert.Equal(t, tc.wantSlug, fm.Slug, "slug")
+			assert.Equal(t, tc.wantTags, fm.Tags, "tags")
 			assert.Equal(t, tc.wantBody, gotBody, "body")
 			if tc.wantDate.IsZero() {
 				assert.True(t, fm.Date.IsZero(), "date should be zero")
@@ -273,4 +307,116 @@ func TestImportMarkdown_FrontmatterFields(t *testing.T) {
 		_, err = svc.ImportMarkdown(ctx, md2)
 		assert.ErrorIs(t, err, ErrConflict)
 	})
+}
+
+func TestImportMarkdown_FrontmatterTags(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("creates missing tags and attaches them", func(t *testing.T) {
+		svc := newTestService(t)
+		md := "---\ntitle: Tagged\ntags: [work, todo]\n---\nContent."
+		note, err := svc.ImportMarkdown(ctx, md)
+		require.NoError(t, err)
+		slugs := tagSlugs(note.Tags)
+		assert.ElementsMatch(t, []string{"work", "todo"}, slugs)
+
+		// The tags now exist and can be listed (a second import reuses them).
+		tags, err := svc.tags.ListWithCounts(ctx)
+		require.NoError(t, err)
+		var listed []string
+		for _, ts := range tags {
+			listed = append(listed, ts.Slug)
+		}
+		assert.ElementsMatch(t, []string{"work", "todo"}, listed)
+	})
+
+	t.Run("reuses an already-existing tag", func(t *testing.T) {
+		svc, tagRepo := newTestServiceWithTags(t)
+		_, err := tagRepo.Create(ctx, "existing")
+		require.NoError(t, err)
+
+		md := "---\ntitle: Mixed\ntags: [existing, fresh]\n---\nContent."
+		note, err := svc.ImportMarkdown(ctx, md)
+		require.NoError(t, err)
+		assert.ElementsMatch(t, []string{"existing", "fresh"}, tagSlugs(note.Tags))
+
+		// No duplicate "existing" tag was created.
+		tags, err := tagRepo.ListWithCounts(ctx)
+		require.NoError(t, err)
+		count := 0
+		for _, ts := range tags {
+			if ts.Slug == "existing" {
+				count++
+			}
+		}
+		assert.Equal(t, 1, count)
+	})
+
+	t.Run("invalid tag slug is validation error", func(t *testing.T) {
+		svc := newTestService(t)
+		md := "---\ntitle: Bad\ntags: [\"Not A Slug!\"]\n---\nContent."
+		_, err := svc.ImportMarkdown(ctx, md)
+		assert.ErrorIs(t, err, ErrValidation)
+	})
+
+	t.Run("no tags field attaches nothing", func(t *testing.T) {
+		svc := newTestService(t)
+		md := "---\ntitle: Plain\n---\nContent."
+		note, err := svc.ImportMarkdown(ctx, md)
+		require.NoError(t, err)
+		assert.Empty(t, note.Tags)
+	})
+}
+
+func tagSlugs(tags []model.Tag) []string {
+	slugs := make([]string, len(tags))
+	for i, t := range tags {
+		slugs[i] = t.Slug
+	}
+	return slugs
+}
+
+func TestMarkdownWithFrontmatter(t *testing.T) {
+	note := model.Note{
+		Title:     "My: Note \"quoted\"",
+		Slug:      "my-note",
+		Content:   "# Heading\n\nbody",
+		CreatedAt: mustRFC3339("2026-07-22T09:30:00Z"),
+		Tags:      []model.Tag{{Slug: "work"}, {Slug: "todo"}},
+	}
+
+	md := MarkdownWithFrontmatter(note)
+
+	assert.True(t, strings.HasPrefix(md, "---\n"), "opens with a YAML frontmatter block")
+	assert.True(t, strings.HasSuffix(md, "---\n# Heading\n\nbody"),
+		"frontmatter is followed by the verbatim content")
+
+	// Round-trips through the import parser exactly: the fields survive intact
+	// and the body is returned unchanged (idempotent — no accumulating newline).
+	fm, body := parseFrontmatter(md)
+	assert.Equal(t, note.Title, fm.Title)
+	assert.Equal(t, note.Slug, fm.Slug)
+	assert.True(t, note.CreatedAt.Equal(fm.Date), "date round-trips: got %v", fm.Date)
+	assert.Equal(t, []string{"work", "todo"}, fm.Tags)
+	assert.Equal(t, note.Content, body)
+}
+
+func TestMarkdownWithFrontmatterNoTags(t *testing.T) {
+	note := model.Note{Title: "Untagged", Slug: "untagged", CreatedAt: mustRFC3339("2026-07-22T00:00:00Z")}
+	md := MarkdownWithFrontmatter(note)
+	assert.NotContains(t, md, "tags:", "the tags field is omitted when the note has none")
+
+	fm, _ := parseFrontmatter(md)
+	assert.Empty(t, fm.Tags)
+}
+
+func TestMarkdownWithFrontmatterEmptyContent(t *testing.T) {
+	note := model.Note{Title: "Empty", Slug: "empty", CreatedAt: mustRFC3339("2026-07-22T00:00:00Z")}
+	md := MarkdownWithFrontmatter(note)
+	assert.True(t, strings.HasSuffix(md, "---\n"), "empty content yields a bare frontmatter block")
+
+	fm, body := parseFrontmatter(md)
+	assert.Equal(t, "Empty", fm.Title)
+	assert.Equal(t, "empty", fm.Slug)
+	assert.Empty(t, body)
 }
