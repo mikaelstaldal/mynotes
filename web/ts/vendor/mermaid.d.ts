@@ -1,5 +1,5 @@
 // Type declaration for the vendored Mermaid bundle
-// (web/static/vendor/mermaid.js). Mapped to the bare specifier "mermaid" in
+// (web/static/vendor/mermaid-<version>.js). Mapped to the bare specifier "mermaid" in
 // tsconfig paths + the index.html import map, mirroring the other vendored
 // bundles. Only the minimal surface the app uses is declared here.
 

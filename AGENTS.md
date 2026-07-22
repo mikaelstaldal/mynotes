@@ -29,7 +29,7 @@ supply-chain constraint: no package-manager install runs as part of the build or
 CI. `esbuild` and `npm` are required only by `web/ts/vendor/rebuild.sh`, a
 separate, manually-run maintainer script that pre-builds the vendored
 CodeMirror/markdown-it/DOMPurify bundles, the emoji dataset
-(`web/static/vendor/emoji.js`, generated from `emojibase-data` by the committed
+(`web/static/vendor/emoji-<version>.js`, generated from `emojibase-data` by the committed
 `gen-emoji.mjs`), and the test-only jsdom bundle, and commits the result; it is
 out-of-band, not invoked by `build.sh` or CI.
 

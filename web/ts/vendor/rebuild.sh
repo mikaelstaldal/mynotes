@@ -1,9 +1,17 @@
 #!/usr/bin/env bash
 # Maintainer-only script. Fetches the pinned upstream sources for the vendored
-# browser libraries (CodeMirror, markdown-it, DOMPurify) via npm and bundles
-# each into a single self-contained ESM file under web/static/vendor/, plus a
-# test-only jsdom bundle under web/ts/vendor/test/ used by the node --test
-# XSS-gate tests.
+# browser libraries (CodeMirror, markdown-it, DOMPurify, …) via npm and bundles
+# each into a single self-contained ESM file under web/static/vendor/, copies
+# Preact's prebuilt ESM modules + type stubs, and builds a test-only jsdom bundle
+# under web/ts/vendor/test/ used by the node --test XSS-gate tests.
+#
+# Every browser bundle filename is version-stamped (e.g. dompurify-3.4.11.js,
+# preact-10.29.7.module.js) from the installed package version, so a file's name
+# records exactly which upstream release it was built from. The import map in
+# web/static/index.html references these filenames by hand, so it MUST be updated
+# whenever a version bumps — this script prints the current names at the end as a
+# reminder. (internal/icons and the XSS-gate test instead glob the versioned name,
+# so they need no edit.)
 #
 # NOT invoked by build.sh or CI. Run this by hand only when adding or updating
 # a vendored library, then commit the regenerated bundle(s).
@@ -21,6 +29,12 @@ cd "$(dirname "${BASH_SOURCE[0]}")"
 VENDOR_DIR="$(pwd)"
 BROWSER_OUT="$VENDOR_DIR/../../static/vendor"
 TEST_DIR="$VENDOR_DIR/test"
+PREACT_OUT="$BROWSER_OUT/preact"    # runtime ESM modules served to the browser
+PREACT_TYPES="$VENDOR_DIR/preact"   # .d.ts type stubs (compile-time only)
+
+# Read an installed dependency's version from its package.json. Used to stamp the
+# vendored bundle filenames so each file's name records its upstream release.
+pkgver() { node -p "require('$VENDOR_DIR/node_modules/$1/package.json').version"; }
 
 # --- 1. Browser bundles: CodeMirror, markdown-it, DOMPurify -----------------
 
@@ -30,6 +44,18 @@ TEST_DIR="$VENDOR_DIR/test"
 # lock-pinned install. `npm ci` alone aborts on an out-of-sync lock.
 npm install --package-lock-only --ignore-scripts
 npm ci --ignore-scripts
+
+# Versions to stamp into the vendored bundle filenames, read from the freshly
+# installed tree. CodeMirror is a composite of several @codemirror/* packages
+# with independent versions; its bundle tracks the core @codemirror/view.
+CODEMIRROR_VER="$(pkgver @codemirror/view)"
+MARKDOWNIT_VER="$(pkgver markdown-it)"
+DOMPURIFY_VER="$(pkgver dompurify)"
+ASCIIMATH_VER="$(pkgver asciimath2ml)"
+MERMAID_VER="$(pkgver mermaid)"
+EMOJI_VER="$(pkgver emojibase-data)"
+LUCIDE_VER="$(pkgver lucide-static)"
+PREACT_VER="$(pkgver preact)"
 
 WORK_DIR="$(mktemp -d)"
 trap 'rm -rf "$WORK_DIR"' EXIT
@@ -77,33 +103,80 @@ mkdir -p "$BROWSER_OUT"
 # which already sits next to its own node_modules, so it needs no such hint.)
 export NODE_PATH="$VENDOR_DIR/node_modules"
 
+# Bundle filenames are version-stamped, so a version bump changes the name rather
+# than overwriting. Remove any previously-vendored bundles first so old versions
+# don't linger in the tree.
+rm -f "$BROWSER_OUT"/{codemirror,markdown-it,dompurify,asciimath,mermaid,emoji,lucide}-*.js
+
 esbuild "$WORK_DIR/codemirror-entry.mjs" \
   --bundle --format=esm --platform=browser --minify \
-  --outfile="$BROWSER_OUT/codemirror.js"
+  --outfile="$BROWSER_OUT/codemirror-$CODEMIRROR_VER.js"
 
 esbuild "$WORK_DIR/markdown-it-entry.mjs" \
   --bundle --format=esm --platform=browser --minify \
-  --outfile="$BROWSER_OUT/markdown-it.js"
+  --outfile="$BROWSER_OUT/markdown-it-$MARKDOWNIT_VER.js"
 
 esbuild "$WORK_DIR/dompurify-entry.mjs" \
   --bundle --format=esm --platform=browser --minify \
-  --outfile="$BROWSER_OUT/dompurify.js"
+  --outfile="$BROWSER_OUT/dompurify-$DOMPURIFY_VER.js"
 
 # asciimath2ml is MIT-licensed; keep the attribution banner in the bundle.
 esbuild "$WORK_DIR/asciimath-entry.mjs" \
   --bundle --format=esm --platform=browser --minify \
   --legal-comments=none \
-  --banner:js='/*! asciimath2ml 1.0.8 | MIT License | Copyright (c) 2024 Tommi Johtela | https://github.com/johtela/asciimath2ml */' \
-  --outfile="$BROWSER_OUT/asciimath.js"
+  --banner:js='/*! asciimath2ml '"$ASCIIMATH_VER"' | MIT License | Copyright (c) 2024 Tommi Johtela | https://github.com/johtela/asciimath2ml */' \
+  --outfile="$BROWSER_OUT/asciimath-$ASCIIMATH_VER.js"
 
 # Mermaid is large; --bundle inlines its dynamically-imported diagram modules
 # into the single output file (no code-splitting), keeping it a plain ESM module
 # loadable via the import map like the others.
 esbuild "$WORK_DIR/mermaid-entry.mjs" \
   --bundle --format=esm --platform=browser --minify \
-  --outfile="$BROWSER_OUT/mermaid.js"
+  --outfile="$BROWSER_OUT/mermaid-$MERMAID_VER.js"
 
-echo "Wrote $BROWSER_OUT/{codemirror,markdown-it,dompurify,asciimath,mermaid}.js"
+echo "Wrote versioned browser bundles under $BROWSER_OUT/:"
+echo "  codemirror-$CODEMIRROR_VER.js markdown-it-$MARKDOWNIT_VER.js dompurify-$DOMPURIFY_VER.js asciimath-$ASCIIMATH_VER.js mermaid-$MERMAID_VER.js"
+
+# --- 1a. Preact runtime modules + type stubs -------------------------------
+#
+# Preact ships prebuilt self-contained ESM (dist/*.module.js) plus its own .d.ts,
+# so no esbuild step is needed — copy them verbatim. The runtime modules go to
+# web/static/vendor/preact/ (served, version-stamped, loaded via the import map);
+# the .d.ts go to web/ts/vendor/preact/ (compile-time only, resolved via the
+# tsconfig `paths` entries, so they are NOT version-stamped).
+
+mkdir -p "$PREACT_OUT" "$PREACT_TYPES/src" "$PREACT_TYPES/hooks/src" "$PREACT_TYPES/jsx-runtime/src"
+rm -f "$PREACT_OUT"/{preact,hooks,jsx-runtime}-*.module.js
+
+PREACT_SRC="$VENDOR_DIR/node_modules/preact"
+cp "$PREACT_SRC/dist/preact.module.js"                 "$PREACT_OUT/preact-$PREACT_VER.module.js"
+cp "$PREACT_SRC/hooks/dist/hooks.module.js"            "$PREACT_OUT/hooks-$PREACT_VER.module.js"
+cp "$PREACT_SRC/jsx-runtime/dist/jsxRuntime.module.js" "$PREACT_OUT/jsx-runtime-$PREACT_VER.module.js"
+
+cp "$PREACT_SRC/src/index.d.ts"             "$PREACT_TYPES/src/index.d.ts"
+cp "$PREACT_SRC/src/jsx.d.ts"               "$PREACT_TYPES/src/jsx.d.ts"
+cp "$PREACT_SRC/src/dom.d.ts"               "$PREACT_TYPES/src/dom.d.ts"
+cp "$PREACT_SRC/hooks/src/index.d.ts"       "$PREACT_TYPES/hooks/src/index.d.ts"
+cp "$PREACT_SRC/jsx-runtime/src/index.d.ts" "$PREACT_TYPES/jsx-runtime/src/index.d.ts"
+
+# Preact's .d.ts use extensionless relative imports; this repo's tsconfig uses
+# Node16 module resolution, which requires explicit .js extensions. Add them.
+cat > "$WORK_DIR/normalize-preact-dts.mjs" <<'EOF'
+import { readFileSync, writeFileSync } from "node:fs";
+const [typesDir] = process.argv.slice(2);
+const edits = [
+  [`${typesDir}/src/index.d.ts`, [["./jsx", "./jsx.js"], ["./dom", "./dom.js"]]],
+  [`${typesDir}/jsx-runtime/src/index.d.ts`, [["../../src/jsx", "../../src/jsx.js"]]],
+];
+for (const [file, subs] of edits) {
+  let s = readFileSync(file, "utf8");
+  for (const [from, to] of subs) s = s.split(`from '${from}'`).join(`from '${to}'`);
+  writeFileSync(file, s);
+}
+EOF
+node "$WORK_DIR/normalize-preact-dts.mjs" "$PREACT_TYPES"
+
+echo "Wrote $PREACT_OUT/{preact,hooks,jsx-runtime}-$PREACT_VER.module.js + type stubs"
 
 # --- 1b. Emoji dataset for the editor's emoji picker ------------------------
 #
@@ -116,7 +189,7 @@ echo "Wrote $BROWSER_OUT/{codemirror,markdown-it,dompurify,asciimath,mermaid}.js
 node "$VENDOR_DIR/gen-emoji.mjs" \
   "$VENDOR_DIR/node_modules/emojibase-data/en/data.json" \
   "$VENDOR_DIR/node_modules/emojibase-data/en/messages.json" \
-  "$BROWSER_OUT/emoji.js"
+  "$BROWSER_OUT/emoji-$EMOJI_VER.js"
 
 # --- 1c. Lucide icon set for the editor's icon picker ----------------------
 #
@@ -147,7 +220,7 @@ git -C "$LUCIDE_SRC" sparse-checkout set icons categories
 node "$VENDOR_DIR/gen-lucide.mjs" \
   "$VENDOR_DIR/node_modules/lucide-static/icon-nodes.json" \
   "$VENDOR_DIR/node_modules/lucide-static/tags.json" \
-  "$BROWSER_OUT/lucide.js" \
+  "$BROWSER_OUT/lucide-$LUCIDE_VER.js" \
   "$LUCIDE_SRC/icons" \
   "$LUCIDE_SRC/categories"
 
@@ -221,3 +294,24 @@ EOF
   echo "esbuild bundle of jsdom is non-functional; vendored its install tree as"
   echo "$TEST_DIR/jsdom-node_modules.tar.gz. Commit it together with $TEST_DIR/jsdom.js."
 fi
+
+# --- 3. Reminder: keep the import map in sync -------------------------------
+#
+# The bundle filenames are version-stamped, so update the import map in
+# web/static/index.html to reference the names printed above whenever a version
+# bumped. (internal/icons and web/ts/xss-gate.test.mjs glob the versioned name,
+# so they need no edit.)
+cat <<EOF
+
+Reminder: update the import map in web/static/index.html to reference:
+  preact         -> ./vendor/preact/preact-$PREACT_VER.module.js
+  preact/hooks   -> ./vendor/preact/hooks-$PREACT_VER.module.js
+  preact/jsx-runtime -> ./vendor/preact/jsx-runtime-$PREACT_VER.module.js
+  codemirror     -> ./vendor/codemirror-$CODEMIRROR_VER.js
+  markdown-it    -> ./vendor/markdown-it-$MARKDOWNIT_VER.js
+  dompurify      -> ./vendor/dompurify-$DOMPURIFY_VER.js
+  emoji-data     -> ./vendor/emoji-$EMOJI_VER.js
+  lucide-icons   -> ./vendor/lucide-$LUCIDE_VER.js
+  asciimath      -> ./vendor/asciimath-$ASCIIMATH_VER.js
+  mermaid        -> ./vendor/mermaid-$MERMAID_VER.js
+EOF

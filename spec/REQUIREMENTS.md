@@ -137,7 +137,7 @@ identity exists but is never exposed as the URL key.
   `![<name>](<base>/api/v1/icons/lucide/<name>)`, at the cursor — keeping note content
   compact rather than embedding the full SVG. The picker previews each icon inline
   (theme-aware, `stroke="currentColor"`) via a reusable `Icon` component backed by
-  the vendored Lucide data (`web/static/vendor/lucide.js`, exposing
+  the vendored Lucide data (`web/static/vendor/lucide-<version>.js`, exposing
   `LUCIDE_ICON_NODES` and `LUCIDE_ICONS`). That bundle is the single embedded copy
   of the icon geometry: the server (`internal/icons`) reads `LUCIDE_ICON_NODES`
   from it and reconstructs each icon's SVG at startup, so the set is not embedded

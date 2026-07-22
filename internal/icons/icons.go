@@ -4,7 +4,7 @@
 // a short link instead of a full inline SVG.
 //
 // The icon geometry is embedded only once, in the frontend bundle
-// web/static/vendor/lucide.js (LUCIDE_ICON_NODES, name → [ [tag, attrs], … ]),
+// web/static/vendor/lucide-<version>.js (LUCIDE_ICON_NODES, name → [ [tag, attrs], … ]),
 // which the picker and the reusable <Icon> component import directly. This
 // package reads that same embedded copy (via web.Static) and reconstructs each
 // icon's standalone <svg> document at init — so the server never embeds a second
@@ -17,6 +17,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io/fs"
 	"net/http"
 	"strings"
 
@@ -44,9 +45,19 @@ const nodesMarker = "export const LUCIDE_ICON_NODES = "
 var svgs = mustBuild()
 
 func mustBuild() map[string]string {
-	raw, err := web.Static.ReadFile("static/vendor/lucide.js")
+	// The bundle filename carries the lucide-static version (lucide-<ver>.js),
+	// so match it by glob rather than pinning a version the maintainer would have
+	// to update here on every bump (see web/ts/vendor/rebuild.sh).
+	matches, err := fs.Glob(web.Static, "static/vendor/lucide-*.js")
 	if err != nil {
-		panic("icons: read lucide.js: " + err.Error())
+		panic("icons: glob lucide bundle: " + err.Error())
+	}
+	if len(matches) != 1 {
+		panic(fmt.Sprintf("icons: expected exactly one static/vendor/lucide-*.js, found %d", len(matches)))
+	}
+	raw, err := web.Static.ReadFile(matches[0])
+	if err != nil {
+		panic("icons: read " + matches[0] + ": " + err.Error())
 	}
 	nodes, err := parseNodes(raw)
 	if err != nil {

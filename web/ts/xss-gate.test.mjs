@@ -5,8 +5,24 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
+import fs from 'node:fs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+// The DOMPurify bundle filename carries its version (dompurify-<ver>.js); resolve
+// it by glob so this test needn't be edited when the pinned version bumps.
+function vendorBundle(prefix) {
+  const dir = path.resolve(__dirname, '../static/vendor');
+  const matches = fs
+    .readdirSync(dir)
+    .filter((f) => f.startsWith(prefix) && f.endsWith('.js'));
+  assert.equal(
+    matches.length,
+    1,
+    `expected exactly one ${prefix}*.js in ${dir}, found ${matches.length}`,
+  );
+  return path.join(dir, matches[0]);
+}
 
 // jsdom must be loaded before any browser-targeting bundle so we can install
 // DOM globals before DOMPurify reads `window` at module-evaluation time.
@@ -18,9 +34,7 @@ globalThis.window = window;
 globalThis.document = window.document;
 
 // Dynamic import: DOMPurify's factory runs after globalThis.window is set.
-const { default: DOMPurify } = await import(
-  path.resolve(__dirname, '../static/vendor/dompurify.js')
-);
+const { default: DOMPurify } = await import(vendorBundle('dompurify-'));
 
 assert.ok(DOMPurify.isSupported, 'DOMPurify must be supported (jsdom window found)');
 

@@ -1,5 +1,5 @@
 // Maintainer-only generator. Transforms lucide-static's icon-nodes.json +
-// tags.json into the compact `web/static/vendor/lucide.js` bundle consumed by
+// tags.json into the compact `web/static/vendor/lucide-<version>.js` bundle consumed by
 // the editor's icon picker and the reusable <Icon> component.
 //
 // Pure fs — no network. Invoked by rebuild.sh with the source files from the

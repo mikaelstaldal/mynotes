@@ -1,5 +1,5 @@
 // Maintainer-only generator. Transforms emojibase-data into the compact
-// `web/static/vendor/emoji.js` bundle consumed by the editor's emoji picker.
+// `web/static/vendor/emoji-<version>.js` bundle consumed by the editor's emoji picker.
 //
 // Pure fs — no network. Invoked by rebuild.sh with the two source files from
 // the installed emojibase-data package:

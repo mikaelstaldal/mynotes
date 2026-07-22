@@ -1,4 +1,4 @@
-// Types for the generated web/static/vendor/lucide.js bundle (lucide-static).
+// Types for the generated web/static/vendor/lucide-<version>.js bundle (lucide-static).
 // Mapped to the bare specifier "lucide-icons" in tsconfig paths + the index.html
 // import map, mirroring the other vendored bundles.
 

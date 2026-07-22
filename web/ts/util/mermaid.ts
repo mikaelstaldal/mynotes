@@ -19,7 +19,7 @@ import type { Mermaid } from 'mermaid';
 let mermaidPromise: Promise<Mermaid> | null = null;
 
 function loadMermaid(): Promise<Mermaid> {
-  // Dynamic import of the local ./vendor/mermaid.js (import-map specifier
+  // Dynamic import of the local ./vendor/mermaid-<version>.js (import-map specifier
   // "mermaid"); fine under CSP script-src 'self'. Cached after the first call.
   // The dynamic-import namespace picks up a synthetic-default union under Node16
   // resolution, so pin the shape explicitly; at runtime m.default is the Mermaid

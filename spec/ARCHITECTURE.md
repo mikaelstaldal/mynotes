@@ -271,7 +271,7 @@ CI) that pins upstream versions, runs `npm ci --ignore-scripts` into a throwaway
 and `esbuild` are required. This keeps every package-manager install manual,
 audited, and outside the automated build.
 
-- `vendor/codemirror.js` re-exports a fixed minimal surface: from
+- `vendor/codemirror-<version>.js` re-exports a fixed minimal surface: from
   `@codemirror/view` `EditorView` (incl. `updateListener`, `dispatch`,
   `lineWrapping`) + `keymap`; from `@codemirror/state` `EditorState`,
   `EditorSelection`; from `@codemirror/commands` `defaultKeymap`, `history`,
