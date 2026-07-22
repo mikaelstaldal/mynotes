@@ -14,14 +14,16 @@ import (
 // MarkdownWithFrontmatter renders a note as a downloadable Markdown document: a
 // YAML frontmatter block carrying title, slug, date (created_at as RFC 3339 in
 // UTC), and tags (the note's tag slugs, omitted when the note has none),
-// followed by the note's verbatim Markdown content. yaml.Marshal handles
-// escaping/quoting of the field values.
+// followed by the note's Markdown content soft-wrapped to wrapWidth columns
+// (see wrapMarkdown — wrapping only reflows top-level paragraphs and never
+// changes how the note renders). yaml.Marshal handles escaping/quoting of the
+// field values.
 //
 // A single newline separates the closing delimiter from the content — exactly
-// what parseFrontmatter consumes — so the round-trip is idempotent:
-// parseFrontmatter returns the original content unchanged (a blank separator
-// line would instead be re-attached to the content and accumulate one newline
-// per download → import cycle).
+// what parseFrontmatter consumes — so the frontmatter round-trips through the
+// import parser: parseFrontmatter returns the wrapped content unchanged (a blank
+// separator line would instead be re-attached to the content and accumulate one
+// newline per download → import cycle).
 func MarkdownWithFrontmatter(n model.Note) string {
 	tags := make([]string, len(n.Tags))
 	for i, t := range n.Tags {
@@ -38,11 +40,12 @@ func MarkdownWithFrontmatter(n model.Note) string {
 		Date:  n.CreatedAt.UTC().Format(time.RFC3339),
 		Tags:  tags,
 	}
+	content := wrapMarkdown(n.Content)
 	b, err := yaml.Marshal(fm)
 	if err != nil {
-		return n.Content // fall back to the raw body on the impossible marshal error
+		return content // fall back to the (wrapped) body on the impossible marshal error
 	}
-	return "---\n" + string(b) + "---\n" + n.Content
+	return "---\n" + string(b) + "---\n" + content
 }
 
 // frontmatterData holds the structured fields extracted from a Markdown
