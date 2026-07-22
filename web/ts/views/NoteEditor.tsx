@@ -1100,7 +1100,9 @@ export function NoteEditor({ slug, initialSlug, initialTitle, onSave }: Props) {
           )}
           <div class="editor-cm" ref={editorContainerRef} />
         </div>
-        <div class="preview-pane note-content" ref={previewPaneRef} dangerouslySetInnerHTML={{ __html: previewHtml }} />
+        <div class="preview-pane" ref={previewPaneRef}>
+          <div class="note-content" dangerouslySetInnerHTML={{ __html: previewHtml }} />
+        </div>
       </div>
 
       {pickerOpen && (
