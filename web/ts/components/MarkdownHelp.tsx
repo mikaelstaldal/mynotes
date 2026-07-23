@@ -64,6 +64,25 @@ const SECTIONS: Section[] = [
     },
   },
   {
+    title: 'Icons & boxes',
+    rows: [
+      { syntax: '[!flame]', desc: 'Inline Lucide icon (any icon name or alias)' },
+      { syntax: '[!lucide-flame]', desc: 'Force a Lucide icon (no alias or colour lookup)' },
+      { syntax: '>* Title\n> Body text', desc: 'Blockquote as a box (first line is the title)' },
+      { syntax: '>- Title\n> Body text', desc: 'Foldable box, collapsed (first line is the title)' },
+      { syntax: '>+ Title\n> Body text', desc: 'Foldable box, expanded' },
+    ],
+  },
+  {
+    title: 'Callouts',
+    rows: [
+      { syntax: '> [!note] Title\n> Body text', desc: 'Callout: a box with an alias icon + colour (title optional)' },
+      { syntax: '> [!warning] Watch out', desc: 'Aliases: note, info, todo, tip/hint/important, success/check/done, question/help/faq, warning/caution/attention, failure/fail/missing, danger/error, bug, abstract/summary/tldr, example, quote/cite' },
+      { syntax: '>- [!tip] Title', desc: 'Foldable callout (>-, >+, or the Obsidian > [!tip]- form)' },
+      { syntax: '[!warning] Note text', desc: 'An alias starting a paragraph tints it with the alias colour' },
+    ],
+  },
+  {
     title: 'Links & images',
     rows: [
       { syntax: '[[slug]]', desc: 'Link to another note' },

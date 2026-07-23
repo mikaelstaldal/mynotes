@@ -24,6 +24,12 @@ const EXPORT_STYLESHEET = `
   --border: #e5e7eb;
   --primary: #2563eb;
   --surface: #f9fafb;
+  --callout-blue: #2563eb;
+  --callout-green: #16a34a;
+  --callout-cyan: #0891b2;
+  --callout-amber: #d97706;
+  --callout-red: #dc2626;
+  --callout-gray: #6b7280;
 }
 @media (prefers-color-scheme: dark) {
   :root {
@@ -33,6 +39,12 @@ const EXPORT_STYLESHEET = `
     --border: #374151;
     --primary: #3b82f6;
     --surface: #1f2937;
+    --callout-blue: #3b82f6;
+    --callout-green: #22c55e;
+    --callout-cyan: #22d3ee;
+    --callout-amber: #f59e0b;
+    --callout-red: #ef4444;
+    --callout-gray: #9ca3af;
   }
 }
 * { box-sizing: border-box; }
@@ -89,6 +101,56 @@ blockquote {
   padding: 0.5em 1em;
   border-left: 3px solid var(--border);
   color: var(--muted);
+}
+.callout {
+  --callout-accent: var(--callout-gray);
+  margin: 0.75em 0;
+  padding: 0.6em 1em;
+  border: 1px solid color-mix(in srgb, var(--callout-accent) 35%, var(--border));
+  border-left: 4px solid var(--callout-accent);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--callout-accent) 8%, var(--bg));
+  color: var(--fg);
+}
+.callout-color-blue { --callout-accent: var(--callout-blue); }
+.callout-color-green { --callout-accent: var(--callout-green); }
+.callout-color-cyan { --callout-accent: var(--callout-cyan); }
+.callout-color-amber { --callout-accent: var(--callout-amber); }
+.callout-color-red { --callout-accent: var(--callout-red); }
+.callout-color-gray { --callout-accent: var(--callout-gray); }
+.callout-para { color: var(--callout-accent); }
+.callout-title {
+  display: flex;
+  align-items: center;
+  gap: 0.4em;
+  margin: 0;
+  font-weight: 600;
+  color: var(--callout-accent);
+}
+.callout-title svg.lucide { vertical-align: middle; }
+.callout > :nth-child(2) { margin-top: 0.4em; }
+.callout > :last-child { margin-bottom: 0; }
+.callout-foldable > .callout-title { cursor: pointer; list-style: none; }
+.callout-foldable > .callout-title::-webkit-details-marker { display: none; }
+.callout-foldable > .callout-title::after {
+  content: "";
+  width: 0.5em;
+  height: 0.5em;
+  margin-left: auto;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: rotate(-45deg);
+}
+details.callout-foldable[open] > .callout-title::after { transform: rotate(45deg); }
+/* On paper a collapsed <details> would hide its body; reveal every callout's
+   content (and drop the now-meaningless disclosure arrow) so nothing is lost in
+   print. Two collapse models are in play: older engines hide the non-summary
+   children (display:none), newer ones (Chromium's ::details-content) hide the
+   content via content-visibility — override both. */
+@media print {
+  details.callout > :not(summary) { display: block !important; }
+  details.callout::details-content { content-visibility: visible !important; }
+  .callout-foldable > .callout-title::after { display: none; }
 }
 table { border-collapse: collapse; width: 100%; margin: 0.75em 0; }
 th, td { border: 1px solid var(--border); padding: 0.4rem 0.7rem; text-align: left; }
@@ -158,6 +220,17 @@ async function inlineArtifactImages(container: HTMLElement): Promise<void> {
   );
 }
 
+// Drop the redundant xmlns declaration from every embedded <svg>. The document
+// is served/opened as text/html, where the HTML parser already places <svg> in
+// the SVG namespace, so the attribute is superfluous (Lucide icons, embedded
+// note SVG, and Mermaid output all carry it). Applied after all SVG has been
+// spliced in (icons, diagrams, and any broken-image placeholder).
+function stripSvgXmlns(container: HTMLElement): void {
+  for (const svg of container.querySelectorAll('svg')) {
+    svg.removeAttribute('xmlns');
+  }
+}
+
 // Render a note to a complete, standalone HTML document string: the read-view
 // render plus Mermaid diagrams, with internal artifact images inlined.
 async function buildDocument(note: Note): Promise<string> {
@@ -167,6 +240,7 @@ async function buildDocument(note: Note): Promise<string> {
   // container itself need not be in the document.
   await renderMermaidBlocks(container);
   await inlineArtifactImages(container);
+  stripSvgXmlns(container);
   return (
     '<!DOCTYPE html>\n<html lang="en">\n<head>' +
     '<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">' +

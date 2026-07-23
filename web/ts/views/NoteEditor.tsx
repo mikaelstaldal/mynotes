@@ -550,16 +550,18 @@ export function NoteEditor({ slug, initialSlug, initialTitle, onSave }: Props) {
     view.focus();
   }
 
-  // Inserts a Lucide icon as a Markdown image reference to the server's icon
-  // endpoint (![name](<base>/api/v1/icons/lucide/name)) at the cursor, keeping
-  // note content compact rather than embedding the full SVG. The server serves
-  // the icon as an image/svg+xml asset (see internal/icons).
+  // Inserts a Lucide icon using the explicit inline-icon syntax
+  // ([!lucide-<name>]) at the cursor. The `lucide-` prefix bypasses the callout
+  // alias table, so a picked icon is always the literal icon with no colour/
+  // callout semantics (e.g. picking "summary" inserts the real summary icon, not
+  // the summary callout alias). The read-view renderer (util/markdown.ts) turns
+  // it into an inline <svg>; a plain Markdown consumer sees the literal text.
   function insertIcon(name: string) {
     setIconPickerOpen(false);
     const view = viewRef.current;
     if (!view) return;
     const { from, to } = view.state.selection.main;
-    const insert = `![${name}](${base}/api/v1/icons/lucide/${name})`;
+    const insert = `[!lucide-${name}]`;
     view.dispatch({
       changes: { from, to, insert },
       selection: EditorSelection.cursor(from + insert.length),
@@ -748,6 +750,48 @@ export function NoteEditor({ slug, initialSlug, initialTitle, onSave }: Props) {
       ? EditorSelection.cursor(from + insert.length)
       : EditorSelection.range(bodyStart, bodyStart + body.length);
     view.dispatch({ changes: { from, to, insert }, selection });
+    view.focus();
+  }
+
+  // Insert a callout (a blockquote whose first line is a
+  // `[!type] title` marker). Mirrors insertMermaidBlock's blank-line padding.
+  // With a selection each selected line becomes a callout body line; with no
+  // selection a starter callout is seeded and the type token ("note") is
+  // selected so it can be changed immediately (note/tip/warning/danger/…).
+  function insertCalloutBlock() {
+    const view = viewRef.current;
+    if (!view) return;
+    const { from, to } = view.state.selection.main;
+    const selected = view.state.sliceDoc(from, to);
+    const before = view.state.sliceDoc(0, from);
+    const after = view.state.sliceDoc(to);
+    let prefix = '';
+    if (before.length > 0) {
+      if (before.endsWith('\n\n')) prefix = '';
+      else if (before.endsWith('\n')) prefix = '\n';
+      else prefix = '\n\n';
+    }
+    let suffix = '\n\n';
+    if (after.length === 0) suffix = '\n';
+    else if (after.startsWith('\n\n')) suffix = '';
+    else if (after.startsWith('\n')) suffix = '\n';
+    const type = 'note';
+    const marker = `> [!${type}] `;
+    if (selected) {
+      const body = selected.split('\n').map((line) => `> ${line}`).join('\n');
+      const insert = `${prefix}${marker}\n${body}${suffix}`;
+      view.dispatch({
+        changes: { from, to, insert },
+        selection: EditorSelection.cursor(from + insert.length),
+      });
+    } else {
+      const insert = `${prefix}${marker}Title\n> Body${suffix}`;
+      const typeStart = from + prefix.length + '> [!'.length;
+      view.dispatch({
+        changes: { from, insert },
+        selection: EditorSelection.range(typeStart, typeStart + type.length),
+      });
+    }
     view.focus();
   }
 
@@ -1025,6 +1069,14 @@ export function NoteEditor({ slug, initialSlug, initialTitle, onSave }: Props) {
               <rect class="fmt-fill fmt-stroke" height="3" width="3" x="11" y="5"/>
               <path class="fmt-even fmt-fill fmt-stroke" d="M7,8c0,4.031-3,5-3,5"/>
               <path class="fmt-even fmt-fill fmt-stroke" d="M14,8c0,4.031-3,5-3,5"/>
+            </svg>
+          </button>
+          <button type="button" class="btn-icon" title="Callout" aria-label="Callout" onClick={insertCalloutBlock}>
+            <svg viewBox="0 0 18 18">
+              <rect class="fmt-stroke" height="12" width="14" x="2" y="3"/>
+              <line class="fmt-stroke" x1="5" y1="3" x2="5" y2="15"/>
+              <line class="fmt-stroke" x1="8" y1="7" x2="13" y2="7"/>
+              <line class="fmt-stroke" x1="8" y1="11" x2="13" y2="11"/>
             </svg>
           </button>
           <button type="button" class="btn-icon" title="Code block" aria-label="Code block" onClick={insertCodeBlock}>

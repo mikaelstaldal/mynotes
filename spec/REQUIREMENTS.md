@@ -97,6 +97,35 @@ identity exists but is never exposed as the URL key.
   renders diagrams too (it reuses the same browser render pipeline), so exported
   documents contain the rendered SVG. The editor
   toolbar has a button that inserts a starter `mermaid` block.
+- **Inline icons:** `[!name]` anywhere renders a Lucide icon inline. `name` is
+  any vendored Lucide icon, or one of the callout **aliases** below (which
+  resolve to their icon). An unrecognized name is left as literal text. The
+  explicit `[!lucide-name]` form forces the literal Lucide icon with no alias
+  lookup and no colour/callout semantics (e.g. `[!lucide-summary]`); the icon
+  picker inserts this form.
+- **Box / foldable blockquotes:** a single marker character immediately after the
+  first `>` of a blockquote turns it into a callout-style box — `>-` a collapsed
+  foldable box, `>+` an expanded foldable box, `>*` a static box. Every box uses
+  its first line as the title (foldable boxes render as native
+  `<details>`/`<summary>`); a box with no alias uses the default (gray) accent.
+- **Callouts:** the [Obsidian callout](https://obsidian.md/help/callouts) syntax,
+  composed from the two blocks above — a blockquote whose first line starts with
+  an `[!alias]` renders as a styled admonition (the alias icon, its colour accent,
+  and a title row above the body; the title is optional and defaults to the
+  capitalized alias name). Fold a callout with the `>-`/`>+` markers, or the
+  Obsidian `[!alias]-` / `[!alias]+` form. The aliases follow Obsidian (note,
+  info, todo, tip/hint/important, success/check/done, question/help/faq,
+  warning/caution/attention, failure/fail/missing, danger/error, bug,
+  abstract/summary/tldr, example, quote/cite), each mapped to a Lucide icon and a
+  colour family (blue, green, cyan, amber, red, gray). An `[!alias]` at the start
+  of **any** paragraph (not just a blockquote) tints that paragraph's text and
+  icon with the alias colour. All of the above is a **web-UI render-time feature
+  only**: content is stored verbatim (the literal `[!alias]`, `>-`, etc.), so it
+  passes the server's structural validation unchanged and needs no new
+  stored-content format. Rendering reuses the same markdown-it → DOMPurify
+  pipeline as the rest of the read view, editor preview, and Download HTML / print
+  export. A direct API consumer (such as the Android app) that does not implement
+  the same transform receives the literal Markdown.
 - **Wikilinks:** the non-standard `[[…]]` syntax links to another note or a tag's
   note list. `[[slug]]` links to a note (`/notes/{slug}`); `[[#slug]]` (with a `#`
   sigil) links to a tag's note list (`/tags/{slug}`). `[[slug|Display text]]` (or

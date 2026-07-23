@@ -367,6 +367,180 @@ test('a non-task list item is left as an ordinary bullet', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Building block: inline Lucide icons — `[!name]` renders an inline <svg>.
+// ---------------------------------------------------------------------------
+
+test('an [!name] inline icon renders an <svg> for a known Lucide name', () => {
+  const out = renderNote('an inline [!flame] icon');
+  assertPresent(out, '<svg', 'inline svg');
+  assertPresent(out, 'lucide-flame', 'the named icon');
+  assertPresent(out, 'an inline', 'surrounding text');
+  assertAbsent(out, '[!flame]', 'marker consumed, not shown literally');
+});
+
+test('an alias name resolves to its icon (tip -> flame)', () => {
+  assertPresent(renderNote('a [!tip] here'), 'lucide-flame', 'tip aliases flame');
+});
+
+test('an unknown [!name] is left as literal text', () => {
+  const out = renderNote('text [!nonsenseicon] more');
+  assertPresent(out, '[!nonsenseicon]', 'unknown name stays literal');
+  assertAbsent(out, '<svg', 'no icon rendered');
+});
+
+test('[!lucide-<name>] forces the literal icon, bypassing the alias table', () => {
+  const out = renderNote('[!lucide-summary]');
+  assertPresent(out, 'lucide-summary', 'the real Lucide summary icon');
+  assertAbsent(out, 'clipboard-list', 'not the summary alias icon');
+});
+
+test('[!lucide-<name>] carries no colour semantics at a paragraph start', () => {
+  const out = renderNote('[!lucide-info] just an icon');
+  assertPresent(out, 'lucide-info', 'info icon rendered');
+  assertAbsent(out, 'callout-para', 'no paragraph tint');
+  assertAbsent(out, 'callout-color', 'no colour family');
+});
+
+test('an unknown [!lucide-<name>] stays literal', () => {
+  const out = renderNote('[!lucide-nonsenseicon]');
+  assertPresent(out, '[!lucide-nonsenseicon]', 'stays literal');
+  assertAbsent(out, '<svg', 'no icon rendered');
+});
+
+test('[!name] inside a code span stays literal', () => {
+  const out = renderNote('`[!flame]`');
+  assertPresent(out, '[!flame]', 'literal inside code');
+  assertAbsent(out, '<svg', 'no icon inside code');
+});
+
+// ---------------------------------------------------------------------------
+// Building block: box / foldable blockquotes — a marker after the first `>`.
+// Rendered with sanitizer-allowed tags only (blockquote/details/summary/p/svg),
+// so no <div> is introduced and the DOMPurify allow-list is unchanged.
+// ---------------------------------------------------------------------------
+
+test('>* renders a static (non-foldable) box with a title row', () => {
+  const out = renderNote('>* Boxed title\n> more body');
+  assertPresent(out, '<blockquote class="callout">', 'plain box, no colour');
+  assertAbsent(out, '<details', 'not foldable');
+  assertAbsent(out, '<summary', 'no summary (static uses <p>)');
+  assertPresent(out, '<p class="callout-title">Boxed title</p>', 'first line is the title');
+  assertPresent(out, 'more body', 'body preserved');
+});
+
+test('>- renders a collapsed foldable box (first line is the title)', () => {
+  const out = renderNote('>- Summary line\n> hidden body');
+  assertPresent(out, '<details', 'details element');
+  assertPresent(out, 'callout-foldable', 'foldable class');
+  assertPresent(out, '<summary', 'summary title');
+  assertPresent(out, 'Summary line', 'title text');
+  assertPresent(out, 'hidden body', 'body still in DOM');
+  assertAbsent(out, 'open=', 'collapsed: no open attribute');
+  assertAbsent(out, 'callout-color', 'no alias: default gray, no colour class');
+});
+
+test('>+ renders an expanded foldable box', () => {
+  const out = renderNote('>+ Shown by default\n> visible body');
+  assertPresent(out, '<details', 'details element');
+  assertPresent(out, 'open', 'open attribute for + marker');
+  assertPresent(out, '<summary', 'summary title');
+});
+
+test('> *italic* (space after >) is a plain blockquote, not a box', () => {
+  const out = renderNote('> *italic* quote');
+  assertAbsent(out, 'callout', 'no box');
+  assertPresent(out, '<blockquote>', 'plain blockquote');
+  assertPresent(out, '<em>italic</em>', 'emphasis intact');
+});
+
+// ---------------------------------------------------------------------------
+// Callouts — a box whose first line starts with an alias icon (icon + colour).
+// ---------------------------------------------------------------------------
+
+test('a basic callout renders the box, colour family, icon and title', () => {
+  const out = renderNote('> [!note] Heads up\n> body text');
+  assertPresent(out, 'class="callout callout-note callout-color-blue"', 'callout classes');
+  assertPresent(out, 'class="callout-title"', 'title row');
+  assertPresent(out, '<svg', 'inline alias icon');
+  assertPresent(out, 'Heads up', 'custom title text');
+  assertPresent(out, 'body text', 'body text');
+});
+
+test('a callout with no explicit title falls back to the capitalized alias', () => {
+  const out = renderNote('> [!warning]\n> mind the gap');
+  assertPresent(out, 'callout-warning', 'alias class');
+  assertPresent(out, 'callout-color-amber', 'amber family');
+  assertPresent(out, '>Warning<', 'default title from alias name');
+  assertPresent(out, 'mind the gap', 'body text');
+});
+
+test('aliases map to their colour family (danger -> red)', () => {
+  assertPresent(renderNote('> [!danger] Stop'), 'callout-color-red', 'danger is red');
+  assertPresent(renderNote('> [!tip] Nice'), 'callout-color-green', 'tip is green');
+  assertPresent(renderNote('> [!question] Hmm'), 'callout-color-cyan', 'question is cyan');
+  assertPresent(renderNote('> [!quote] Said'), 'callout-color-gray', 'quote is gray');
+});
+
+test('>- makes a foldable callout (collapsed) with icon and colour', () => {
+  const out = renderNote('>- [!tip] Click to expand\n> hidden body');
+  assertPresent(out, '<details', 'details element');
+  assertPresent(out, 'callout-tip callout-color-green', 'alias colour kept');
+  assertPresent(out, 'callout-foldable', 'foldable class');
+  assertPresent(out, '<summary', 'summary title');
+  assertPresent(out, '<svg', 'icon in summary');
+  assertAbsent(out, 'open=', 'collapsed: no open attribute');
+});
+
+test('the Obsidian [!tip]- fold form still folds a callout', () => {
+  const out = renderNote('> [!tip]- Click to expand\n> hidden body');
+  assertPresent(out, '<details', 'details element');
+  assertPresent(out, 'callout-foldable', 'foldable class');
+  assertPresent(out, '<summary', 'summary title');
+  assertAbsent(out, 'open=', 'collapsed');
+  assertAbsent(out, '[!tip]', 'marker consumed');
+});
+
+test('inline Markdown in the callout title renders', () => {
+  const out = renderNote('> [!note] Be **bold**\n> body');
+  assertPresent(out, '<strong>bold</strong>', 'title inline markup rendered');
+  assertAbsent(out, '[!note]', 'marker consumed, not shown literally');
+});
+
+test('a nested callout inside a callout renders both', () => {
+  const out = renderNote('> [!note] Outer\n> > [!warning] Inner\n> > inner body');
+  assertPresent(out, 'callout-note', 'outer callout');
+  assertPresent(out, 'callout-warning', 'inner callout');
+  assertPresent(out, 'Inner', 'inner title');
+});
+
+test('an [!alias] at the start of a plain paragraph tints it', () => {
+  const out = renderNote('[!warning] mind the gap');
+  assertPresent(out, 'class="callout-para callout-color-amber"', 'paragraph tint class');
+  assertPresent(out, '<svg', 'alias icon');
+  assertPresent(out, 'mind the gap', 'paragraph text');
+  assertAbsent(out, '<blockquote', 'not a blockquote');
+});
+
+test('an unknown callout name is not a callout (no marker) — plain blockquote', () => {
+  const out = renderNote('> [!frobnicate] Whatever\n> body');
+  assertAbsent(out, 'callout', 'no callout class');
+  assertPresent(out, '<blockquote>', 'plain blockquote');
+  assertPresent(out, '[!frobnicate]', 'unknown name stays literal');
+});
+
+test('boxes and callouts never introduce a <div> (sanitizer allow-list unchanged)', () => {
+  const out = renderNote('> [!info] Note\n> body\n\n>- Fold\n> more\n\n>* Box\n> x');
+  assertAbsent(out, '<div', 'no div tags');
+});
+
+test('an ordinary blockquote (no marker) is left untouched', () => {
+  const out = renderNote('> just a quote');
+  assertAbsent(out, 'callout', 'no callout class');
+  assertPresent(out, '<blockquote>', 'plain blockquote preserved');
+  assertPresent(out, 'just a quote', 'quote text');
+});
+
+// ---------------------------------------------------------------------------
 // Mermaid diagrams — the ```mermaid fenced block must survive rendering as a
 // <code class="language-mermaid"> placeholder for the client-side renderer
 // (util/mermaid.ts) to turn into SVG after insertion. The SVG rendering itself

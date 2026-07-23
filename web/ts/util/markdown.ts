@@ -115,6 +115,284 @@ md.core.ruler.after('inline', 'task_lists', (state) => {
   }
 });
 
+// Two composable, render-time building blocks and the callouts built from them.
+// Everything here is a web-UI transform only: notes are stored verbatim (the
+// literal `[!warning]`, `>-` etc.), so they pass the server's structural
+// validator unchanged and a plain API consumer (the Android app) sees ordinary
+// Markdown. Rendered with tags the DOMPurify gate already allows
+// (blockquote/details/summary/p/span/svg, `open`, `class`), so the sanitiser
+// allow-list is unchanged.
+
+// Alias -> Lucide icon + colour family (styled in app.css as
+// .callout-color-<family>). Aliases follow the Obsidian callout types; each also
+// carries a colour so `[!alias]` at the start of a paragraph can tint it. Used
+// by both the inline icon rule and the callouts core rule below. An unknown name
+// is simply not an alias (it may still be a direct Lucide icon).
+const ICON_ALIASES: Record<string, { icon: string; family: string }> = {
+  note: { icon: 'pencil', family: 'blue' },
+  info: { icon: 'info', family: 'blue' },
+  todo: { icon: 'circle-check', family: 'blue' },
+  tip: { icon: 'flame', family: 'green' },
+  hint: { icon: 'flame', family: 'green' },
+  important: { icon: 'flame', family: 'green' },
+  success: { icon: 'check', family: 'green' },
+  check: { icon: 'check', family: 'green' },
+  done: { icon: 'check', family: 'green' },
+  question: { icon: 'circle-question-mark', family: 'cyan' },
+  help: { icon: 'circle-question-mark', family: 'cyan' },
+  faq: { icon: 'circle-question-mark', family: 'cyan' },
+  warning: { icon: 'triangle-alert', family: 'amber' },
+  caution: { icon: 'triangle-alert', family: 'amber' },
+  attention: { icon: 'triangle-alert', family: 'amber' },
+  failure: { icon: 'x', family: 'red' },
+  fail: { icon: 'x', family: 'red' },
+  missing: { icon: 'x', family: 'red' },
+  danger: { icon: 'zap', family: 'red' },
+  error: { icon: 'zap', family: 'red' },
+  bug: { icon: 'bug', family: 'red' },
+  abstract: { icon: 'clipboard-list', family: 'gray' },
+  summary: { icon: 'clipboard-list', family: 'gray' },
+  tldr: { icon: 'clipboard-list', family: 'gray' },
+  example: { icon: 'list', family: 'gray' },
+  quote: { icon: 'quote', family: 'gray' },
+  cite: { icon: 'quote', family: 'gray' },
+};
+
+// Building block 1 — inline Lucide icon: `[!name]` anywhere renders a Lucide
+// icon inline. `name` is any vendored Lucide icon, or one of the ICON_ALIASES
+// (which resolve to their icon and tag the token with a colour family the
+// callouts rule reads back). The explicit `[!lucide-<name>]` form always renders
+// the literal Lucide icon <name> with no alias lookup and no colour/callout
+// semantics — use it to reach an icon whose name is also an alias (e.g.
+// `[!lucide-summary]` is the Lucide "summary" icon, not the `summary` callout
+// alias). Unknown names are left as literal text. Registered before 'link' so
+// `[!x]` is consumed before the standard link rule sees the leading '['.
+// renderIconSvg (a hoisted function declaration below) escapes attributes via the
+// DOM and the result is re-sanitised by DOMPurify anyway.
+const ICON_RE = /^\[!([a-zA-Z][\w-]*)\]/;
+const LUCIDE_PREFIX = 'lucide-';
+
+md.inline.ruler.before('link', 'icon', (state, silent) => {
+  const start = state.pos;
+  if (
+    state.src.charCodeAt(start) !== 0x5b /* [ */ ||
+    state.src.charCodeAt(start + 1) !== 0x21 /* ! */
+  ) {
+    return false;
+  }
+  const match = ICON_RE.exec(state.src.slice(start));
+  if (!match) return false;
+  const name = match[1].toLowerCase();
+  const explicit = name.startsWith(LUCIDE_PREFIX);
+  const alias = explicit ? undefined : ICON_ALIASES[name];
+  const iconName = explicit ? name.slice(LUCIDE_PREFIX.length) : alias ? alias.icon : name;
+  const svg = renderIconSvg(iconName);
+  if (!svg) return false; // unknown icon and unknown alias -> literal text
+  if (!silent) {
+    const token = state.push('html_inline', '', 0);
+    token.content = svg;
+    // Tag alias icons so the callouts core rule can recover the colour family.
+    // Explicit `[!lucide-…]` icons carry no meta, so they never turn into a box
+    // or tint a paragraph.
+    if (alias) token.meta = { family: alias.family, alias: name };
+  }
+  state.pos += match[0].length;
+  return true;
+});
+
+// Building block 2 — box / foldable blockquote: a single marker char right after
+// the first '>' of a blockquote turns it into a callout-style box:
+//   >-  foldable box, collapsed        >+  foldable box, expanded
+//   >*  static (non-foldable) box
+// This preprocessing core rule runs before block parsing: it records the marker
+// per source line and strips it, so the standard blockquote rule parses clean
+// content (`>- x` -> `> x`) and an alias icon stays at the paragraph start. The
+// callouts rule below reads the markers back, matched by the blockquote_open
+// token's source line. The marker must sit immediately after '>' (so
+// `> *italic*` is unaffected); leading `>` markers are allowed so nested
+// blockquotes (`> >- inner`) work. Fenced code blocks are tracked so a `>-`
+// line inside a ``` fence is left untouched (top-level fences only — a fence
+// nested in a blockquote isn't tracked, an accepted edge case).
+const BQ_MARKER_RE = /^( {0,3}(?:> ?)*>)([-+*])/;
+const FENCE_RE = /^ {0,3}(`{3,}|~{3,})/;
+
+md.core.ruler.before('block', 'blockquote_box', (state) => {
+  if (state.src.indexOf('>') < 0) return;
+  const lines = state.src.split('\n');
+  const markers: Record<number, string> = {};
+  let fence = '';
+  let found = false;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (fence) {
+      const c = FENCE_RE.exec(line);
+      if (
+        c && c[1][0] === fence[0] && c[1].length >= fence.length &&
+        line.slice(c[1].length).trim() === ''
+      ) {
+        fence = '';
+      }
+      continue;
+    }
+    const f = FENCE_RE.exec(line);
+    if (f) {
+      fence = f[1];
+      continue;
+    }
+    const m = BQ_MARKER_RE.exec(line);
+    if (!m) continue;
+    markers[i] = m[2];
+    lines[i] = m[1] + line.slice(m[0].length);
+    found = true;
+  }
+  if (found) {
+    state.src = lines.join('\n');
+    state.env.bqMarker = markers;
+  }
+});
+
+// The blockquote_close balancing the blockquote_open at `openIdx` (matching by
+// token type, which stays 'blockquote_*' even after we retag it to <details>).
+function matchingBlockquoteClose(tokens: MdToken[], openIdx: number): number {
+  let depth = 0;
+  for (let i = openIdx; i < tokens.length; i++) {
+    if (tokens[i].type === 'blockquote_open') depth++;
+    else if (tokens[i].type === 'blockquote_close') {
+      depth--;
+      if (depth === 0) return i;
+    }
+  }
+  return -1;
+}
+
+// Append a class to a block token (paragraph/blockquote), preserving any existing.
+function appendClass(token: MdToken, cls: string): void {
+  const idx = token.attrIndex('class');
+  if (idx < 0) token.attrPush(['class', cls]);
+  else token.attrs![idx][1] = `${token.attrs![idx][1]} ${cls}`;
+}
+
+// The alias family/name if `child` is an alias icon token (see the icon rule).
+function aliasIcon(child: MdToken | undefined): { family: string; alias: string } | null {
+  if (child && child.type === 'html_inline' && child.meta && child.meta.alias) {
+    return child.meta as { family: string; alias: string };
+  }
+  return null;
+}
+
+// Callouts (built from the two blocks) + alias-tinted paragraphs. A blockquote is
+// a callout when its first line starts with an alias icon; the `>-`/`>+`/`>*`
+// marker (or an Obsidian-style `[!alias]-`/`+`) makes it a box, foldable when
+// `-`/`+`. Any paragraph whose first line starts with an alias icon is tinted
+// with that alias's colour family.
+md.core.ruler.after('inline', 'callouts', (state) => {
+  const tokens = state.tokens;
+  const markers = (state.env.bqMarker ?? {}) as Record<number, string>;
+
+  // Pass A: box / foldable blockquotes and callouts.
+  for (let i = 0; i < tokens.length; i++) {
+    if (tokens[i].type !== 'blockquote_open') continue;
+    const pOpen = tokens[i + 1];
+    const inline = tokens[i + 2];
+    const pClose = tokens[i + 3];
+    if (
+      !pOpen || pOpen.type !== 'paragraph_open' ||
+      !inline || inline.type !== 'inline' ||
+      !pClose || pClose.type !== 'paragraph_close'
+    ) {
+      continue;
+    }
+    const children = inline.children ?? [];
+    const meta = aliasIcon(children[0]);
+
+    let marker = tokens[i].map ? markers[tokens[i].map![0]] : undefined;
+    // Obsidian-compat fold: `[!alias]-` / `[!alias]+` — a fold marker directly
+    // after the alias icon (no leading space) when no `>-`/`>+` marker was given.
+    if (meta && !marker) {
+      const t = children[1];
+      if (t && t.type === 'text' && (t.content[0] === '-' || t.content[0] === '+')) {
+        marker = t.content[0];
+        t.content = t.content.slice(1);
+      }
+    }
+
+    const foldable = marker === '-' || marker === '+';
+    const boxed = !!marker || !!meta;
+    if (!boxed) continue;
+
+    let cls = 'callout';
+    if (meta) cls += ` callout-${meta.alias} callout-color-${meta.family}`;
+    if (foldable) cls += ' callout-foldable';
+    tokens[i].attrSet('class', cls);
+
+    if (foldable) {
+      tokens[i].tag = 'details';
+      if (marker === '+') tokens[i].attrSet('open', '');
+      const closeIdx = matchingBlockquoteClose(tokens, i);
+      if (closeIdx >= 0) tokens[closeIdx].tag = 'details';
+    }
+
+    // Every box (foldable, static, or callout) uses its first line as the title.
+    // Title children = inline children up to the first line break; body children
+    // = everything after it (title and body share one inline token, split at a
+    // softbreak).
+    let sb = children.findIndex((c) => c.type === 'softbreak' || c.type === 'hardbreak');
+    if (sb < 0) sb = children.length;
+    let titleChildren = children.slice(0, sb);
+    const bodyChildren = children.slice(sb + 1);
+
+    if (meta) {
+      // Strip the space left after the alias icon; fall back to the capitalized
+      // alias name when the title is otherwise empty. Keeps inline title markup.
+      const t = titleChildren[1];
+      if (t && t.type === 'text') t.content = t.content.replace(/^[ \t]+/, '');
+      const hasText = titleChildren
+        .slice(1)
+        .some((c) => c.type !== 'text' || c.content.trim() !== '');
+      if (!hasText) {
+        const label = new state.Token('text', '', 0);
+        label.content = meta.alias.charAt(0).toUpperCase() + meta.alias.slice(1);
+        titleChildren = [titleChildren[0], label];
+      }
+    }
+
+    // Build the title row (<summary> when foldable, else <p>) and the body.
+    const titleTag = foldable ? 'summary' : 'p';
+    const titleOpen = new state.Token('callout_title_open', titleTag, 1);
+    titleOpen.block = true;
+    titleOpen.attrSet('class', 'callout-title');
+    const titleInline = new state.Token('inline', '', 0);
+    titleInline.children = titleChildren;
+    titleInline.content = '';
+    const titleClose = new state.Token('callout_title_close', titleTag, -1);
+    titleClose.block = true;
+
+    const segment: MdToken[] = [titleOpen, titleInline, titleClose];
+    if (bodyChildren.length > 0) {
+      const bodyOpen = new state.Token('paragraph_open', 'p', 1);
+      bodyOpen.block = true;
+      const bodyInline = new state.Token('inline', '', 0);
+      bodyInline.children = bodyChildren;
+      bodyInline.content = '';
+      const bodyClose = new state.Token('paragraph_close', 'p', -1);
+      bodyClose.block = true;
+      segment.push(bodyOpen, bodyInline, bodyClose);
+    }
+    // Replace the first paragraph (open/inline/close) with the title + body.
+    tokens.splice(i + 1, 3, ...segment);
+  }
+
+  // Pass B: tint any remaining paragraph that starts with an alias icon. Callout
+  // title rows use the custom callout_title_* token type, so they're skipped.
+  for (let i = 0; i < tokens.length; i++) {
+    if (tokens[i].type !== 'paragraph_open') continue;
+    const inline = tokens[i + 1];
+    if (!inline || inline.type !== 'inline') continue;
+    const meta = aliasIcon(inline.children?.[0]);
+    if (meta) appendClass(tokens[i], `callout-para callout-color-${meta.family}`);
+  }
+});
+
 // AsciiMath math: $inline$ and $$display$$
 // AsciiMath (https://asciimath.org) written between single dollars renders as
 // inline MathML; between double dollars as display (block) MathML. Conversion is

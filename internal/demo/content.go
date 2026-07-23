@@ -87,6 +87,37 @@ Task lists render as checkboxes:
 >
 > — J.R.R. Tolkien
 
+## Icons, boxes & callouts
+
+Include a Lucide icon anywhere with ` + "`[!name]`" + ` — e.g. [!flame] [!rocket] [!heart].
+Can use ` + "`[!lucide-name]`" + ` to force a plain icon with no alias or colour: [!lucide-summary].
+
+Put a marker right after the first ` + "`>`" + ` of a blockquote to turn it into a box
+whose first line is the title:
+
+>* A boxed note
+> ` + "`>*`" + ` makes a static box.
+
+>- Foldable, collapsed
+> Use ` + "`>-`" + ` (collapsed) or ` + "`>+`" + ` (expanded) to make the box foldable.
+
+Callouts combine the two: a box whose first line starts with an ` + "`[!alias]`" + `,
+which adds an icon and a colour:
+
+> [!note] A note
+> Use ` + "`> [!note] Title`" + ` on the first line; the title is optional.
+
+> [!tip] Helpful tip
+> Aliases include note, info, tip, success, question, warning, danger, bug,
+> example, and quote.
+
+>- [!question] Click to expand
+> Fold a callout with ` + "`>-`" + `/` + "`>+`" + ` (or the Obsidian ` + "`> [!question]- …`" + ` form).
+
+An ` + "`[!alias]`" + ` at the start of any paragraph tints it with the alias colour:
+
+[!warning] Heads up — this whole paragraph is amber.
+
 ## Code blocks
 
 Fenced blocks keep their formatting:

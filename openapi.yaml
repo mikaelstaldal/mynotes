@@ -12,99 +12,16 @@ info:
 
     A note's `content` is stored and returned as verbatim Markdown. Consumers
     that render notes (the embedded web UI, the native mobile app, HTML export)
-    should interpret it as follows.
-
-    ## Base and extensions
-
-    The base syntax is [CommonMark](https://spec.commonmark.org/) plus a small,
-    fixed subset of [GitHub Flavored Markdown](https://github.github.com/gfm/) extensions:
-
-    - **Tables** — GFM [§4.10 Tables](https://github.github.com/gfm/#tables-extension-).
-    - **Strikethrough** — GFM [§6.5](https://github.github.com/gfm/#strikethrough-extension-),
-      `~~deleted~~`.
-    - **Autolinks** — bare URLs and email addresses are linkified, GFM
-      [§6.9](https://github.github.com/gfm/#autolinks-extension-).
-    - **Task lists** — GFM [§5.3](https://github.github.com/gfm/#task-list-items-extension-),
-      `- [ ]` / `- [x]`. A list item whose text begins with such a marker
-      renders as a **disabled (read-only) checkbox**, checked for `[x]`
-      (case-insensitive) and unchecked for `[ ]`. The checkbox is presentational
-      only — toggling it is a content edit that rewrites the marker in the
-      stored Markdown, not a separate state.
-
-    No other extensions are part of the dialect. Footnotes, definition lists
-    and YAML front matter are not interpreted.
-
-    ## Math (AsciiMath)
-
-    [AsciiMath](https://asciimath.org) written between single dollars (`$x^2$`)
-    renders as inline MathML and between double dollars (`$$…$$`, either inline
-    or as a multi-line block) as display MathML. A literal dollar is written
-    `\$`; a `$` that is not part of a valid pair (e.g. currency like `$5`) stays
-    literal. This is a **render-time transform**: the AsciiMath source is stored
-    verbatim in the `content` Markdown and converted to MathML at render time in
-    the browser by the web UI's vendored `asciimath2ml` library, with the
-    generated `<math>` passing through the same sanitization gate as all other
-    rendered HTML. MathML embedded directly as raw HTML is also permitted (see
-    "Raw HTML"); that MathML is stored verbatim and is not a transform.
-
-    A consumer that renders `content` itself must run the AsciiMath transform to
-    display math. Consumers that only pass `content` through unchanged receive
-    the literal `$…$` source.
-
-    ## Raw HTML
-
-    Raw inline and block HTML is permitted but restricted to a safe subset
-    (broadly the bluemonday UGC / DOMPurify allow-list: common prose, table,
-    figure and media elements, plus inline SVG and MathML). The sole permitted
-    form control is the task-list checkbox — `<input type="checkbox">` with only
-    `checked`/`disabled` attributes; any other `input` type or attribute is
-    disallowed. Disallowed constructs — `script`, `style`, `iframe`, `object`,
-    other form controls, `on*` event-handler attributes, and any URL whose
-    scheme is not `http`, `https` or `mailto` — are rejected at write time
-    (`400`), so stored content is
-    always safe. Renderers should still sanitize with an equivalent allow-list
-    as defense in depth.
-
-    ## Images and artifacts
-
-    Images use standard Markdown image syntax, `![alt](url)`. Binary images
-    uploaded via `POST /artifacts` are content-addressed and referenced by
-    their SHA-256, e.g. `![diagram](/api/v1/artifacts/<sha256>)`. Inline
-    `data:` image URIs are also allowed for the `gif`, `png`, `jpeg` and
-    `webp` types.
-
-    ## Internal wikilinks (application-specific)
-
-    A `[[...]]` syntax — modelled on the wiki-link convention — links to other 
-    notes and tags **within the app**. It is not part of CommonMark or GFM, 
-    so consumers must implement it themselves.
-
-    Grammar: the target slug must match `^[a-z0-9]+(?:-[a-z0-9]+)*$` (the same
-    pattern as note/tag slugs). An optional leading `#` sigil selects a tag
-    instead of a note. An optional `|` introduces display text, which may be
-    any run of characters except `]` and newline. Any `[[...]]` that does not
-    match these forms is left as literal text.
-
-    | Syntax | Target | Default display text |
-    | --- | --- | --- |
-    | `[[slug]]` | note with that slug | `slug` |
-    | `[[slug\|Display text]]` | note with that slug | `Display text` |
-    | `[[#slug]]` | the tag's note list | `#slug` |
-    | `[[#slug\|Display text]]` | the tag's note list | `Display text` |
-
-    Renderers should resolve note wikilinks to their own note-view route and
-    tag wikilinks to their tag/filter view (the web UI uses `/notes/<slug>` and
-    `/tags/<slug>`). Wikilinks are stored verbatim in `content`.
-
-    Note wikilinks (not tag links) are additionally **indexed** server-side:
-    each note carries `outgoing_links` (the notes it links to, resolved to
-    existing notes only) and `incoming_links` (backlinks — notes that link to
-    it), both on `Note` and `NoteSummary` (see the `NoteLink` schema). The index
-    is refreshed whenever a note's content is written and reflects target titles
-    and existence at read time, so creating, renaming, or deleting a target note
-    updates the links of every note that references it without a re-index.
-    Extraction matches the render: a `[[slug]]` inside a code span or code block
-    is not a link and is not indexed.
+    should interpret it per the **Markdown dialect specification** in
+    `markdown-spec.md`. In brief, it is [CommonMark](https://spec.commonmark.org/)
+    plus a fixed subset of [GFM](https://github.github.com/gfm/) (tables,
+    strikethrough, autolinks, task lists), a safe raw-HTML subset, and several
+    application-specific render-time transforms — AsciiMath math (`$x^2$`), inline
+    Lucide icons (`[!name]`), box / foldable blockquotes (`>-`, `>+`, `>*`) and
+    the callouts built from them, and internal wikilinks (`[[slug]]`). All
+    transforms are stored verbatim; a consumer that passes `content` through
+    unchanged receives the literal source. See `markdown-spec.md` for the
+    full grammar, the callout alias/colour table, and the wikilink indexing rules.
   version: 1.0.0
 servers:
   - url: http://localhost:8080/api/v1
@@ -517,9 +434,10 @@ paths:
       operationId: getIcon
       summary: Get an icon as SVG
       description: >
-        Returns the named icon from the given set as an `image/svg+xml` document. 
-        Icons are fixed, built-in sets; note content references them as Markdown images
-        `![<name>](/api/v1/icons/<set>/<name>)`. The response is a static, public, 
+        Returns the named icon from the given set as an `image/svg+xml` document.
+        Icons are fixed, built-in sets; note content references them inline as
+        `[!<name>]` (or as Markdown images `![<name>](/api/v1/icons/<set>/<name>)`,
+        which this endpoint serves). The response is a static, public,
         immutable asset served under a locked-down sandbox Content-Security-Policy. 
         The icon has a fixed stroke colour (it is loaded via `<img>`, so it cannot 
         inherit the client's theme). Unknown sets or names return 404.
@@ -642,8 +560,8 @@ components:
           type: string
           maxLength: 1000000
           description: >
-            Verbatim Markdown content of the note. See the "Markdown dialect"
-            section in the API info description for how consumers (web UI,
+            Verbatim Markdown content of the note. See the Markdown dialect
+            specification (markdown-spec.md) for how consumers (web UI,
             native app) should interpret and render it.
         created_at:
           type: string
@@ -766,9 +684,9 @@ components:
           maxLength: 1000000
           default: ""
           description: >
-            Markdown content; see the "Markdown dialect" section in the API
-            info description. HTML carrying disallowed constructs is rejected
-            (400).
+            Markdown content; see the Markdown dialect specification
+            (markdown-spec.md). HTML carrying disallowed constructs is
+            rejected (400).
         slug:
           type: string
           maxLength: 100
@@ -795,9 +713,9 @@ components:
           type: string
           maxLength: 1000000
           description: >
-            Markdown content; see the "Markdown dialect" section in the API
-            info description. HTML carrying disallowed constructs is rejected
-            (400).
+            Markdown content; see the Markdown dialect specification
+            (markdown-spec.md). HTML carrying disallowed constructs is
+            rejected (400).
         tags:
           type: array
           items:
