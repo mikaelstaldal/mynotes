@@ -8,7 +8,8 @@ export type Route =
   | { type: 'list'; tags: string[] }
   | { type: 'new' }
   | { type: 'view'; slug: string }
-  | { type: 'edit'; slug: string };
+  | { type: 'edit'; slug: string }
+  | { type: 'graph' };
 
 const SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
@@ -27,6 +28,7 @@ function stripBase(pathname: string): string {
 function parseRoute(pathname: string): Route {
   const parts = stripBase(pathname).split('/').filter(Boolean);
   if (parts[0] === 'new') return { type: 'new' };
+  if (parts[0] === 'graph') return { type: 'graph' };
   if (parts[0] === 'notes' && parts[1]) {
     if (parts[2] === 'edit') return { type: 'edit', slug: parts[1] };
     return { type: 'view', slug: parts[1] };

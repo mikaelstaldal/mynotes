@@ -5,6 +5,7 @@ import { showToast } from '../util/toast.js';
 import { useSlowLoading } from '../util/loading.js';
 import { renderMermaidBlocks } from '../util/mermaid.js';
 import { buildGraphSource, type NodeStyle, type LegendEntry } from '../util/graph.js';
+import { Icon } from '../components/Icon.js';
 
 const PAGE = 200; // /notes max page size
 
@@ -12,6 +13,9 @@ interface Props {
   listKey?: number;
   // Slug of the note open in the main panel, highlighted in the graph.
   activeSlug?: string;
+  // 'sidebar' (default) renders the compact left-panel graph; 'main' renders the
+  // large main-panel graph shown while on the /graph route.
+  variant?: 'sidebar' | 'main';
 }
 
 // Recover the synthetic node id (n0, n1, …) from a rendered Mermaid node group.
@@ -71,7 +75,7 @@ function applyTooltips(container: HTMLElement, idToTooltip: Map<string, string>)
 // Sidebar tab that renders the whole note-link graph as a clickable Mermaid
 // diagram. Only notes with at least one link are drawn; clicking a node opens
 // that note, and the currently-open note is highlighted.
-export function NotesGraph({ listKey, activeSlug }: Props) {
+export function NotesGraph({ listKey, activeSlug, variant = 'sidebar' }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const idToSlugRef = useRef<Map<string, string>>(new Map());
   // Latest activeSlug, so the async render can highlight without being a dep.
@@ -82,6 +86,9 @@ export function NotesGraph({ listKey, activeSlug }: Props) {
   const slowLoading = useSlowLoading(loading);
   const [empty, setEmpty] = useState(false);
   const [legend, setLegend] = useState<LegendEntry[]>([]);
+  // The Mermaid source of the currently-rendered graph, shown via the info-icon
+  // tooltip in the top-right corner.
+  const [source, setSource] = useState('');
 
   const load = useCallback(async (gen: number) => {
     setLoading(true);
@@ -105,9 +112,11 @@ export function NotesGraph({ listKey, activeSlug }: Props) {
 
       if (!source) {
         container.innerHTML = '';
+        setSource('');
         setEmpty(true);
         return;
       }
+      setSource(source);
       setEmpty(false);
 
       // Hand the source to the shared Mermaid renderer as a fenced block, reusing
@@ -144,6 +153,15 @@ export function NotesGraph({ listKey, activeSlug }: Props) {
     if (container) applyHighlight(container, idToSlugRef.current, activeSlug);
   }, [activeSlug]);
 
+  // The large main-panel graph stops <main> from scrolling as a whole, so its
+  // own scroll region owns both axes (mirrors how NoteView toggles note-view-main).
+  useEffect(() => {
+    if (variant !== 'main') return;
+    const main = document.querySelector('main');
+    main?.classList.add('graph-main');
+    return () => main?.classList.remove('graph-main');
+  }, [variant]);
+
   // Delegated: a click anywhere on a node group opens the corresponding note.
   const onClick = useCallback((e: MouseEvent) => {
     const g = (e.target as Element).closest('g.node');
@@ -153,11 +171,17 @@ export function NotesGraph({ listKey, activeSlug }: Props) {
     if (slug) navigate(`/notes/${slug}`);
   }, []);
 
+  const main = variant === 'main';
   return (
-    <div class="sidebar-graph-wrap">
+    <div class={`sidebar-graph-wrap${main ? ' sidebar-graph-wrap--main' : ''}`}>
+      {main && source && (
+        <span class="sidebar-graph-info" title={source} aria-label="Mermaid source">
+          <Icon name="info" size={16} />
+        </span>
+      )}
       {slowLoading && <p class="muted sidebar-graph-msg">Loading…</p>}
       {empty && !loading && <p class="muted sidebar-graph-msg">No linked notes yet.</p>}
-      <div ref={containerRef} class="sidebar-graph" onClick={onClick} />
+      <div ref={containerRef} class={`sidebar-graph${main ? ' sidebar-graph--main' : ''}`} onClick={onClick} />
       {!empty && legend.length > 0 && (
         <ul class="sidebar-graph-legend" aria-label="Node colors by tag">
           {legend.map((e) => (

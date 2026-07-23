@@ -21,10 +21,18 @@ function App() {
   const [listKey, setListKey] = useState(0);
   const [sortField, setSortField] = useState<SortField>(() => getConfig().sortField);
   const [sortOrder, setSortOrder] = useState<SortOrder>(() => getConfig().sortOrder);
-  const [sidebarTab, setSidebarTab] = useState<SidebarTab>('notes');
+  const [sidebarTab, setSidebarTab] = useState<SidebarTab>(
+    () => currentRoute().type === 'graph' ? 'graph' : 'notes',
+  );
   const uploadRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => onRouteChange(setRoute), []);
+
+  // Landing on the /graph route (Graph tab, a deep link, or the back button)
+  // selects the Graph sidebar tab so the small graph accompanies the large one.
+  useEffect(() => {
+    if (route.type === 'graph') setSidebarTab('graph');
+  }, [route.type]);
 
   // Apply the persisted theme to the document root.
   useEffect(() => {
@@ -128,6 +136,17 @@ function App() {
     // identity on each render doesn't retrigger this effect.
   }, [routeTagsKey, refreshList]);
 
+  // Selecting the Notes or Tags tab while the large graph fills the main panel
+  // returns the main panel to the note list, so the sidebar and main panel agree.
+  const selectTab = useCallback((tab: SidebarTab) => {
+    setSidebarTab(tab);
+    if (tab === 'graph') {
+      navigate('/graph');
+    } else if (route.type === 'graph') {
+      navigate('/');
+    }
+  }, [route.type]);
+
   const activeSlug = (route.type === 'view' || route.type === 'edit') ? route.slug : undefined;
 
   return (
@@ -141,19 +160,19 @@ function App() {
                 role="tab"
                 aria-selected={sidebarTab === 'notes'}
                 class={`sidebar-tab${sidebarTab === 'notes' ? ' active' : ''}`}
-                onClick={() => setSidebarTab('notes')}
+                onClick={() => selectTab('notes')}
               >Notes</button>
               <button
                 role="tab"
                 aria-selected={sidebarTab === 'tags'}
                 class={`sidebar-tab${sidebarTab === 'tags' ? ' active' : ''}`}
-                onClick={() => setSidebarTab('tags')}
+                onClick={() => selectTab('tags')}
               >Tags</button>
               <button
                 role="tab"
                 aria-selected={sidebarTab === 'graph'}
                 class={`sidebar-tab${sidebarTab === 'graph' ? ' active' : ''}`}
-                onClick={() => setSidebarTab('graph')}
+                onClick={() => selectTab('graph')}
               >Graph</button>
             </div>
             <div class="sidebar-actions">
@@ -232,6 +251,9 @@ function App() {
           {route.type === 'new' && <NoteEditor onSave={refreshList} />}
           {route.type === 'view' && <NoteView slug={route.slug} onDelete={refreshList} />}
           {route.type === 'edit' && <NoteEditor slug={route.slug} onSave={refreshList} />}
+          {route.type === 'graph' && (
+            <NotesGraph listKey={listKey} activeSlug={activeSlug} variant="main" />
+          )}
         </main>
       </div>
       <Toast />

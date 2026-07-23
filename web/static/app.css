@@ -129,6 +129,19 @@ body {
   min-height: 0;
   display: flex;
   flex-direction: column;
+  position: relative;
+}
+
+/* Info affordance pinned to the top-right corner; hovering it reveals the
+   graph's Mermaid source via the native title tooltip. */
+.sidebar-graph-info {
+  position: absolute;
+  top: 0.35rem;
+  right: 0.35rem;
+  z-index: 1;
+  display: inline-flex;
+  color: var(--muted);
+  cursor: help;
 }
 
 .sidebar-graph {
@@ -191,6 +204,24 @@ body {
   border-radius: 3px;
   border: 1px solid var(--border);
   flex: none;
+}
+
+/* Large graph in the main panel (the /graph route). main stops scrolling as a
+   whole so the diagram's own scroll region owns both axes, edge to edge. */
+main.graph-main {
+  overflow: hidden;
+  padding: 0;
+}
+
+.sidebar-graph-wrap--main {
+  height: 100%;
+}
+
+/* Scale the diagram up to fill the wider main panel; larger-than-panel graphs
+   still scroll (the wrap's overflow), so nothing shrinks to illegibility. */
+.sidebar-graph--main .mermaid-diagram svg {
+  width: 100%;
+  max-width: 100%;
 }
 
 .sidebar .toolbar {
