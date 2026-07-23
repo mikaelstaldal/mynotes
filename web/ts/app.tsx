@@ -2,7 +2,7 @@ import { render } from 'preact';
 import { useState, useEffect, useCallback, useRef } from 'preact/hooks';
 import { currentRoute, onRouteChange, navigate, tagsPath, type Route } from './router.js';
 import { getConfig, saveConfig } from './util/config.js';
-import { isValidSlug } from './util/slug.js';
+import { isValidSlug, slugFromTitle } from './util/slug.js';
 import { showToast } from './util/toast.js';
 import { api, type SortField, type SortOrder } from './api/client.js';
 import { NoteList } from './views/NoteList.js';
@@ -65,6 +65,30 @@ function App() {
   const openTag = useCallback((slug: string) => {
     navigate(tagsPath([slug]));
   }, []);
+
+  // Create a new, empty tag from the tags-tab header. The name is slugified the
+  // same way tag creation elsewhere is, then refreshList() reloads the sidebar's
+  // TagManager so the new tag appears.
+  const handleNewTag = useCallback(async () => {
+    const name = prompt('New tag name:');
+    if (name === null) return;
+    const trimmed = name.trim();
+    const slug = slugFromTitle(trimmed);
+    // slugFromTitle falls back to "note" when nothing usable survives (e.g.
+    // "---"); reject such names rather than silently creating a "note" tag. The
+    // fold here mirrors slugFromTitle's, so a genuine slug char must remain.
+    const folded = trimmed.toLowerCase().normalize('NFKD').replace(/\p{Mn}/gu, '');
+    if (!/[a-z0-9]/.test(folded) || !isValidSlug(slug)) {
+      showToast('Invalid tag name.');
+      return;
+    }
+    try {
+      await api.tags.create({ slug });
+      refreshList();
+    } catch (err) {
+      showToast(`Failed to create tag: ${(err as Error).message}`);
+    }
+  }, [refreshList]);
 
   // Persist the sort choice so it survives reloads, and drive both the sidebar
   // list and the main-panel overview from the same state.
@@ -154,6 +178,14 @@ function App() {
                     onChange={handleUpload}
                   />
                 </>
+              )}
+              {sidebarTab === 'tags' && (
+                <button
+                  class="primary btn-icon"
+                  title="New tag"
+                  aria-label="New tag"
+                  onClick={() => void handleNewTag()}
+                >+</button>
               )}
               <button
                 class="btn-icon sidebar-reload"
