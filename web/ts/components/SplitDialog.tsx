@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'preact/hooks';
 import { type Tag } from '../api/client.js';
 import { TagPicker } from './TagPicker.js';
+import { Icon } from './Icon.js';
 
 interface Props {
   // Perform the split with the chosen tag slug (undefined = no tag).
@@ -48,7 +49,7 @@ export function SplitDialog({ onSplit, onClose, busy }: Props) {
             <span class="tag-chip">
               {tag}
               <button type="button" class="tag-chip-remove" aria-label={`Remove tag ${tag}`}
-                disabled={busy} onClick={() => setSelected([])}>×</button>
+                disabled={busy} onClick={() => setSelected([])}><Icon name="x" size={14} /></button>
             </span>
           </div>
         ) : (

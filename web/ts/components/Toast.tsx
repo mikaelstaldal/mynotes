@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'preact/hooks';
 import { subscribe, dismissToast, type ToastItem } from '../util/toast.js';
+import { Icon } from './Icon.js';
 
 // Renders the toast store. Mount once near the app root.
 export function Toast() {
@@ -21,7 +22,7 @@ export function Toast() {
               </button>
             )}
             <button class="toast-close-btn" onClick={() => dismissToast(item.id)} aria-label="Dismiss">
-              ✕
+              <Icon name="x" size={16} />
             </button>
           </div>
         </div>

@@ -21,6 +21,7 @@ import { TagLinkPicker } from '../components/TagLinkPicker.js';
 import { TagPicker } from '../components/TagPicker.js';
 import { EmojiPicker } from '../components/EmojiPicker.js';
 import { IconPicker } from '../components/IconPicker.js';
+import { Icon } from '../components/Icon.js';
 import { MarkdownHelp } from '../components/MarkdownHelp.js';
 import { ConflictDialog } from '../components/ConflictDialog.js';
 import { saveDraft, loadDraft, clearDraft, type Draft } from '../util/draft.js';
@@ -827,9 +828,9 @@ export function NoteEditor({ slug, initialSlug, initialTitle, onSave }: Props) {
     <form class="editor-page" onSubmit={handleSubmit}>
       <div class="editor-toolbar">
         <div class="layout-btns">
-          <button type="button" class={layout === 'editor' ? 'active btn-icon' : 'btn-icon'} title="Editor" aria-label="Editor" onClick={() => setLayout('editor')}>✎</button>
-          <button type="button" class={layout === 'split' ? 'active btn-icon' : 'btn-icon'} title="Split" aria-label="Split" onClick={() => setLayout('split')}>◫</button>
-          <button type="button" class={layout === 'preview' ? 'active btn-icon' : 'btn-icon'} title="Preview" aria-label="Preview" onClick={() => setLayout('preview')}>◉</button>
+          <button type="button" class={layout === 'editor' ? 'active btn-icon' : 'btn-icon'} title="Editor" aria-label="Editor" onClick={() => setLayout('editor')}><Icon name="pencil" size={16} /></button>
+          <button type="button" class={layout === 'split' ? 'active btn-icon' : 'btn-icon'} title="Split" aria-label="Split" onClick={() => setLayout('split')}><Icon name="columns-2" size={16} /></button>
+          <button type="button" class={layout === 'preview' ? 'active btn-icon' : 'btn-icon'} title="Preview" aria-label="Preview" onClick={() => setLayout('preview')}><Icon name="eye" size={16} /></button>
         </div>
         <span class="toolbar-spacer" />
         <button type="button" class="btn-icon" title="Cancel" aria-label="Cancel" onClick={() => {
@@ -838,9 +839,9 @@ export function NoteEditor({ slug, initialSlug, initialTitle, onSave }: Props) {
           // view when editing (or the overview for a new note) if unknown.
           const returnTo = (window.history.state as { returnTo?: string } | null)?.returnTo;
           navigate(returnTo ?? (editing ? `/notes/${slug}` : '/'));
-        }}>✕</button>
+        }}><Icon name="x" size={16} /></button>
         <button type="submit" class="primary btn-icon" disabled={saving || !dirty}
-          title={saving ? 'Saving…' : 'Save'} aria-label={saving ? 'Saving…' : 'Save'}>✓</button>
+          title={saving ? 'Saving…' : 'Save'} aria-label={saving ? 'Saving…' : 'Save'}><Icon name="check" size={16} /></button>
       </div>
 
       <div class="editor-meta">

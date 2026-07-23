@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'preact/hooks';
 import { api, type TagSummary } from '../api/client.js';
 import { showToast } from '../util/toast.js';
 import { useSlowLoading } from '../util/loading.js';
+import { Icon } from '../components/Icon.js';
 
 interface Props {
   // Bumped by the app whenever notes/tags change elsewhere, so the counts here
@@ -89,7 +90,7 @@ export function TagManager({ listKey, onMutate, onOpenTag }: Props) {
                 aria-label={`Delete tag ${tag.slug}`}
                 disabled={deleting === tag.slug}
                 onClick={() => void handleDelete(tag)}
-              >❌︎</button>
+              ><Icon name="recycle" size={16} /></button>
             </li>
           ))}
         </ul>

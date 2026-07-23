@@ -5,6 +5,7 @@ import { base } from '../basepath.js';
 import { showToast } from '../util/toast.js';
 import { downloadNoteHtml, noteHtmlDocument } from '../util/export.js';
 import { SplitDialog } from './SplitDialog.js';
+import { Icon } from './Icon.js';
 
 interface Props {
   slug: string;
@@ -137,15 +138,15 @@ export function NoteActions({ slug, title, toolbarClass, showView, onDeleted, on
     <>
       <div class={`toolbar${toolbarClass ? ` ${toolbarClass}` : ''}`}>
         {showView && (
-          <a class="btn-icon" href={`${base}/notes/${slug}`} title="View" aria-label="View">👁</a>
+          <a class="btn-icon" href={`${base}/notes/${slug}`} title="View" aria-label="View"><Icon name="eye" size={16} /></a>
         )}
-        <a class="btn-icon" href={`${base}/api/v1/notes/${slug}/download-markdown`} title="Download Markdown" aria-label="Download Markdown">𝖬⬇</a>
+        <a class="btn-icon" href={`${base}/api/v1/notes/${slug}/download-markdown`} title="Download Markdown" aria-label="Download Markdown"><Icon name="file-down" size={16} /></a>
         <button class="btn-icon" title="Download HTML" aria-label="Download HTML" onClick={handleDownloadHtml}>HTML</button>
-        <button class="btn-icon" title="Print" aria-label="Print" onClick={handlePrint}>🖨</button>
-        <button class="btn-icon" title="Split by headings" aria-label="Split by headings" onClick={() => setShowSplit(true)} disabled={splitting}>✂</button>
-        <button class="btn-icon" title="Edit" aria-label="Edit" onClick={() => navigate(`/notes/${slug}/edit`, { returnTo: currentPath() })}>✎</button>
+        <button class="btn-icon" title="Print" aria-label="Print" onClick={handlePrint}><Icon name="printer" size={16} /></button>
+        <button class="btn-icon" title="Split by headings" aria-label="Split by headings" onClick={() => setShowSplit(true)} disabled={splitting}><Icon name="scissors" size={16} /></button>
+        <button class="btn-icon" title="Edit" aria-label="Edit" onClick={() => navigate(`/notes/${slug}/edit`, { returnTo: currentPath() })}><Icon name="pencil" size={16} /></button>
         <button class="danger btn-icon" onClick={handleDelete} disabled={deleting}
-          title={deleting ? 'Deleting…' : 'Delete'} aria-label={deleting ? 'Deleting…' : 'Delete'}>❌︎</button>
+          title={deleting ? 'Deleting…' : 'Delete'} aria-label={deleting ? 'Deleting…' : 'Delete'}><Icon name="recycle" size={16} /></button>
       </div>
       {showSplit && (
         <SplitDialog busy={splitting} onClose={() => setShowSplit(false)} onSplit={doSplit} />

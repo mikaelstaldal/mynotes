@@ -1,4 +1,5 @@
 import { useEffect } from 'preact/hooks';
+import { Icon } from './Icon.js';
 
 interface Props {
   onClose: () => void;
@@ -106,7 +107,7 @@ export function MarkdownHelp({ onClose }: Props) {
       <div class="markdown-help" role="dialog" aria-modal="true" aria-labelledby="markdown-help-title" onClick={(e) => e.stopPropagation()}>
         <div class="markdown-help-header">
           <h2 id="markdown-help-title" class="markdown-help-title">Markdown syntax</h2>
-          <button type="button" class="btn-icon" title="Close" aria-label="Close" onClick={onClose}>✕</button>
+          <button type="button" class="btn-icon" title="Close" aria-label="Close" onClick={onClose}><Icon name="x" size={16} /></button>
         </div>
         <div class="markdown-help-body">
           {SECTIONS.map((section) => (

@@ -12,6 +12,7 @@ import { NoteView } from './views/NoteView.js';
 import { TagManager } from './views/TagManager.js';
 import { NotesGraph } from './views/NotesGraph.js';
 import { Toast } from './components/Toast.js';
+import { Icon } from './components/Icon.js';
 
 type SidebarTab = 'notes' | 'tags' | 'graph';
 
@@ -163,13 +164,13 @@ function App() {
                     title="New note"
                     aria-label="New note"
                     onClick={() => navigate('/new')}
-                  >+</button>
+                  ><Icon name="plus" size={16} /></button>
                   <button
                     class="btn-icon"
                     title="Upload note (Markdown or HTML)"
                     aria-label="Upload note"
                     onClick={() => uploadRef.current?.click()}
-                  >⬆</button>
+                  ><Icon name="upload" size={16} /></button>
                   <input
                     ref={uploadRef}
                     type="file"
@@ -185,14 +186,14 @@ function App() {
                   title="New tag"
                   aria-label="New tag"
                   onClick={() => void handleNewTag()}
-                >+</button>
+                ><Icon name="plus" size={16} /></button>
               )}
               <button
                 class="btn-icon sidebar-reload"
                 title={sidebarTab === 'notes' ? 'Reload notes' : sidebarTab === 'tags' ? 'Reload tags' : 'Reload graph'}
                 aria-label={sidebarTab === 'notes' ? 'Reload notes' : sidebarTab === 'tags' ? 'Reload tags' : 'Reload graph'}
                 onClick={refreshList}
-              >↺</button>
+              ><Icon name="rotate-ccw" size={16} /></button>
             </div>
           </div>
           <div class="sidebar-content">

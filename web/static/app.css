@@ -321,6 +321,13 @@ button.danger.btn-icon:hover:not(:disabled) {
     background: rgb(220 38 38 / 0.08);
     color: var(--danger);
 }
+/* Inline Lucide icons in icon-only buttons: center vertically so the SVG's
+   baseline doesn't leave a descender gap under the glyph. */
+.btn-icon .lucide,
+.tag-chip-remove .lucide,
+.toast-item button .lucide {
+    vertical-align: middle;
+}
 
 .muted { color: var(--muted); }
 

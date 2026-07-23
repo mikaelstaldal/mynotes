@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'preact/hooks';
 import { api, type Tag } from '../api/client.js';
 import { showToast } from '../util/toast.js';
 import { slugFromTitle } from '../util/slug.js';
+import { Icon } from './Icon.js';
 
 interface Props {
   selected: Tag[];
@@ -73,7 +74,7 @@ export function TagPicker({ selected, onChange }: Props) {
         <span key={t.slug} class="tag-chip">
           {t.slug}
           <button type="button" class="tag-chip-remove" aria-label={`Remove tag ${t.slug}`}
-            onClick={() => removeTag(t.slug)}>×</button>
+            onClick={() => removeTag(t.slug)}><Icon name="x" size={14} /></button>
         </span>
       ))}
       <div class="tag-picker-input-wrap">

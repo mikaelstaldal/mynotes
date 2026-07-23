@@ -3,6 +3,7 @@ import { api, type NoteSummary, type TagSummary, type SortField, type SortOrder 
 import { navigate, tagsPath } from '../router.js';
 import { showToast } from '../util/toast.js';
 import { NoteRows } from './NoteRows.js';
+import { Icon } from '../components/Icon.js';
 import { useSlowLoading } from '../util/loading.js';
 
 const LIMIT = 50;
@@ -235,7 +236,7 @@ export function NoteList({ activeSlug, activeTags, listKey, sortField, sortOrder
                   title={`Remove filter “${slug}”`}
                   aria-label={`Remove tag filter ${slug}`}
                   onClick={() => setTagFilter(activeTags.filter(t => t !== slug))}
-                >×</button>
+                ><Icon name="x" size={14} /></button>
               </span>
             ))}
           </div>
