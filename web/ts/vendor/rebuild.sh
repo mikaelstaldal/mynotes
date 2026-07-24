@@ -212,9 +212,13 @@ node "$VENDOR_DIR/gen-emoji.mjs" \
 # a handful of icons the pinned source and lucide-static disagree on drop out
 # cleanly. No esbuild needed — the generator emits plain files directly.
 
-# Pinned lucide source ref the category metadata is taken from. Bump alongside
-# the lucide-static version in package.json when refreshing the icon set.
-LUCIDE_REF="main"
+# Pinned lucide source ref the category metadata is taken from. MUST match the
+# lucide-static version in package.json — the repo tags each unified release as
+# "<version>", and lucide-static ships the exact icon set of the same-named tag.
+# A moving ref (e.g. "main") drifts from the pinned package: source drops/renames
+# an icon lucide-static still ships, and gen-lucide.mjs then can't find its
+# <name>.json. Bump this in lockstep whenever the package.json version bumps.
+LUCIDE_REF="1.25.0"
 LUCIDE_SRC="$WORK_DIR/lucide-src"
 git clone --depth 1 --branch "$LUCIDE_REF" --filter=blob:none --sparse \
   https://github.com/lucide-icons/lucide.git "$LUCIDE_SRC"
