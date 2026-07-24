@@ -388,6 +388,7 @@ func TestMarkdownWithFrontmatter(t *testing.T) {
 	md := MarkdownWithFrontmatter(note)
 
 	assert.True(t, strings.HasPrefix(md, "---\n"), "opens with a YAML frontmatter block")
+	assert.Contains(t, md, "dialect: mynotes\n", "carries the mynotes dialect marker")
 	assert.True(t, strings.HasSuffix(md, "---\n# Heading\n\nbody"),
 		"frontmatter is followed by the verbatim content")
 

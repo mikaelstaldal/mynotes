@@ -13,7 +13,8 @@ import (
 
 // MarkdownWithFrontmatter renders a note as a downloadable Markdown document: a
 // YAML frontmatter block carrying title, slug, date (created_at as RFC 3339 in
-// UTC), and tags (the note's tag slugs, omitted when the note has none),
+// UTC), tags (the note's tag slugs, omitted when the note has none), and a
+// constant dialect: mynotes marker identifying the frontmatter flavour,
 // followed by the note's Markdown content soft-wrapped to wrapWidth columns
 // (see wrapMarkdown — wrapping only reflows top-level paragraphs and never
 // changes how the note renders). yaml.Marshal handles escaping/quoting of the
@@ -30,15 +31,17 @@ func MarkdownWithFrontmatter(n model.Note) string {
 		tags[i] = t.Slug
 	}
 	fm := struct {
-		Title string   `yaml:"title"`
-		Slug  string   `yaml:"slug"`
-		Date  string   `yaml:"date"`
-		Tags  []string `yaml:"tags,omitempty"`
+		Title   string   `yaml:"title"`
+		Slug    string   `yaml:"slug"`
+		Date    string   `yaml:"date"`
+		Tags    []string `yaml:"tags,omitempty"`
+		Dialect string   `yaml:"dialect"`
 	}{
-		Title: n.Title,
-		Slug:  n.Slug,
-		Date:  n.CreatedAt.UTC().Format(time.RFC3339),
-		Tags:  tags,
+		Title:   n.Title,
+		Slug:    n.Slug,
+		Date:    n.CreatedAt.UTC().Format(time.RFC3339),
+		Tags:    tags,
+		Dialect: "mynotes",
 	}
 	content := wrapMarkdown(n.Content)
 	b, err := yaml.Marshal(fm)
