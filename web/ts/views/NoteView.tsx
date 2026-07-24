@@ -5,6 +5,7 @@ import { base } from '../basepath.js';
 import { showToast } from '../util/toast.js';
 import { renderNote } from '../util/markdown.js';
 import { renderMermaidBlocks } from '../util/mermaid.js';
+import { onThemeChange } from '../util/theme.js';
 import { useSlowLoading } from '../util/loading.js';
 import { titleFromSlug } from '../util/title.js';
 import { NoteActions } from '../components/NoteActions.js';
@@ -78,6 +79,18 @@ export function NoteView({ slug, onDelete }: Props) {
     if (!el) return;
     void renderMermaidBlocks(el);
   }, [renderedContent]);
+
+  // Mermaid bakes theme colours into its SVG output, so a live light/dark toggle
+  // can't re-colour an already-rendered diagram via CSS. When the theme changes
+  // and this note has a diagram, restore the source blocks and re-render them.
+  // Notes without a diagram re-theme instantly through CSS variables, so they're
+  // left untouched (preserving e.g. open/closed foldable callouts).
+  useEffect(() => onThemeChange(() => {
+    const el = contentRef.current;
+    if (!el || !el.querySelector('.mermaid-diagram, code.language-mermaid')) return;
+    el.innerHTML = renderedContent;
+    void renderMermaidBlocks(el);
+  }), [renderedContent]);
 
   // While a note is shown, stop main from scrolling as a whole (like the editor
   // toggles editor-main) so the header stays fixed and only the content scrolls.

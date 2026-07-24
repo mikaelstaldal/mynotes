@@ -1,6 +1,7 @@
 import { api, type Note } from '../api/client.js';
 import { renderNote } from './markdown.js';
 import { renderMermaidBlocks } from './mermaid.js';
+import { getTheme } from './theme.js';
 
 // Client-side "Download HTML" / print support.
 //
@@ -13,11 +14,13 @@ import { renderMermaidBlocks } from './mermaid.js';
 // A small, self-contained stylesheet embedded in every exported document so a
 // downloaded note renders close to the web UI's read view without a live server.
 // Element-level (the body is the raw rendered Markdown fragment); ported from the
-// server's exportStylesheet, plus a rule to center Mermaid diagrams. Colors are
-// wired to prefers-color-scheme (a standalone file can't read the app's runtime
-// data-theme attribute).
-const EXPORT_STYLESHEET = `
-:root {
+// server's exportStylesheet, plus a rule to center Mermaid diagrams. The theme is
+// baked in via a `data-theme` attribute on <html> (set by buildDocument to match
+// the app at export time) rather than prefers-color-scheme, so a downloaded file
+// looks like what the user saw. Print always resets to light — dark backgrounds
+// waste ink and read poorly on paper — so the app's print path exports light and
+// even a saved dark document prints light.
+const LIGHT_VARS = `
   --bg: #ffffff;
   --fg: #1f2937;
   --muted: #6b7280;
@@ -29,22 +32,26 @@ const EXPORT_STYLESHEET = `
   --callout-cyan: #0891b2;
   --callout-amber: #d97706;
   --callout-red: #dc2626;
-  --callout-gray: #6b7280;
+  --callout-gray: #6b7280;`;
+const EXPORT_STYLESHEET = `
+:root {${LIGHT_VARS}
 }
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #111827;
-    --fg: #f3f4f6;
-    --muted: #9ca3af;
-    --border: #374151;
-    --primary: #3b82f6;
-    --surface: #1f2937;
-    --callout-blue: #3b82f6;
-    --callout-green: #22c55e;
-    --callout-cyan: #22d3ee;
-    --callout-amber: #f59e0b;
-    --callout-red: #ef4444;
-    --callout-gray: #9ca3af;
+:root[data-theme="dark"] {
+  --bg: #111827;
+  --fg: #f3f4f6;
+  --muted: #9ca3af;
+  --border: #374151;
+  --primary: #3b82f6;
+  --surface: #1f2937;
+  --callout-blue: #3b82f6;
+  --callout-green: #22c55e;
+  --callout-cyan: #22d3ee;
+  --callout-amber: #f59e0b;
+  --callout-red: #ef4444;
+  --callout-gray: #9ca3af;
+}
+@media print {
+  :root[data-theme="dark"] {${LIGHT_VARS}
   }
 }
 * { box-sizing: border-box; }
@@ -232,17 +239,19 @@ function stripSvgXmlns(container: HTMLElement): void {
 }
 
 // Render a note to a complete, standalone HTML document string: the read-view
-// render plus Mermaid diagrams, with internal artifact images inlined.
-async function buildDocument(note: Note): Promise<string> {
+// render plus Mermaid diagrams, with internal artifact images inlined. `dark`
+// bakes the dark theme into the document (a `data-theme` attribute on <html> and
+// dark-themed Mermaid SVG); when false the document is light.
+async function buildDocument(note: Note, dark: boolean): Promise<string> {
   const container = document.createElement('div');
   container.innerHTML = renderNote(note.content); // DOMPurify-sanitized
   // mermaid.render() attaches its own measurement node to document.body, so the
   // container itself need not be in the document.
-  await renderMermaidBlocks(container);
+  await renderMermaidBlocks(container, dark ? 'dark' : 'default');
   await inlineArtifactImages(container);
   stripSvgXmlns(container);
   return (
-    '<!DOCTYPE html>\n<html lang="en">\n<head>' +
+    `<!DOCTYPE html>\n<html lang="en"${dark ? ' data-theme="dark"' : ''}>\n<head>` +
     '<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">' +
     `<title>${escapeHtml(note.title)}</title><style>${EXPORT_STYLESHEET}</style></head>\n<body>\n` +
     container.innerHTML +
@@ -251,14 +260,16 @@ async function buildDocument(note: Note): Promise<string> {
 }
 
 // Fetch a note and return its standalone HTML document (used by the print flow).
+// Always light: printing goes to paper, where a dark theme is undesirable.
 export async function noteHtmlDocument(slug: string): Promise<string> {
-  return buildDocument(await api.notes.get(slug));
+  return buildDocument(await api.notes.get(slug), false);
 }
 
-// Fetch a note, build its standalone HTML document, and trigger a download.
+// Fetch a note, build its standalone HTML document, and trigger a download. The
+// download carries the app's current theme so the saved file matches the read view.
 export async function downloadNoteHtml(slug: string): Promise<void> {
   const note = await api.notes.get(slug);
-  const html = await buildDocument(note);
+  const html = await buildDocument(note, getTheme() === 'dark');
   const url = URL.createObjectURL(new Blob([html], { type: 'text/html' }));
   const a = document.createElement('a');
   a.href = url;

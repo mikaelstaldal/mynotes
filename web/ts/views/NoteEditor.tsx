@@ -13,6 +13,7 @@ import { navigate, setNavigationGuard } from '../router.js';
 import { showToast } from '../util/toast.js';
 import { renderNote, sanitizeSVGOrMathML, rawHtmlBlockSeparator } from '../util/markdown.js';
 import { renderMermaidBlocks } from '../util/mermaid.js';
+import { onThemeChange } from '../util/theme.js';
 import { titleFromContent } from '../util/title.js';
 import { slugFromTitle } from '../util/slug.js';
 import { useSlowLoading } from '../util/loading.js';
@@ -323,6 +324,17 @@ export function NoteEditor({ slug, initialSlug, initialTitle, onSave }: Props) {
     if (!el) return;
     void renderMermaidBlocks(el);
   }, [previewHtml]);
+
+  // Re-theme preview Mermaid diagrams on a live light/dark toggle (their colours
+  // are baked into the SVG). Only needed when a diagram is present; other markup
+  // re-themes via CSS variables. The next preview edit would re-render anyway.
+  useEffect(() => onThemeChange(() => {
+    const el = previewPaneRef.current;
+    if (!el || !el.querySelector('.mermaid-diagram, code.language-mermaid')) return;
+    const content = el.querySelector('.note-content');
+    if (content) content.innerHTML = previewHtml;
+    void renderMermaidBlocks(el);
+  }), [previewHtml]);
 
   // Create CodeMirror editor once content is available.
   // For /new: runs on mount (loading is already false).

@@ -2,6 +2,7 @@ import { render } from 'preact';
 import { useState, useEffect, useCallback, useRef } from 'preact/hooks';
 import { currentRoute, onRouteChange, navigate, tagsPath, type Route } from './router.js';
 import { getConfig, saveConfig } from './util/config.js';
+import { getTheme, applyTheme, toggleTheme, type Theme } from './util/theme.js';
 import { isValidSlug, slugFromTitle } from './util/slug.js';
 import { showToast } from './util/toast.js';
 import { api, type SortField, type SortOrder } from './api/client.js';
@@ -24,6 +25,7 @@ function App() {
   const [sidebarTab, setSidebarTab] = useState<SidebarTab>(
     () => currentRoute().type === 'graph' ? 'graph' : 'notes',
   );
+  const [theme, setThemeState] = useState<Theme>(() => getTheme());
   const uploadRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => onRouteChange(setRoute), []);
@@ -34,10 +36,12 @@ function App() {
     if (route.type === 'graph') setSidebarTab('graph');
   }, [route.type]);
 
-  // Apply the persisted theme to the document root.
-  useEffect(() => {
-    document.documentElement.dataset.theme = getConfig().theme;
-  }, []);
+  // Apply the persisted theme to the document root at startup.
+  useEffect(() => { applyTheme(theme); }, []);
+
+  // Flip light/dark; toggleTheme persists, applies, and notifies subscribers
+  // (e.g. open Mermaid diagrams), and returns the new theme for the button icon.
+  const handleToggleTheme = useCallback(() => setThemeState(toggleTheme()), []);
 
   const refreshList = useCallback(() => setListKey(k => k + 1), []);
 
@@ -236,6 +240,18 @@ function App() {
             {sidebarTab === 'graph' && (
               <NotesGraph listKey={listKey} activeSlug={activeSlug} />
             )}
+          </div>
+          <div class="sidebar-footer">
+            <button
+              class="btn-icon theme-toggle"
+              title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+              aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+              aria-pressed={theme === 'dark'}
+              onClick={handleToggleTheme}
+            >
+              <Icon name={theme === 'dark' ? 'sun' : 'moon'} size={16} />
+              <span>{theme === 'dark' ? 'Light mode' : 'Dark mode'}</span>
+            </button>
           </div>
         </aside>
         <main>

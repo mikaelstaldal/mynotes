@@ -22,8 +22,14 @@ fixed subset of [GitHub Flavored Markdown](https://github.github.com/gfm/) exten
   content edit that rewrites the marker in the stored Markdown, not a separate
   state.
 
-No other extensions are part of the dialect. Footnotes, definition lists and
-YAML front matter are not interpreted.
+These four are the only GFM extensions the dialect adopts. GFM's fifth
+extension, [§6.11 Disallowed Raw HTML](https://github.github.com/gfm/#disallowed-raw-html-extension-),
+is not used as specified — MyNotes applies a stricter allow-list that rejects
+disallowed HTML at write time rather than escaping a fixed blocklist (see "Raw
+HTML"). 
+
+Constructs that are sometimes assumed to be GFM but are not part of the
+GFM spec — footnotes and definition lists — are likewise not interpreted.
 
 ## Math (AsciiMath)
 

@@ -1513,6 +1513,21 @@ main.note-view-main {
   align-self: center;
 }
 
+/* Sidebar footer: holds the global light/dark toggle, pinned below the scrolling
+   sidebar content and above the sidebar's bottom edge, visible on every tab. */
+.sidebar-footer {
+  flex: none;
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--border);
+}
+
+.theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
 /* ── Tag management ─────────────────────────────────────────────── */
 
 .tag-manager-row {

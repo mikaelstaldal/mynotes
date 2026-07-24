@@ -51,16 +51,23 @@ svgPurify.setConfig({
 // is enough to keep ids unique within the document.
 let diagramSeq = 0;
 
+export type MermaidTheme = 'dark' | 'default';
+
 // Map the app theme (document root data-theme) onto a Mermaid built-in theme.
-function currentMermaidTheme(): 'dark' | 'default' {
+function currentMermaidTheme(): MermaidTheme {
   return document.documentElement.dataset.theme === 'dark' ? 'dark' : 'default';
 }
 
 // Find, render, and replace every unprocessed ```mermaid block inside `container`.
 // Each block is processed at most once (guarded by a data-attribute set before
 // the first await). A malformed diagram degrades to its original source with an
-// error hint rather than throwing, so a note always renders.
-export async function renderMermaidBlocks(container: HTMLElement): Promise<void> {
+// error hint rather than throwing, so a note always renders. `themeOverride`
+// forces a specific theme regardless of the live document (used by the HTML
+// export and the print path, which bake colours into standalone documents).
+export async function renderMermaidBlocks(
+  container: HTMLElement,
+  themeOverride?: MermaidTheme,
+): Promise<void> {
   const blocks = container.querySelectorAll<HTMLElement>('pre > code.language-mermaid');
   if (blocks.length === 0) return;
 
@@ -71,7 +78,7 @@ export async function renderMermaidBlocks(container: HTMLElement): Promise<void>
     mermaid.initialize({
       startOnLoad: false,
       securityLevel: 'strict',
-      theme: currentMermaidTheme(),
+      theme: themeOverride ?? currentMermaidTheme(),
       // Never let Mermaid inject its own full-screen "bomb" error graphic into
       // the DOM; we handle failures ourselves (see below).
       suppressErrorRendering: true,
