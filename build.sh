@@ -4,6 +4,9 @@
 # tsc, openapi-typescript, golangci-lint.
 # NOTE: no npm/npx/yarn/pnpm/bun — vendor bundles are pre-built committed
 # artifacts; jsdom is unpacked from jsdom-node_modules.tar.gz via tar only.
+#
+# On success this script is silent (no stdout/stderr) and exits 0.
+# On failure it prints the failing step's output to stderr and exits non-zero.
 set -euo pipefail
 
 OUTPUT_DIR="."
@@ -14,26 +17,37 @@ while getopts "o:" opt; do
   esac
 done
 
+# Run a build step silently; on failure, print its combined output to stderr
+# and abort with a non-zero exit code.
+run() {
+  local output
+  if ! output=$("$@" 2>&1); then
+    printf 'build.sh: step failed: %s\n' "$*" >&2
+    printf '%s\n' "$output" >&2
+    exit 1
+  fi
+}
+
 # 1. Generate the Go ogen server stubs (internal/api/).
-go generate ./...
+run go generate ./...
 
 # 2. Generate the TypeScript API types from the OpenAPI spec.
-openapi-typescript openapi.yaml -o web/ts/api/types.ts
+run openapi-typescript openapi.yaml -o web/ts/api/types.ts
 
 # 3. Compile the TypeScript frontend to web/static/.
-tsc --project web/ts/tsconfig.json
+run tsc --project web/ts/tsconfig.json
 
 # 4. Unpack the committed jsdom install tree (idempotent — no-op if already unpacked).
-web/ts/vendor/test/unpack.sh
+run web/ts/vendor/test/unpack.sh
 
 # 5. Run frontend XSS-gate and markdown render tests.
-node --import ./web/ts/test-preload.mjs --test web/ts/xss-gate.test.mjs web/ts/markdown.test.mjs
+run node --import ./web/ts/test-preload.mjs --test web/ts/xss-gate.test.mjs web/ts/markdown.test.mjs
 
 # 6. Build the single binary (frontend is embedded via web/embed.go).
-CGO_ENABLED=0 go build -trimpath -buildvcs=true -tags netgo -o "$OUTPUT_DIR/mynotes" .
+run env CGO_ENABLED=0 go build -trimpath -buildvcs=true -tags netgo -o "$OUTPUT_DIR/mynotes" .
 
 # 7. Run Go tests.
-go test ./...
+run go test ./...
 
 # 8. Lint.
-golangci-lint run ./...
+run golangci-lint run ./...
