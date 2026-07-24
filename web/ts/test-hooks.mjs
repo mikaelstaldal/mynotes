@@ -31,6 +31,7 @@ const SPECIFIER_MAP = {
   'dompurify': bundle('dompurify-'),
   'asciimath': bundle('asciimath-'),
   'lucide-icons': bundle('lucide-'),
+  'emoji-data': bundle('emoji-'),
 };
 
 export async function resolve(specifier, context, nextResolve) {

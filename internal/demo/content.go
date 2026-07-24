@@ -118,6 +118,13 @@ An ` + "`[!alias]`" + ` at the start of any paragraph tints it with the alias co
 
 [!warning] Heads up — this whole paragraph is amber.
 
+## Emoji
+
+Type a GitHub-style ` + "`:shortcode:`" + ` and it renders as the Unicode emoji —
+e.g. :rocket: :tada: :sparkles: :bulb: :coffee:. An unknown code stays as
+plain text, so ` + "`12:30`" + ` is untouched. The emoji button on the editor
+toolbar opens a picker that inserts these for you.
+
 ## Code blocks
 
 Fenced blocks keep their formatting:

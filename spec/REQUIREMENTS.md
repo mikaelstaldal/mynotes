@@ -126,6 +126,15 @@ identity exists but is never exposed as the URL key.
   pipeline as the rest of the read view, editor preview, and Download HTML / print
   export. A direct API consumer (such as the Android app) that does not implement
   the same transform receives the literal Markdown.
+- **Emoji shortcodes:** `:shortcode:` renders as the corresponding raw Unicode emoji
+  (e.g. `:rocket:` → 🚀, `:+1:` → 👍), where `shortcode` is a GitHub-compatible
+  shortcode (the GitHub shortcode set from the vendored `emojibase-data`). An
+  unrecognized `:shortcode:` is left as literal text, so ordinary colon use (`12:30`)
+  is unaffected, and the transform does not run inside code spans or fences. Like
+  the icon/callout features this is a **web-UI render-time transform only**: the
+  literal `:shortcode:` is stored verbatim in `content`, so a direct API consumer
+  (such as the Android app) receives the literal source. The editor's emoji
+  picker inserts this `:shortcode:` form.
 - **Wikilinks:** the non-standard `[[…]]` syntax links to another note or a tag's
   note list. `[[slug]]` links to a note (`/notes/{slug}`); `[[#slug]]` (with a `#`
   sigil) links to a tag's note list (`/tags/{slug}`). `[[slug|Display text]]` (or
@@ -158,8 +167,9 @@ identity exists but is never exposed as the URL key.
   appear inline as rendered wikilinks).
 - The editor toolbar has an emoji button that opens a picker over the full
   Unicode emoji set (from the vendored `emojibase-data`), browsable by category
-  and searchable by name/keyword; selecting one inserts the character at the
-  cursor.
+  and searchable by name/keyword/shortcode; selecting one inserts its `:name:`
+  shortcode (the emoji-shortcode render-time transform above) at the cursor,
+  falling back to the raw character for the rare emoji with no shortcode.
 - The editor toolbar has an icon button that opens a picker over the full Lucide
   icon set (from the vendored `lucide-static`), searchable by name/keyword;
   selecting one inserts a Markdown image reference to the server's icon endpoint,

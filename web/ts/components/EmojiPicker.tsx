@@ -2,8 +2,17 @@ import { useState, useEffect, useRef, useMemo } from 'preact/hooks';
 import { EMOJI_CATEGORIES, type Emoji } from 'emoji-data';
 
 interface Props {
-  onSelect: (emoji: string) => void;
+  /** Called with the text to insert: the `:shortcode:` form, or the raw emoji
+   *  when the emoji has no shortcode. */
+  onSelect: (text: string) => void;
   onClose: () => void;
+}
+
+// The text inserted for an emoji: its `:shortcode:` (a render-time transform the
+// note stores verbatim, matching how the API stores Markdown), falling back to
+// the raw character for the rare emoji with no shortcode.
+function insertText(e: Emoji): string {
+  return e.shortcode ? `:${e.shortcode}:` : e.char;
 }
 
 export function EmojiPicker({ onSelect, onClose }: Props) {
@@ -34,7 +43,11 @@ export function EmojiPicker({ onSelect, onClose }: Props) {
     for (const cat of EMOJI_CATEGORIES) {
       for (const e of cat.emojis) {
         if (seen.has(e.char)) continue;
-        if (e.name.includes(q) || (e.keywords?.includes(q) ?? false)) {
+        if (
+          e.name.includes(q) ||
+          (e.keywords?.includes(q) ?? false) ||
+          (e.shortcode?.includes(q) ?? false)
+        ) {
           seen.add(e.char);
           out.push(e);
         }
@@ -79,9 +92,9 @@ export function EmojiPicker({ onSelect, onClose }: Props) {
                 key={e.char}
                 type="button"
                 class="emoji-picker-item"
-                title={e.name}
+                title={e.shortcode ? `${e.name} (:${e.shortcode}:)` : e.name}
                 aria-label={e.name}
-                onClick={() => onSelect(e.char)}
+                onClick={() => onSelect(insertText(e))}
               >
                 {e.char}
               </button>

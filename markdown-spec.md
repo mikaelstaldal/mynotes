@@ -128,6 +128,17 @@ is an ordinary blockquote and the `[!frobnicate]` stays literal text.
 An `[!alias]` at the start of **any** paragraph (not just a blockquote) tints that
 paragraph's text and icon with the alias colour, without a box.
 
+## Emoji shortcodes (application-specific)
+
+`:shortcode:` renders as the corresponding raw Unicode emoji, where `shortcode` is a
+GitHub-compatible shortcode (e.g. `:rocket:` → 🚀, `:+1:` → 👍). This is
+a **render-time transform**: the literal `:shortcode:` is stored verbatim in `content`,
+so a consumer that only passes `content` through unchanged receives the literal
+source; a consumer that renders `content` itself must apply the transform to show
+the emoji. An unrecognized `:shortcode:` is left as literal text, so ordinary colon use
+(`12:30`, `a:b`) is unaffected. The transform does not run inside code spans or
+code fences. The web UI's emoji picker inserts this `:shortcode:` form.
+
 ## Raw HTML
 
 Raw inline and block HTML is permitted but restricted to a safe subset (broadly

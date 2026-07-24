@@ -2,6 +2,7 @@ import MarkdownIt from 'markdown-it';
 import DOMPurify from 'dompurify';
 import { asciiToMathML } from 'asciimath';
 import { LUCIDE_ICON_NODES } from 'lucide-icons';
+import { EMOJI_SHORTCODES } from 'emoji-data';
 import { base } from '../basepath.js';
 
 const DATA_IMAGE_RE = /^data:image\/(gif|png|jpeg|webp);/;
@@ -47,6 +48,34 @@ md.inline.ruler.before('link', 'wiki_link', (state, silent) => {
   state.pos += full.length;
   return true;
 });
+
+// Emoji shortcodes: `:name:` renders as the raw Unicode emoji. `name` is any
+// GitHub-compatible shortcode in the vendored EMOJI_SHORTCODES map (the web UI's
+// emoji picker inserts this `:name:` form). This is a render-time
+// transform — the note stores the literal `:name:` verbatim, so a plain API
+// consumer (the Android app) sees ordinary text — mirroring the wiki-link and
+// icon transforms. An unknown `:name:` is left as literal text, so ordinary uses
+// of colons (`12:30`, `a:b`) are untouched. The output is the bare emoji
+// character (no HTML), which passes the DOMPurify gate unchanged.
+const EMOJI_SHORTCODE_RE = /^:([a-zA-Z0-9_+-]+):/;
+
+md.inline.ruler.after('escape', 'emoji', (state, silent) => {
+  const start = state.pos;
+  if (state.src.charCodeAt(start) !== 0x3a /* : */) return false;
+  const match = EMOJI_SHORTCODE_RE.exec(state.src.slice(start));
+  if (!match) return false;
+  const char = EMOJI_SHORTCODES[match[1].toLowerCase()];
+  if (!char) return false; // unknown shortcode -> literal text
+  if (!silent) {
+    const token = state.push('emoji', '', 0);
+    token.markup = match[1];
+    token.content = char;
+  }
+  state.pos += match[0].length;
+  return true;
+});
+
+md.renderer.rules.emoji = (tokens, idx) => tokens[idx].content;
 
 // GFM task lists: a list item whose first inline text begins with "[ ] ",
 // "[x] ", or "[X] " renders a disabled checkbox in place of that marker, and

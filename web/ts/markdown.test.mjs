@@ -780,3 +780,45 @@ test('no separator in prose, including a paragraph opened by an inline tag', () 
   // A wrapped paragraph starting with an inline tag is not a raw HTML block.
   assert.equal(rawHtmlBlockSeparator('<b>hi</b> some\nmore words'), '');
 });
+
+// ---------------------------------------------------------------------------
+// Emoji shortcodes — `:name:` renders as the raw Unicode emoji (render-time
+// transform; the note stores the literal `:name:` verbatim).
+// ---------------------------------------------------------------------------
+
+test('known emoji shortcode renders as the raw Unicode emoji', () => {
+  const out = renderNote(':rocket: to the moon');
+  assertPresent(out, '🚀', 'rocket emoji');
+  assertAbsent(out, ':rocket:', 'literal shortcode should be gone');
+});
+
+test('GitHub shortcode aliases resolve (both aliases of one emoji)', () => {
+  assertPresent(renderNote(':+1:'), '👍', '+1 alias');
+  assertPresent(renderNote(':thumbsup:'), '👍', 'thumbsup alias');
+  assertPresent(renderNote(':heart:'), '❤', 'heart');
+});
+
+test('unknown shortcode is left as literal text', () => {
+  const out = renderNote('meet at 12:30 and :not_an_emoji: today');
+  assertPresent(out, '12:30', 'time untouched');
+  assertPresent(out, ':not_an_emoji:', 'unknown shortcode stays literal');
+});
+
+test('an emojibase-only (non-GitHub) shortcode stays literal', () => {
+  // `:person_walking_right:` exists in emojibase but not GitHub; only GitHub
+  // shortcodes are recognized, so it must not be transformed.
+  const out = renderNote(':person_walking_right:');
+  assertPresent(out, ':person_walking_right:', 'non-GitHub shortcode stays literal');
+});
+
+test('emoji shortcode is not transformed inside inline code', () => {
+  const out = renderNote('`:rocket:`');
+  assertPresent(out, ':rocket:', 'code span keeps the literal shortcode');
+  assertAbsent(out, '🚀', 'no emoji inside code');
+});
+
+test('emoji shortcode is not transformed inside a fenced code block', () => {
+  const out = renderNote('```\n:rocket:\n```');
+  assertPresent(out, ':rocket:', 'fence keeps the literal shortcode');
+  assertAbsent(out, '🚀', 'no emoji inside fence');
+});

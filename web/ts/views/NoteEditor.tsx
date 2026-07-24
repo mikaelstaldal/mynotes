@@ -550,14 +550,16 @@ export function NoteEditor({ slug, initialSlug, initialTitle, onSave }: Props) {
     view.focus();
   }
 
-  function insertEmoji(emoji: string) {
+  // `text` is the picker's chosen insertion — a `:shortcode:` (rendered to the
+  // Unicode emoji by the read view), or the raw character for a shortcode-less emoji.
+  function insertEmoji(text: string) {
     setEmojiPickerOpen(false);
     const view = viewRef.current;
     if (!view) return;
     const { from, to } = view.state.selection.main;
     view.dispatch({
-      changes: { from, to, insert: emoji },
-      selection: EditorSelection.cursor(from + emoji.length),
+      changes: { from, to, insert: text },
+      selection: EditorSelection.cursor(from + text.length),
     });
     view.focus();
   }

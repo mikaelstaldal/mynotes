@@ -181,14 +181,17 @@ echo "Wrote $PREACT_OUT/{preact,hooks,jsx-runtime}-$PREACT_VER.module.js + type 
 # --- 1b. Emoji dataset for the editor's emoji picker ------------------------
 #
 # emojibase-data ships the CLDR emoji list with per-emoji labels + keyword
-# tags and standard group numbers. gen-emoji.mjs (committed, fs-only, no
-# network) transforms its en/data.json + en/messages.json into the compact
-# EMOJI_CATEGORIES bundle the picker imports as "emoji-data". No esbuild needed
-# — the generator emits a plain ESM module directly.
+# tags, standard group numbers, and per-emoji shortcodes. gen-emoji.mjs
+# (committed, fs-only, no network) transforms its en/data.json + en/messages.json
+# plus the GitHub shortcode map into the compact bundle the picker and the
+# Markdown `:shortcode:` transform import as "emoji-data" (EMOJI_CATEGORIES +
+# EMOJI_SHORTCODES). Only GitHub-compatible shortcodes are recognized. No esbuild
+# needed — the generator emits a plain ESM module directly.
 
 node "$VENDOR_DIR/gen-emoji.mjs" \
   "$VENDOR_DIR/node_modules/emojibase-data/en/data.json" \
   "$VENDOR_DIR/node_modules/emojibase-data/en/messages.json" \
+  "$VENDOR_DIR/node_modules/emojibase-data/en/shortcodes/github.json" \
   "$BROWSER_OUT/emoji-$EMOJI_VER.js"
 
 # --- 1c. Lucide icon set for the editor's icon picker ----------------------

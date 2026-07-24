@@ -19,7 +19,8 @@ interface Section {
 
 // Static cheat-sheet of the Markdown dialect the editor renders (markdown-it
 // with GFM tables/task-lists/strikethrough, autolinks, wiki links, AsciiMath
-// math, and embedded safe HTML/SVG/MathML). Kept in sync with util/markdown.ts.
+// math, emoji shortcodes, and embedded safe HTML/SVG/MathML). Kept in sync with
+// util/markdown.ts.
 // Ordered to follow the format toolbar: headings, inline text, lists, blocks,
 // then links & images.
 const SECTIONS: Section[] = [
@@ -68,6 +69,7 @@ const SECTIONS: Section[] = [
     rows: [
       { syntax: '[!flame]', desc: 'Inline Lucide icon (any icon name or alias)' },
       { syntax: '[!lucide-flame]', desc: 'Force a Lucide icon (no alias or colour lookup)' },
+      { syntax: ':rocket:', desc: 'Emoji shortcode (:shortcode: → the Unicode emoji)' },
       { syntax: '>* Title\n> Body text', desc: 'Blockquote as a box (first line is the title)' },
       { syntax: '>- Title\n> Body text', desc: 'Foldable box, collapsed (first line is the title)' },
       { syntax: '>+ Title\n> Body text', desc: 'Foldable box, expanded' },
