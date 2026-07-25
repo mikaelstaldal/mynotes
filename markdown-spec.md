@@ -5,6 +5,15 @@ render notes (the embedded web UI, the native mobile app, HTML export) should
 interpret it as follows. This document is the canonical dialect specification
 referenced by the MyNotes OpenAPI contract (`openapi.yaml`).
 
+**A client should not implement this from scratch if it has access to a JavaScript runtime.** 
+The reference implementation is shipped as an embeddable render kit — a static page hosting
+the browser render pipeline, driven through a small JavaScript API — which a
+native client loads in a web view. The MyNotes server serves it at `/render/`,
+and `tools/dist-renderer.sh` copies it into a client for embedding. See the
+**Shared render kit** section of `spec/REQUIREMENTS.md`. This document then
+describes what that kit does, rather than a contract each client re-satisfies
+independently.
+
 ## Base and extensions
 
 The base syntax is [CommonMark](https://spec.commonmark.org/) plus a small,

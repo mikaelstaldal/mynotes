@@ -1,0 +1,269 @@
+/* Canonical stylesheet for rendered note content.
+ *
+ * Owns the app-wide colour variables and every `.note-content` rule, i.e.
+ * everything the Markdown render pipeline (web/ts/util/markdown.ts +
+ * web/ts/util/mermaid.ts) produces. Shared by three surfaces so they cannot
+ * drift:
+ *   - the web UI (app.css @imports this file) — read view and editor preview;
+ *   - this directory's index.html — the embeddable render host used by native
+ *     clients (see tools/dist-renderer.sh);
+ *   - any future consumer of the render kit.
+ *
+ * Keep it free of app-chrome rules: only `:root` variables and `.note-content`
+ * selectors belong here.
+ */
+
+:root {
+  --bg: #ffffff;
+  --fg: #1f2937;
+  --muted: #6b7280;
+  --border: #e5e7eb;
+  --primary: #2563eb;
+  --danger: #dc2626;
+  --surface: #f9fafb;
+  --callout-blue: #2563eb;
+  --callout-green: #16a34a;
+  --callout-cyan: #0891b2;
+  --callout-amber: #d97706;
+  --callout-red: #dc2626;
+  --callout-gray: #6b7280;
+}
+
+:root[data-theme="dark"] {
+  --bg: #111827;
+  --fg: #f3f4f6;
+  --muted: #9ca3af;
+  --border: #374151;
+  --primary: #3b82f6;
+  --danger: #ef4444;
+  --surface: #1f2937;
+  --callout-blue: #3b82f6;
+  --callout-green: #22c55e;
+  --callout-cyan: #22d3ee;
+  --callout-amber: #f59e0b;
+  --callout-red: #ef4444;
+  --callout-gray: #9ca3af;
+}
+
+.note-content {
+  /* Match the exported HTML's text column exactly. The export body is
+     max-width:65ch with 1.25rem horizontal padding under border-box, so its
+     text wraps at 65ch - 2.5rem. Here the 1.25rem gutter lives on
+     .note-view-scroll instead, so subtract it from the cap to wrap identically
+     (same system-ui font at 16px => same ch). */
+  max-width: calc(65ch - 2.5rem);
+  line-height: 1.7;
+}
+
+.note-content h1,
+.note-content h2,
+.note-content h3,
+.note-content h4,
+.note-content h5,
+.note-content h6 {
+  margin: 1.25em 0 0.5em;
+  line-height: 1.3;
+}
+
+.note-content > :first-child { margin-top: 0; }
+
+.note-content h1 { font-size: 1.75rem; }
+.note-content h2 { font-size: 1.4rem; }
+.note-content h3 { font-size: 1.15rem; }
+
+.note-content p { margin: 0.75em 0; }
+
+.note-content ul,
+.note-content ol {
+  padding-left: 1.5rem;
+  margin: 0.75em 0;
+}
+
+.note-content li + li { margin-top: 0.25em; }
+
+/* CommonMark wraps "loose" list items (those separated by blank lines) in a
+   <p>. Collapse its margins so such lists render as tightly as single-line
+   items; genuine multi-paragraph items keep spacing between their paragraphs. */
+.note-content li > p { margin: 0; }
+.note-content li > p + p { margin-top: 0.75em; }
+
+/* Restore list markers inside notes: a global `ul { list-style: none }` reset
+   (for the sidebar) would otherwise strip the bullets from note bullet lists. */
+.note-content ul { list-style: disc; }
+
+/* GFM task lists: drop the marker on the task items only — so plain items in a
+   mixed list keep their bullets — and inline the disabled checkbox, undoing the
+   global form-input styling that would otherwise stretch it to full width. */
+.note-content .task-list-item { list-style: none; }
+.note-content .task-list-item-checkbox {
+  width: auto;
+  margin: 0 0.4em 0 -1.3em;
+  padding: 0;
+  border: 0;
+  vertical-align: middle;
+}
+
+.note-content pre {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.9rem 1rem;
+  overflow-x: auto;
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+.note-content code {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 0.1em 0.35em;
+  font-size: 0.875em;
+}
+
+.note-content pre code {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: inherit;
+}
+
+/* Rendered Mermaid diagram: centered, never wider than the content column. */
+.note-content .mermaid-diagram {
+  margin: 0.9rem 0;
+  text-align: center;
+}
+
+.note-content .mermaid-diagram svg {
+  max-width: 100%;
+  height: auto;
+}
+
+/* A diagram that failed to render keeps its source visible, flagged in red. */
+.note-content pre.mermaid-error {
+  border-color: var(--danger);
+}
+
+.note-content blockquote {
+  margin: 0.75em 0;
+  padding: 0.5em 1em;
+  border-left: 3px solid var(--border);
+  color: var(--muted);
+}
+
+/* Callouts (see renderNote): a blockquote/details tagged
+   `.callout .callout-color-<family>` with a `.callout-title` row. The accent
+   colour comes from --callout-accent, set per family below; the box tint is a
+   subtle mix of that accent with the page background so it works in both themes.
+   These selectors override the plain blockquote look only when .callout is set. */
+.note-content .callout {
+  --callout-accent: var(--callout-gray);
+  margin: 0.75em 0;
+  padding: 0.6em 1em;
+  border: 1px solid color-mix(in srgb, var(--callout-accent) 35%, var(--border));
+  border-left: 4px solid var(--callout-accent);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--callout-accent) 8%, var(--bg));
+  color: var(--fg);
+}
+.note-content .callout-color-blue { --callout-accent: var(--callout-blue); }
+.note-content .callout-color-green { --callout-accent: var(--callout-green); }
+.note-content .callout-color-cyan { --callout-accent: var(--callout-cyan); }
+.note-content .callout-color-amber { --callout-accent: var(--callout-amber); }
+.note-content .callout-color-red { --callout-accent: var(--callout-red); }
+.note-content .callout-color-gray { --callout-accent: var(--callout-gray); }
+
+/* An alias icon at the start of any paragraph tints that paragraph (text and
+   icon) with the family accent. The paragraph carries .callout-para alongside a
+   .callout-color-<family> class, so --callout-accent is already resolved; the
+   inline icon uses stroke:currentColor and follows. */
+.note-content .callout-para { color: var(--callout-accent); }
+
+.note-content .callout-title {
+  display: flex;
+  align-items: center;
+  gap: 0.4em;
+  margin: 0;
+  font-weight: 600;
+  color: var(--callout-accent);
+}
+.note-content .callout-title svg.lucide { vertical-align: middle; }
+
+/* The title row is followed by body paragraphs; drop the leading margin so the
+   title and first body line sit tight, and neutralise any nested blockquote. */
+.note-content .callout > :nth-child(2) { margin-top: 0.4em; }
+.note-content .callout > :last-child { margin-bottom: 0; }
+
+/* Foldable callouts use <details>/<summary>; make the summary look clickable and
+   rotate the default disclosure marker into the title colour. */
+.note-content .callout-foldable > .callout-title { cursor: pointer; list-style: none; }
+.note-content .callout-foldable > .callout-title::-webkit-details-marker { display: none; }
+.note-content .callout-foldable > .callout-title::after {
+  content: "";
+  width: 0.5em;
+  height: 0.5em;
+  margin-left: auto;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: rotate(-45deg);
+  transition: transform 0.15s ease;
+}
+.note-content details.callout-foldable[open] > .callout-title::after {
+  transform: rotate(45deg);
+}
+
+.note-content table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 0.75em 0;
+}
+
+.note-content th,
+.note-content td {
+  border: 1px solid var(--border);
+  padding: 0.4rem 0.7rem;
+  text-align: left;
+}
+
+.note-content th { background: var(--surface); font-weight: 600; }
+
+.note-content img { max-width: 100%; height: auto; }
+
+/* Built-in Lucide icons render inline as <svg class="lucide …"> (see renderNote),
+   with stroke="currentColor" so they inherit the note foreground and follow the
+   theme. Align them with adjacent text rather than on the baseline. The [src]
+   selector covers the fallback for an unknown icon name, which stays an <img>. */
+.note-content svg.lucide,
+.note-content img[src*="/api/v1/icons/"] { vertical-align: text-bottom; }
+
+/* AsciiMath: display ($$…$$) math is centered on its own line and scrolls
+   horizontally when an equation is wider than the column; inline ($…$) math
+   flows with the surrounding text. */
+.note-content math[display="block"] {
+  display: block;
+  overflow-x: auto;
+  margin: 0.75em 0;
+  text-align: center;
+}
+
+.note-content hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 1.5em 0;
+}
+
+.note-content a { color: var(--primary); }
+
+/* Inline tag links produced from [[#slug]] point at /tags/<slug>. Give them a
+   subtle pill look so they read as tags, distinct from ordinary links. Styled
+   by href (not a class) to avoid loosening the DOMPurify attribute allow-list. */
+.note-content a[href*="/tags/"] {
+  text-decoration: none;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0 0.5em;
+  font-size: 0.9em;
+  white-space: nowrap;
+}
+.note-content a[href*="/tags/"]:hover { border-color: var(--primary); }

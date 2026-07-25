@@ -3,6 +3,8 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/base64"
 	"errors"
 	"flag"
 	"fmt"
@@ -197,6 +199,17 @@ func run(addr string, port int, dataDir, publicURL, basicAuthFile, basicAuthReal
 	if err != nil {
 		return fmt.Errorf("compute importmap CSP hash: %w", err)
 	}
+	// The render host page (see web/static/render/index.html) carries a second,
+	// smaller import map. commonweb.ImportMapCSPHash only ever reads
+	// static/index.html and returns a single hash, so this one is computed here.
+	renderImportMapHash, err := importMapCSPHash(web.Static, "static/render/index.html")
+	if err != nil {
+		return fmt.Errorf("compute render importmap CSP hash: %w", err)
+	}
+	renderHTML, err := fs.ReadFile(web.Static, "static/render/index.html")
+	if err != nil {
+		return fmt.Errorf("read render/index.html: %w", err)
+	}
 
 	mux := http.NewServeMux()
 	// Artifact GET is a raw handler so it can set a dynamic Content-Type header;
@@ -212,6 +225,12 @@ func run(addr string, port int, dataDir, publicURL, basicAuthFile, basicAuthReal
 	// namespaces the set, leaving room for other icon sets in future.
 	mux.Handle("GET /api/v1/icons/lucide/{name}", handler.WithMiddleware(icons.Handler()))
 	mux.Handle("/api/v1/", handler.WithMiddleware(ogenServer))
+	// The render kit's host page. Registered explicitly because the generic
+	// static handler cannot serve it: http.FileServer canonicalises
+	// "/render/index.html" to "/render/", which — being a directory — falls
+	// through to the SPA shell, leaving the page unreachable. Its sibling assets
+	// (note.css, host.js, ../vendor/*) need no such help.
+	mux.Handle("GET /render/{$}", renderHandler(renderHTML))
 	mux.HandleFunc("/", staticHandler(indexHTML))
 
 	// --- middleware chain (outermost first) --------------------------------
@@ -223,7 +242,8 @@ func run(addr string, port int, dataDir, publicURL, basicAuthFile, basicAuthReal
 	httpHandler = csrf.Middleware(serverOrigin)(httpHandler)
 
 	csp := "default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; " +
-		"frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'; script-src 'self' " + importMapHash
+		"frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'; script-src 'self' " +
+		importMapHash + " " + renderImportMapHash
 	// Enable HSTS when the public URL is served over HTTPS (typically behind a
 	// TLS-terminating proxy). Without a public URL we assume plain HTTP.
 	hsts := ""
@@ -272,6 +292,36 @@ func run(addr string, port int, dataDir, publicURL, basicAuthFile, basicAuthReal
 		return fmt.Errorf("server: %w", err)
 	}
 	return nil
+}
+
+// importMapCSPHash returns the CSP script-src source expression for the inline
+// import map in the named embedded HTML file, e.g.
+// "'sha256-2dMPOkkMmKtAjCeEV6Gzv1oxQr4LXNRZ3gftHIzHZ0Y='".
+//
+// This mirrors commonweb.ImportMapCSPHash, which hardcodes static/index.html and
+// so cannot reach the render host page's own import map. Computing the hash from
+// the embedded bytes at startup keeps it in sync as the file evolves; the same
+// value is additionally baked into the page's <meta> CSP (the only policy when a
+// native client serves the page from application assets), and
+// web/ts/render-kit.test.mjs pins the two together.
+//
+// Like the upstream helper this cuts on the first occurrence of the opening tag,
+// so the file must not mention it earlier (e.g. in a comment).
+func importMapCSPHash(staticFS fs.FS, name string) (string, error) {
+	data, err := fs.ReadFile(staticFS, name)
+	if err != nil {
+		return "", fmt.Errorf("read %s: %w", name, err)
+	}
+	_, after, found := strings.Cut(string(data), `<script type="importmap">`)
+	if !found {
+		return "", fmt.Errorf("importmap script tag not found in %s", name)
+	}
+	content, _, found := strings.Cut(after, "</script>")
+	if !found {
+		return "", fmt.Errorf("importmap closing tag not found in %s", name)
+	}
+	sum := sha256.Sum256([]byte(content))
+	return "'sha256-" + base64.StdEncoding.EncodeToString(sum[:]) + "'", nil
 }
 
 // basePathChars restricts the base path to unreserved URL characters plus the
@@ -339,6 +389,17 @@ func printVersion() {
 		} else {
 			fmt.Printf("updated at: %s\n", t)
 		}
+	}
+}
+
+// renderHandler serves the render kit's host page at /render/. The page is
+// content-free — a client pushes Markdown in through its JS API — so it is a
+// static, unauthenticated asset like the icon route, and carries no note data.
+func renderHandler(renderHTML []byte) http.HandlerFunc {
+	return func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Header().Set("Cache-Control", "no-cache")
+		_, _ = w.Write(renderHTML)
 	}
 }
 

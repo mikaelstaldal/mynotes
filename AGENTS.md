@@ -53,10 +53,33 @@ internal/
 web/
   embed.go               # //go:embed of web/static
   ts/                    # TypeScript sources (compiled to web/static by tsc)
+    render/host.ts       # render-kit entry point (globalThis.MyNotesRender)
     vendor/rebuild.sh    # maintainer-only: rebuilds the vendored bundles below
   static/                # embedded assets: index.html, app.css, vendored
                           # preact/CodeMirror/markdown-it/DOMPurify/emoji, compiled JS
+    render/              # the shared render kit (see below), served at /render/
+tools/dist-renderer.sh   # copies the render kit out for embedding in a native client
 ```
+
+## Shared render kit
+
+Native clients (the Android app) do **not** re-implement the Markdown dialect;
+they embed `web/static/render/` and drive it in a web view. It is a plain static
+page hosting the same `util/markdown.ts` + `util/mermaid.ts` pipeline as the web
+UI, exposing `render(markdown)` and `setTheme(theme, vars?)` on
+`globalThis.MyNotesRender`.
+
+- `web/static/render/note.css` is the **canonical** stylesheet for rendered note
+  content — `app.css` `@import`s it. Put `.note-content` rules and the colour
+  variables there, not in `app.css`.
+- `tools/dist-renderer.sh <outdir>` copies the kit (host page + compiled modules
+  + the vendor bundles it imports) into a consumer. It is a copy, not a build:
+  run `./build.sh` first.
+- The kit's host page has its own import map, so a vendor version bump must
+  update **both** `web/static/index.html` and `web/static/render/index.html`, and
+  the latter's `<meta>` CSP hash must be recomputed (`main.go` derives the
+  server's header hash automatically). `web/ts/render-kit.test.mjs` fails the
+  build if any of that is out of sync.
 
 Request flow: `handler → service → repository → SQLite`. The handler is a thin
 adapter; business rules live in the service layer.

@@ -80,15 +80,15 @@ identity exists but is never exposed as the URL key.
   `asciimath2ml` library (not MathJax), with the generated `<math>` passing
   through the same DOMPurify sanitization gate as all other rendered HTML. The
   web UI's Download HTML / print export reuses that same render pipeline, so an
-  exported document contains the same MathML as the on-screen view. A direct API
-  consumer (such as the Android app) that renders `content` itself must run the
-  AsciiMath transform; consumers that pass `content` through unchanged receive
-  the literal `$…$` source. The editor toolbar has a math button that wraps the
+  exported document contains the same MathML as the on-screen view. A native
+  client gets the transform from the shared render kit (see **Shared render
+  kit**); a consumer that passes `content` through unchanged receives the
+  literal `$…$` source. The editor toolbar has a math button that wraps the
   selection in `$…$`.
 - **Mermaid diagrams:** a fenced code block with the `mermaid` info string
   (```` ```mermaid ````, the Obsidian convention) renders as a diagram
   (flowchart, sequence, etc.). The diagram source is stored verbatim in the
-  Markdown. This is a **web-UI render-time feature only**: the vendored
+  Markdown. This is a **client render-time feature**: the vendored
   [Mermaid](https://mermaid.js.org/) library (lazy-loaded on first use)
   converts the block to SVG in the browser read view and editor preview,
   following the light/dark theme, with Mermaid's `securityLevel: 'strict'`
@@ -119,21 +119,21 @@ identity exists but is never exposed as the URL key.
   abstract/summary/tldr, example, quote/cite), each mapped to a Lucide icon and a
   colour family (blue, green, cyan, amber, red, gray). An `[!alias]` at the start
   of **any** paragraph (not just a blockquote) tints that paragraph's text and
-  icon with the alias colour. All of the above is a **web-UI render-time feature
-  only**: content is stored verbatim (the literal `[!alias]`, `>-`, etc.), so it
-  passes the server's structural validation unchanged and needs no new
+  icon with the alias colour. All of the above is a **client render-time
+  feature**: content is stored verbatim (the literal `[!alias]`, `>-`, etc.), so
+  it passes the server's structural validation unchanged and needs no new
   stored-content format. Rendering reuses the same markdown-it → DOMPurify
   pipeline as the rest of the read view, editor preview, and Download HTML / print
-  export. A direct API consumer (such as the Android app) that does not implement
-  the same transform receives the literal Markdown.
+  export. A consumer that does not run that pipeline (see **Shared render kit**)
+  receives the literal Markdown.
 - **Emoji shortcodes:** `:shortcode:` renders as the corresponding raw Unicode emoji
   (e.g. `:rocket:` → 🚀, `:+1:` → 👍), where `shortcode` is a GitHub-compatible
   shortcode (the GitHub shortcode set from the vendored `emojibase-data`). An
   unrecognized `:shortcode:` is left as literal text, so ordinary colon use (`12:30`)
   is unaffected, and the transform does not run inside code spans or fences. Like
-  the icon/callout features this is a **web-UI render-time transform only**: the
-  literal `:shortcode:` is stored verbatim in `content`, so a direct API consumer
-  (such as the Android app) receives the literal source. The editor's emoji
+  the icon/callout features this is a **client render-time transform**: the
+  literal `:shortcode:` is stored verbatim in `content`, so a consumer that does
+  not run the render pipeline receives the literal source. The editor's emoji
   picker inserts this `:shortcode:` form.
 - **Wikilinks:** the non-standard `[[…]]` syntax links to another note or a tag's
   note list. `[[slug]]` links to a note (`/notes/{slug}`); `[[#slug]]` (with a `#`
@@ -188,9 +188,10 @@ identity exists but is never exposed as the URL key.
   mux (like the artifact GET), taking precedence over the ogen `/api/v1/` handler rather than
   being served through it. It is a static, public, immutable, unauthenticated
   asset route served under the same locked-down sandbox CSP as artifact SVGs.
-  The served asset carries a fixed neutral-grey stroke (for clients such as the
-  Android app that load it directly). An unknown name returns 404.
-- In the **web UI**, a note-embedded `![…](/api/v1/icons/lucide/<name>)` reference
+  The served asset carries a fixed neutral-grey stroke, for a client that loads it
+  directly rather than through the render pipeline. An unknown name returns 404.
+- In **any client running the render pipeline**, a note-embedded
+  `![…](/api/v1/icons/lucide/<name>)` reference
   to a known icon is rendered inline as an `<svg stroke="currentColor">` (built from
   the vendored `LUCIDE_ICON_NODES`, mirroring the `Icon` component and the server's
   HTML export) rather than as an `<img>`, so the icon inherits the note's foreground
@@ -209,6 +210,40 @@ identity exists but is never exposed as the URL key.
   the source note's created and updated times; the source note is left unchanged.
   An optional tag (which must already exist) is attached to every new note. A note
   with no headings cannot be split.
+
+## Shared render kit
+
+Almost everything above is a **client render-time transform** — the server never
+produces HTML — so every client that displays notes has to implement the same
+dialect. Rather than have each one re-implement it, the browser render pipeline
+is packaged as an embeddable kit that native clients load in a web view.
+
+- The kit is a plain static site rooted at `render/index.html`. It hosts the same
+  markdown-it → DOMPurify pipeline (and the same Mermaid pass, AsciiMath
+  conversion, inline Lucide icons and stylesheet) that the web UI's read view and
+  editor preview use. There is one implementation of the dialect and one XSS
+  gate; a client cannot drift from the web UI.
+- The MyNotes server serves it at `/render/`, so it can be exercised in a browser.
+  Clients are expected to **embed a copy** rather than fetch it, so rendering
+  works offline and does not depend on the server version.
+- The page exposes a small JavaScript API on `globalThis.MyNotesRender`:
+  - `render(markdown)` — replaces the displayed note; resolves once diagrams have
+    been drawn.
+  - `setTheme(theme, vars?)` — `'light'` or `'dark'`, optionally overriding
+    individual CSS colour variables so the embedded view matches the host app's
+    chrome. Diagrams are re-rendered on a theme change, since Mermaid bakes its
+    colours into the generated SVG.
+- The page carries **no note content of its own**: the host pushes Markdown in
+  through that API, so the sanitization gate is the only path to the DOM.
+- Wikilinks and tag links render as the same root-relative `/notes/{slug}` and
+  `/tags/{slug}` URLs as in the web UI; an embedding client intercepts those
+  navigations and routes them natively. External links carry `target="_blank"`.
+- Images resolve as ordinary requests to `/api/v1/artifacts/{sha256}` and
+  `/api/v1/icons/lucide/{name}`, which an embedding client is expected to serve
+  from its own (authenticated, cached, offline-capable) storage.
+- A client that only consumes the REST API and does not run the kit still gets
+  well-formed Markdown — every extension is a render-time transform over content
+  stored verbatim.
 
 ## Artifacts
 

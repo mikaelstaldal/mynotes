@@ -10,6 +10,13 @@ In addition to the built-in web interface, there is also
 
 * A [native Android app](https://github.com/mikaelstaldal/mynotes-android)
 
+Native clients don't re-implement the MyNotes Markdown dialect. The browser
+render pipeline is packaged as an embeddable **render kit** — a static page that
+exposes `render(markdown)` / `setTheme(theme)` and does the rest (callouts, math,
+diagrams, emoji, icons, wikilinks, sanitization) exactly as the web UI does. The
+server serves it at `/render/`; `tools/dist-renderer.sh <outdir>` copies it into
+a client for embedding in a web view.
+
 ## Stack
 
 - **Backend:** Go, layered `handler → service → repository → SQLite`
@@ -140,6 +147,8 @@ internal/
   sanitize/         # HTML sanitization
 web/ts/             # TypeScript frontend sources
 web/static/         # embedded assets (HTML/CSS/vendored preact/compiled JS)
+web/static/render/  # the shared render kit embedded by native clients
+tools/              # dist-renderer.sh — copies the render kit out for embedding
 ```
 
 ## Credits

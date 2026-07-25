@@ -147,7 +147,7 @@ md.core.ruler.after('inline', 'task_lists', (state) => {
 // Two composable, render-time building blocks and the callouts built from them.
 // Everything here is a web-UI transform only: notes are stored verbatim (the
 // literal `[!warning]`, `>-` etc.), so they pass the server's structural
-// validator unchanged and a plain API consumer (the Android app) sees ordinary
+// validator unchanged and a plain API consumer sees ordinary
 // Markdown. Rendered with tags the DOMPurify gate already allows
 // (blockquote/details/summary/p/span/svg, `open`, `class`), so the sanitiser
 // allow-list is unchanged.

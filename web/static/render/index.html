@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MyNotes render host</title>
+    <!--
+      Embeddable host page for the shared Markdown render pipeline. A native
+      client loads this page in a web view and drives globalThis.MyNotesRender —
+      see web/ts/render/host.ts. The MyNotes server also serves it at /render/
+      so it can be exercised in a browser.
+
+      This page is content-free: it never embeds note text. The host pushes
+      Markdown in through the JS API, where renderNote's DOMPurify gate is the
+      only path to the DOM.
+
+      No <base href> here (unlike index.html): `base` in basepath.ts then
+      resolves to '', so wikilinks render as root-relative /notes/<slug> and
+      /tags/<slug>, the same hrefs as the web UI. An embedder intercepts those.
+
+      CSP: this meta element is the only policy when the page is served from
+      application assets, where there is no HTTP response header. An inline
+      import map is subject to script-src and 'self' does not cover it, hence
+      the hash — which covers the exact bytes between the importmap script
+      tags, so reformatting the JSON below invalidates it. (Do not write that
+      opening tag literally anywhere above the real one: the extraction on both
+      sides cuts on its first occurrence in the file.)
+      web/ts/render-kit.test.mjs pins the two together, and main.go adds the
+      same hash to the server's own CSP header.
+      'unsafe-inline' on style-src is required by Mermaid, which inlines a
+      <style> element into the SVG it generates. frame-ancestors is omitted
+      because browsers ignore (and warn about) it in a meta element; the server
+      sets it in its response header for the copy served at /render/.
+    -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-2dMPOkkMmKtAjCeEV6Gzv1oxQr4LXNRZ3gftHIzHZ0Y='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'none'; base-uri 'none'; form-action 'none'">
+    <script type="importmap">
+        {
+          "imports": {
+            "markdown-it": "../vendor/markdown-it-14.2.0.js",
+            "dompurify": "../vendor/dompurify-3.4.11.js",
+            "emoji-data": "../vendor/emoji-16.0.3.js",
+            "lucide-icons": "../vendor/lucide-1.25.0.js",
+            "asciimath": "../vendor/asciimath-1.0.8.js",
+            "mermaid": "../vendor/mermaid-11.12.0.js"
+          }
+        }
+    </script>
+    <link rel="stylesheet" href="note.css">
+    <style>
+        body { margin: 0; padding: 1rem; background: var(--bg); color: var(--fg);
+               font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+        /* The embedder sizes the view; let the note use its full width there,
+           overriding note.css's reading-column cap which is meant for the
+           two-panel web UI. */
+        #note { max-width: none; }
+    </style>
+</head>
+<body>
+<div id="note" class="note-content"></div>
+<script type="module" src="host.js"></script>
+</body>
+</html>

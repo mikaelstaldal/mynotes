@@ -304,13 +304,20 @@ fi
 
 # --- 3. Reminder: keep the import map in sync -------------------------------
 #
-# The bundle filenames are version-stamped, so update the import map in
-# web/static/index.html to reference the names printed above whenever a version
-# bumped. (internal/icons and web/ts/xss-gate.test.mjs glob the versioned name,
-# so they need no edit.)
+# The bundle filenames are version-stamped, so update the import maps in
+# web/static/index.html AND web/static/render/index.html (the render kit's host
+# page, which pins the same versions for the render pipeline's subset) to
+# reference the names printed above whenever a version bumped. Changing the
+# render page's import map text also invalidates the CSP hash baked into its
+# <meta> element — recompute it. web/ts/render-kit.test.mjs fails the build on
+# any of these, so build.sh will tell you.
+# (internal/icons, web/ts/xss-gate.test.mjs and tools/dist-renderer.sh glob the
+# versioned name, so they need no edit.)
 cat <<EOF
 
-Reminder: update the import map in web/static/index.html to reference:
+Reminder: update the import maps in web/static/index.html and
+web/static/render/index.html (render pipeline subset only: markdown-it,
+dompurify, emoji-data, lucide-icons, asciimath, mermaid) to reference:
   preact         -> ./vendor/preact/preact-$PREACT_VER.module.js
   preact/hooks   -> ./vendor/preact/hooks-$PREACT_VER.module.js
   preact/jsx-runtime -> ./vendor/preact/jsx-runtime-$PREACT_VER.module.js

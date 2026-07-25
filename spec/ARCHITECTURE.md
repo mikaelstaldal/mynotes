@@ -163,8 +163,44 @@ mixed media types per status; gzip behavior over the empty body).
 **Client (authoritative XSS gate):** markdown-it (with `html: true`, `linkify`
 on, GFM tables/strikethrough/autolinks, `maxNesting: 100`) → DOMPurify before any
 `innerHTML`. One shared helper (`web/ts/util/markdown.ts`) owns render+sanitize;
-exactly one place assigns note-derived HTML to `innerHTML`. Used by both the read
-view and the editor live preview.
+exactly one place assigns note-derived HTML to `innerHTML`. Used by the read
+view, the editor live preview, and the shared render kit (below).
+
+### Shared render kit
+
+Because the server never produces HTML, every client that displays notes needs
+the dialect. Re-implementing it per platform was tried (the Android client had a
+full Kotlin port, down to a hand-translated AsciiMath engine) and does not hold:
+each dialect change has to be written and tested twice, and parity is only ever
+asserted against a spec document.
+
+Instead the pipeline itself is the deliverable. `web/static/render/` is a static
+host page — its own import map, its own `<meta>` CSP, no note content of its own
+— that loads the compiled `util/markdown.js` + `util/mermaid.js` and exposes
+`render(markdown)` / `setTheme(theme, vars?)` on `globalThis.MyNotesRender`
+(`web/ts/render/host.ts`). A native client loads it in a web view and pushes
+Markdown through that API; the DOMPurify gate is the only path to the DOM.
+
+- **No duplication in-repo.** The page references `../util/*.js` and
+  `../vendor/*.js` by relative path; nothing is copied or re-bundled here, and
+  no new build tooling is involved. `tools/dist-renderer.sh <outdir>` is a plain
+  `cp` that reproduces that subtree for a consumer to vendor.
+- **`web/static/render/note.css` is the canonical note stylesheet**, `@import`ed
+  by `app.css`, so the read view, the editor preview and an embedded client
+  cannot drift on callout colours or code/table styling.
+- **Two import maps now exist.** `commonweb.ImportMapCSPHash` only reads
+  `static/index.html` and returns one hash, so `main.go`'s local
+  `importMapCSPHash` computes the render page's and appends it to `script-src`.
+  The same hash is baked into the page's own `<meta>` CSP — the only policy when
+  a client serves the page from application assets — and
+  `web/ts/render-kit.test.mjs` pins the two together and checks both maps
+  resolve, since `rebuild.sh` only prints a reminder on a version bump.
+- **Links and images stay URLs.** Wikilinks render as root-relative
+  `/notes/{slug}` / `/tags/{slug}` (the page has no `<base href>`, so
+  `basepath.ts` yields `''`), and images as `/api/v1/{artifacts,icons}/…`. An
+  embedding client intercepts both: navigations route natively, image requests
+  are served from its own authenticated, offline-capable storage. Nothing about
+  auth or caching leaks into the kit.
 
 **Server (defense-in-depth, write-time gate, §4.1):** on create and on update
 when `content` is present, the service parses `content` with **Goldmark**
