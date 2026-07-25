@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"runtime/debug"
 	"strings"
@@ -183,10 +184,14 @@ func run(addr string, port int, dataDir, publicURL, basicAuthFile, basicAuthReal
 	if err != nil {
 		return fmt.Errorf("read index.html: %w", err)
 	}
-	if bp := basePathFromPublicURL(publicURL); bp != "/" {
+	basePath, err := basePathFromPublicURL(publicURL)
+	if err != nil {
+		return err
+	}
+	if basePath != "/" {
 		indexHTML = bytes.ReplaceAll(indexHTML,
 			[]byte(`<base href="/">`),
-			[]byte(`<base href="`+bp+`">`))
+			[]byte(`<base href="`+basePath+`">`))
 	}
 	importMapHash, err := commonweb.ImportMapCSPHash(web.Static)
 	if err != nil {
@@ -269,22 +274,42 @@ func run(addr string, port int, dataDir, publicURL, basicAuthFile, basicAuthReal
 	return nil
 }
 
+// basePathChars restricts the base path to unreserved URL characters plus the
+// path separator. The path is spliced verbatim into the <base href> attribute
+// of index.html, so anything that could terminate the attribute or the tag
+// (quotes, angle brackets) — or otherwise change how the browser resolves the
+// base — must be rejected rather than escaped.
+var basePathChars = regexp.MustCompile(`^[A-Za-z0-9._~/-]+$`)
+
 // basePathFromPublicURL extracts the URL path component and returns it with a
 // trailing slash, e.g. "https://example.com/mynotes" → "/mynotes/". Returns
-// "/" when the public URL is empty or has no meaningful path component.
-func basePathFromPublicURL(publicURL string) string {
+// "/" when the public URL is empty or has no meaningful path component, and an
+// error when the path is unparseable or contains characters that are unsafe to
+// splice into index.html.
+func basePathFromPublicURL(publicURL string) (string, error) {
 	if publicURL == "" {
-		return "/"
+		return "/", nil
 	}
 	u, err := url.Parse(publicURL)
-	if err != nil || u.Path == "" || u.Path == "/" {
-		return "/"
+	if err != nil {
+		return "", fmt.Errorf("parse public URL %q: %w", publicURL, err)
 	}
 	p := u.Path
+	if p == "" || p == "/" {
+		return "/", nil
+	}
+	if !basePathChars.MatchString(p) {
+		return "", fmt.Errorf("public URL path %q must contain only the characters A-Z a-z 0-9 . _ ~ - /", p)
+	}
+	// A leading "//" would make <base href> protocol-relative, re-pointing the
+	// whole UI at another host.
+	if !strings.HasPrefix(p, "/") || strings.HasPrefix(p, "//") {
+		return "", fmt.Errorf("public URL path %q must start with a single %q", p, "/")
+	}
 	if !strings.HasSuffix(p, "/") {
 		p += "/"
 	}
-	return p
+	return p, nil
 }
 
 func printVersion() {

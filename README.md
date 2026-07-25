@@ -46,6 +46,11 @@ The SQLite database is created automatically at `data/mynotes.sqlite` on first r
 | `-public-url`      | —           | public base URL for CSRF validation behind a proxy; an `https://` URL also enables `Strict-Transport-Security` |
 | `-basic-auth-file` | —           | htpasswd file (bcrypt) to enable HTTP basic auth                                                               |
 
+A `-public-url` with a path component (e.g. `https://example.com/mynotes`) also
+serves the UI under that subpath. The path may contain only `A-Z a-z 0-9 . _ ~
+- /`, since it is injected into the page's `<base href>`; the server refuses to
+start otherwise.
+
 ## Importing from Google Docs
 
 The binary can bulk-import all your owned Google Docs as notes. When the two
