@@ -137,6 +137,11 @@ web/ts/             # TypeScript frontend sources
 web/static/         # embedded assets (HTML/CSS/vendored preact/compiled JS)
 ```
 
+## Credits
+
+See [CREDITS.md](CREDITS.md) for the third-party libraries and other artifacts MyMail is built on,
+with their licenses.
+
 ## License
 
 Copyright 2026 Mikael Ståldal.

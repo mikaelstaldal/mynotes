@@ -1,0 +1,190 @@
+# Credits
+
+MyNotes itself is licensed under the Apache License, Version 2.0 (see
+[LICENSE](LICENSE)). It builds on the third-party work listed below, with
+gratitude to their authors and maintainers.
+
+Versions are the ones currently pinned in `go.mod`, `web/ts/vendor/package.json`
+and `web/ts/vendor/package-lock.json`. Everything under "Frontend" is vendored
+into this repository under `web/static/vendor/` (pre-built by the maintainer-only
+script `web/ts/vendor/rebuild.sh`) and embedded into the binary via
+`web/embed.go`.
+
+## Backend — Go
+
+### Direct dependencies
+
+| Library | Version | License |
+| --- | --- | --- |
+| [github.com/microcosm-cc/bluemonday](https://github.com/microcosm-cc/bluemonday) — HTML sanitization/validation | v1.0.27 | BSD-3-Clause |
+| [github.com/mikaelstaldal/go-server-common](https://github.com/mikaelstaldal/go-server-common) — shared HTTP middleware | v1.8.1 | Apache-2.0 |
+| [github.com/ogen-go/ogen](https://github.com/ogen-go/ogen) — OpenAPI server code generator + runtime | v1.22.0 | Apache-2.0 |
+| [github.com/go-faster/errors](https://github.com/go-faster/errors) — ogen runtime | v0.7.1 | BSD-3-Clause |
+| [github.com/go-faster/jx](https://github.com/go-faster/jx) — ogen JSON runtime | v1.2.0 | MIT |
+| [github.com/yuin/goldmark](https://github.com/yuin/goldmark) — Markdown parsing for wiki-link extraction | v1.8.2 | MIT |
+| [modernc.org/sqlite](https://gitlab.com/cznic/sqlite) — cgo-free SQLite driver | v1.52.0 | BSD-3-Clause |
+| [golang.org/x/net](https://pkg.go.dev/golang.org/x/net) | v0.56.0 | BSD-3-Clause |
+| [golang.org/x/oauth2](https://pkg.go.dev/golang.org/x/oauth2) | v0.36.0 | BSD-3-Clause |
+| [golang.org/x/text](https://pkg.go.dev/golang.org/x/text) | v0.38.0 | BSD-3-Clause |
+| [gopkg.in/yaml.v3](https://github.com/go-yaml/yaml) | v3.0.1 | MIT |
+| [github.com/stretchr/testify](https://github.com/stretchr/testify) — tests only | v1.11.1 | MIT |
+
+`modernc.org/sqlite` is a machine translation of
+[SQLite](https://sqlite.org/) (public domain) to Go; the translation itself is
+BSD-3-Clause.
+
+### Indirect dependencies
+
+Pulled in transitively and linked into the binary:
+
+| Library | Version | License |
+| --- | --- | --- |
+| cloud.google.com/go/compute/metadata | v0.3.0 | Apache-2.0 |
+| github.com/aymerick/douceur | v0.2.0 | MIT |
+| github.com/dlclark/regexp2 | v1.12.0 | MIT |
+| github.com/dustin/go-humanize | v1.0.1 | MIT |
+| github.com/fatih/color | v1.19.0 | MIT |
+| github.com/ghodss/yaml | v1.0.0 | MIT |
+| github.com/go-faster/yaml | v0.4.6 | Apache-2.0 + MIT |
+| github.com/google/uuid | v1.6.0 | BSD-3-Clause |
+| github.com/gorilla/css | v1.0.1 | BSD-3-Clause |
+| github.com/mattn/go-colorable | v0.1.14 | MIT |
+| github.com/mattn/go-isatty | v0.0.22 | MIT |
+| github.com/remyoudompheng/bigfft | v0.0.0-20230129092748 | BSD-3-Clause |
+| github.com/segmentio/asm | v1.2.1 | MIT-0 |
+| github.com/shopspring/decimal | v1.4.0 | MIT |
+| go.uber.org/multierr | v1.11.0 | MIT |
+| go.uber.org/zap | v1.28.0 | MIT |
+| golang.org/x/crypto | v0.53.0 | BSD-3-Clause |
+| golang.org/x/exp | v0.0.0-20230725093048 | BSD-3-Clause |
+| golang.org/x/sync | v0.21.0 | BSD-3-Clause |
+| golang.org/x/sys | v0.46.0 | BSD-3-Clause |
+| gopkg.in/yaml.v2 | v2.4.0 | Apache-2.0 (libyaml-derived files: MIT) |
+| modernc.org/libc | v1.72.3 | BSD-3-Clause |
+| modernc.org/mathutil | v1.7.1 | BSD-3-Clause |
+| modernc.org/memory | v1.11.0 | BSD-3-Clause |
+
+## Go toolchain and standard library
+
+Built with the [Go](https://go.dev/) toolchain and standard library — BSD-3-Clause,
+Copyright The Go Authors.
+
+## Frontend — JavaScript / TypeScript
+
+### Vendored runtime libraries
+
+Each is bundled into a single self-contained, version-stamped ESM file under
+`web/static/vendor/` and loaded through the import map in
+`web/static/index.html`.
+
+| Library | Version | License | Bundle |
+| --- | --- | --- | --- |
+| [Preact](https://preactjs.com/) — UI framework | 10.29.7 | MIT | `vendor/preact/*.module.js` (copied verbatim, not bundled) |
+| [CodeMirror 6](https://codemirror.net/) — Markdown editor | 6.43.3 (`@codemirror/view`) | MIT | `codemirror-6.43.3.js` |
+| [markdown-it](https://github.com/markdown-it/markdown-it) — Markdown rendering | 14.2.0 | MIT | `markdown-it-14.2.0.js` |
+| [DOMPurify](https://github.com/cure53/DOMPurify) — render-time XSS gate | 3.4.11 | MPL-2.0 **OR** Apache-2.0 | `dompurify-3.4.11.js` |
+| [asciimath2ml](https://github.com/johtela/asciimath2ml) — AsciiMath → MathML | 1.0.8 | MPL-2.0 | `asciimath-1.0.8.js` |
+| [Mermaid](https://mermaid.js.org/) — diagram rendering | 11.12.0 | MIT | `mermaid-11.12.0.js` |
+| [Lucide](https://lucide.dev/) — icon set (see below) | 1.25.0 | ISC | `lucide-1.25.0.js` |
+| [Emojibase](https://emojibase.dev/) — emoji dataset (see below) | 16.0.3 | MIT | `emoji-16.0.3.js` |
+
+### Icons — Lucide
+
+The icon picker, the `<Icon>` component and the server-side
+`GET /api/v1/icons/lucide/{name}` endpoint all read a single embedded copy of
+the [Lucide](https://lucide.dev/) icon geometry, generated by
+`web/ts/vendor/gen-lucide.mjs` from:
+
+- [`lucide-static`](https://www.npmjs.com/package/lucide-static) 1.25.0 — icon
+  path data and search tags (ISC License, Copyright (c) Lucide Contributors)
+- the [lucide](https://github.com/lucide-icons/lucide) source repository at tag
+  `1.25.0` — category metadata (ISC License, Copyright (c) Lucide Icons and
+  Contributors)
+
+Lucide is a fork of [Feather Icons](https://feathericons.com/) (MIT License,
+Copyright (c) 2013-2023 Cole Bemis).
+
+### Emoji data — Emojibase / Unicode CLDR
+
+The emoji picker and the Markdown `:shortcode:` transform use a compact dataset
+generated by `web/ts/vendor/gen-emoji.mjs` from
+[`emojibase-data`](https://github.com/milesj/emojibase) 16.0.3 (MIT License,
+Copyright (c) Miles Johnson):
+
+- `en/data.json` and `en/messages.json` — emoji labels, keyword tags and group
+  numbers
+- `en/shortcodes/github.json` — the GitHub-compatible shortcode map
+
+Emojibase derives its data from the
+[Unicode Emoji](https://unicode.org/emoji/) and
+[Unicode CLDR](https://cldr.unicode.org/) datasets, distributed under the
+[Unicode License](https://www.unicode.org/license.txt) (Copyright © Unicode,
+Inc.). The emoji characters themselves are rendered by the user's platform
+font — no emoji images are shipped.
+
+### Transitively bundled libraries
+
+`esbuild` inlines each vendored library's dependency closure into its bundle.
+The notable ones, by bundle:
+
+**CodeMirror** (all MIT) — `@codemirror/state`, `@codemirror/commands`,
+`@codemirror/language`, `@codemirror/lang-markdown`, `@codemirror/lang-html`,
+`@codemirror/lang-css`, `@codemirror/lang-javascript`,
+`@codemirror/autocomplete`, `@codemirror/lint`, `@lezer/common`,
+`@lezer/highlight`, `@lezer/lr`, `@lezer/markdown`, `@lezer/html`,
+`@lezer/css`, `@lezer/javascript`, `@marijn/find-cluster-break`, `crelt`,
+`style-mod`, `w3c-keyname`.
+
+**markdown-it** — `linkify-it` (MIT), `mdurl` (MIT), `uc.micro` (MIT),
+`punycode.js` (MIT), `entities` (BSD-2-Clause), `argparse` (Python-2.0).
+
+**Mermaid** — [D3](https://d3js.org/) 7.9.0 and its `d3-*` modules (ISC, with
+`d3-ease`, `d3-sankey` and `rw` under BSD-3-Clause),
+[Cytoscape.js](https://js.cytoscape.org/) 3.34.0 with `cytoscape-fcose` /
+`cytoscape-cose-bilkent` / `cose-base` / `layout-base` (MIT),
+[KaTeX](https://katex.org/) 0.16.47 (MIT), [Rough.js](https://roughjs.com/)
+4.6.6 with `path-data-parser` / `points-on-curve` / `points-on-path` /
+`hachure-fill` (MIT), [Chevrotain](https://chevrotain.io/) 11.0.3 and
+`@chevrotain/*` (Apache-2.0), `chevrotain-allstar` (MIT),
+[Langium](https://langium.org/) 3.3.1 and `vscode-*` language-server packages
+(MIT), `@mermaid-js/parser` (MIT), `dagre-d3-es` (MIT), `lodash-es` (MIT),
+`dayjs` (MIT), `stylis` (MIT), `khroma` (MIT), `marked` (MIT), `uuid` (MIT),
+`ts-dedent` (MIT), `@braintree/sanitize-url` (MIT), `@iconify/utils` +
+`@iconify/types` (MIT), `delaunator` (ISC), `internmap` (ISC),
+`robust-predicates` (Unlicense), `iconv-lite` + `safer-buffer` (MIT),
+`import-meta-resolve` (MIT), `commander` (MIT), `tinyexec` (MIT),
+`@antfu/install-pkg` (MIT), `package-manager-detector` (MIT), and its own copy
+of DOMPurify (MPL-2.0 OR Apache-2.0).
+
+The authoritative, complete list with exact versions is
+`web/ts/vendor/package-lock.json`.
+
+## Build and development tooling
+
+Not shipped in the binary; required to build or test the project.
+
+| Tool | Purpose | License |
+| --- | --- | --- |
+| [Go](https://go.dev/) | compiler and toolchain | BSD-3-Clause |
+| [ogen](https://github.com/ogen-go/ogen) | generates `internal/api/` from `openapi.yaml` | Apache-2.0 |
+| [openapi-typescript](https://github.com/openapi-ts/openapi-typescript) | generates `web/ts/api/types.ts` from `openapi.yaml` | MIT |
+| [TypeScript](https://www.typescriptlang.org/) (`tsc`) | compiles `web/ts/` to `web/static/` | Apache-2.0 |
+| [Node.js](https://nodejs.org/) | runs the `node --test` suites and the vendor generators | MIT |
+| [golangci-lint](https://golangci-lint.run/) | Go linting | GPL-3.0 (tool only; does not affect this project's license) |
+| [esbuild](https://esbuild.github.io/) | bundles the vendored browser libraries (maintainer-only) | MIT |
+| [jsdom](https://github.com/jsdom/jsdom) 29.1.1 | DOM for the client-side XSS-gate tests | MIT |
+| [@types/markdown-it](https://github.com/DefinitelyTyped/DefinitelyTyped) 14.1.2 | TypeScript type stubs | MIT |
+
+`esbuild` and `npm` are used only by `web/ts/vendor/rebuild.sh`, which is run by
+hand and is not part of `build.sh` or CI.
+
+## Notes on copyleft-licensed components
+
+- **DOMPurify** is dual-licensed MPL-2.0 **or** Apache-2.0; this project uses it
+  under the Apache-2.0 option, matching its own license.
+- **asciimath2ml** is MPL-2.0. It is bundled unmodified, with its copyright
+  banner preserved in `web/static/vendor/asciimath-1.0.8.js`. MPL-2.0 is a
+  file-level copyleft: the unmodified source remains available upstream at
+  <https://github.com/johtela/asciimath2ml>.
+- **golangci-lint** is GPL-3.0 but is only executed as a separate linting tool;
+  no part of it is linked into or distributed with MyNotes.
