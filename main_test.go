@@ -1,6 +1,8 @@
 package main
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -47,4 +49,18 @@ func TestBasePathFromPublicURLRejectsUnsafePath(t *testing.T) {
 			assert.Error(t, err)
 		})
 	}
+}
+
+// The render kit is the one page a same-origin sibling app may frame,
+// so it overrides the framing headers the SecurityHeaders middleware sets for every other response.
+func TestRenderHandlerAllowsSameOriginFraming(t *testing.T) {
+	const renderCSP = "default-src 'self'; frame-ancestors 'self'"
+	rec := httptest.NewRecorder()
+	renderHandler([]byte("<html></html>"), renderCSP)(rec, httptest.NewRequest(http.MethodGet, "/render/", nil))
+
+	res := rec.Result()
+	defer res.Body.Close()
+	assert.Equal(t, renderCSP, res.Header.Get("Content-Security-Policy"))
+	assert.Equal(t, "SAMEORIGIN", res.Header.Get("X-Frame-Options"))
+	assert.Contains(t, res.Header.Get("Content-Type"), "text/html")
 }

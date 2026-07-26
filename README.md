@@ -15,7 +15,9 @@ render pipeline is packaged as an embeddable **render kit** — a static page th
 exposes `render(markdown)` / `setTheme(theme)` and does the rest (callouts, math,
 diagrams, emoji, icons, wikilinks, sanitization) exactly as the web UI does. The
 server serves it at `/render/`; `tools/dist-renderer.sh <outdir>` copies it into
-a client for embedding in a web view.
+a client for embedding in a web view. That page is also the one page the server
+allows to be framed (`frame-ancestors 'self'`), so a sibling app deployed on the
+same origin can embed it in an iframe and drive the same API.
 
 ## Stack
 

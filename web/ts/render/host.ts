@@ -2,9 +2,10 @@
 //
 // Native clients (the Android app, and any future one) render notes by loading
 // ../../static/render/index.html in a web view and driving this API, instead of
-// re-implementing the MyNotes Markdown dialect in their own language. Everything
-// substantive lives in util/markdown.ts and util/mermaid.ts, exactly as used by
-// the web UI's read view and editor preview, so the two can never drift.
+// re-implementing the MyNotes Markdown dialect in their own language. Browser
+// embedders do the same with an iframe.
+// Everything substantive lives in util/markdown.ts and util/mermaid.ts,
+// exactly as used by the web UI's read view and editor preview, so the two can never drift.
 //
 // The kit is assembled for embedding by tools/dist-renderer.sh.
 //

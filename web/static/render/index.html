@@ -30,7 +30,9 @@
       'unsafe-inline' on style-src is required by Mermaid, which inlines a
       <style> element into the SVG it generates. frame-ancestors is omitted
       because browsers ignore (and warn about) it in a meta element; the server
-      sets it in its response header for the copy served at /render/.
+      sets it in its response header for the copy served at /render/, where it
+      is 'self' — a sibling app on the same origin frames this page and
+      drives MyNotesRender, which is exactly the embedding this kit is for.
     -->
     <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-2dMPOkkMmKtAjCeEV6Gzv1oxQr4LXNRZ3gftHIzHZ0Y='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'none'; base-uri 'none'; form-action 'none'">
     <script type="importmap">

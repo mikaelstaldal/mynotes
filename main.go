@@ -211,6 +211,15 @@ func run(addr string, port int, dataDir, publicURL, basicAuthFile, basicAuthReal
 		return fmt.Errorf("read render/index.html: %w", err)
 	}
 
+	cspCommon := "default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; " +
+		"base-uri 'self'; form-action 'self'; object-src 'none'; script-src 'self' " +
+		importMapHash + " " + renderImportMapHash
+	csp := cspCommon + "; frame-ancestors 'none'"
+	// The render kit is an embeddable page (see web/static/render/index.html), so
+	// it — and only it — may be framed by a sibling app deployed on this same
+	// origin. Cross-origin framing stays blocked, and the app's own pages remain unframeable.
+	renderCSP := cspCommon + "; frame-ancestors 'self'"
+
 	mux := http.NewServeMux()
 	// Artifact GET is a raw handler so it can set a dynamic Content-Type header;
 	// the more-specific method+path pattern takes priority over the ogen prefix.
@@ -230,7 +239,7 @@ func run(addr string, port int, dataDir, publicURL, basicAuthFile, basicAuthReal
 	// "/render/index.html" to "/render/", which — being a directory — falls
 	// through to the SPA shell, leaving the page unreachable. Its sibling assets
 	// (note.css, host.js, ../vendor/*) need no such help.
-	mux.Handle("GET /render/{$}", renderHandler(renderHTML))
+	mux.Handle("GET /render/{$}", renderHandler(renderHTML, renderCSP))
 	mux.HandleFunc("/", staticHandler(indexHTML))
 
 	// --- middleware chain (outermost first) --------------------------------
@@ -241,9 +250,6 @@ func run(addr string, port int, dataDir, publicURL, basicAuthFile, basicAuthReal
 	var httpHandler http.Handler = mux
 	httpHandler = csrf.Middleware(serverOrigin)(httpHandler)
 
-	csp := "default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; " +
-		"frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'; script-src 'self' " +
-		importMapHash + " " + renderImportMapHash
 	// Enable HSTS when the public URL is served over HTTPS (typically behind a
 	// TLS-terminating proxy). Without a public URL we assume plain HTTP.
 	hsts := ""
@@ -395,10 +401,18 @@ func printVersion() {
 // renderHandler serves the render kit's host page at /render/. The page is
 // content-free — a client pushes Markdown in through its JS API — so it is a
 // static, unauthenticated asset like the icon route, and carries no note data.
-func renderHandler(renderHTML []byte) http.HandlerFunc {
+// renderHandler serves the render kit's host page. It overrides the two framing
+// headers set by the SecurityHeaders middleware so a same-origin embedder can
+// frame this page; every other response keeps DENY / frame-ancestors 'none'.
+// Browsers that honour frame-ancestors ignore X-Frame-Options, which has no
+// same-origin-only value beyond SAMEORIGIN; both are set so either mechanism
+// permits exactly same-origin framing.
+func renderHandler(renderHTML []byte, renderCSP string) http.HandlerFunc {
 	return func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("Content-Security-Policy", renderCSP)
+		w.Header().Set("X-Frame-Options", "SAMEORIGIN")
 		_, _ = w.Write(renderHTML)
 	}
 }
