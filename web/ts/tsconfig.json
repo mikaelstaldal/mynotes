@@ -25,5 +25,9 @@
     "lib": ["ES2020", "DOM", "DOM.Iterable"]
   },
   "include": ["*.ts", "*.tsx", "**/*.ts", "**/*.tsx"],
-  "exclude": ["vendor"]
+  "//": [
+    "demo/ and demo-sw.ts are the demo service worker: worker code, not DOM code.",
+    "They build separately under demo/tsconfig.json (see the comment there)."
+  ],
+  "exclude": ["vendor", "demo", "demo-sw.ts"]
 }

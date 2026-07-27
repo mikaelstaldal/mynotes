@@ -4,6 +4,8 @@ A small, self-hosted note-taking web application. Go backend with SQLite storage
 a REST API defined in OpenAPI, and an embedded Preact + TypeScript frontend —
 all shipped as a single binary.
 
+See live demo at <https://mikaelstaldal.github.io/mynotes/>.
+
 ## Clients
 
 In addition to the built-in web interface, there is also 
@@ -54,11 +56,47 @@ The SQLite database is created automatically at `data/mynotes.sqlite` on first r
 | `-data`            | `data`      | data directory (holds the SQLite file)                                                                         |
 | `-public-url`      | —           | public base URL for CSRF validation behind a proxy; an `https://` URL also enables `Strict-Transport-Security` |
 | `-basic-auth-file` | —           | htpasswd file (bcrypt) to enable HTTP basic auth                                                               |
+| `-demo-server`     | —           | run the browser-only demo (no database, no REST API); see [Demo mode](#demo-mode)                              |
+| `-demo-bundle`     | —           | write a static demo site to this new directory and exit                                                       |
 
 A `-public-url` with a path component (e.g. `https://example.com/mynotes`) also
 serves the UI under that subpath. The path may contain only `A-Z a-z 0-9 . _ ~
 - /`, since it is injected into the page's `<base href>`; the server refuses to
 start otherwise.
+
+## Demo mode
+
+Demo mode runs the full web UI with no backend at all. A service worker
+intercepts every `/api/v1` request and answers it from storage in the browser,
+so notes, tags, and images are created, searched, edited, and deleted exactly as
+they are against the real server — they just never leave the machine. The store
+starts out holding the same content `-demo` seeds, and clearing the site's data
+resets it to that. A modal on the first visit says as much, so nobody writes
+anything they care about into it.
+
+```bash
+./mynotes -demo-server                 # serve the demo on http://127.0.0.1:8080
+./mynotes -demo-bundle /tmp/mynotes-demo   # or write it out as a static site
+```
+
+Neither mode opens a database, so neither takes `-data`.
+
+`-demo-bundle` writes plain files that any web server can host — no backend, no
+build step. It is built for the origin root by default; for a subdirectory, pass
+the same `-public-url` the server would take (`-public-url
+https://example.com/notes`). Two caveats come with the browser being the
+backend:
+
+- **Service workers need a secure context**, so serve the bundle over HTTPS or
+  from `localhost`.
+- **Deep links** like `/notes/my-note` are client-side routes. Once the worker
+  is installed it resolves them itself, and the bundle ships a `404.html` copy
+  of the shell that many static hosts will serve; a host that can rewrite
+  unknown paths to `index.html` handles the very first visit best.
+
+Everything is local: there is no MyMail integration in demo mode, and nothing is
+sent anywhere. Uploads are capped at 2 MiB per image, since browser storage is a
+modest shared quota rather than a disk.
 
 ## Sending a note as email
 
@@ -163,7 +201,9 @@ internal/
   repository/       # SQLite schema, migrations, queries
   model/            # domain types
   sanitize/         # HTML sanitization
+  demo/             # the demo seed content, and its export for the browser demo
 web/ts/             # TypeScript frontend sources
+web/ts/demo/        # the demo backend — a service worker standing in for the API
 web/static/         # embedded assets (HTML/CSS/vendored preact/compiled JS)
 web/static/render/  # the shared render kit embedded by native clients
 tools/              # dist-renderer.sh — copies the render kit out for embedding

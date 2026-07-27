@@ -1078,6 +1078,58 @@ main.note-view-main {
   width: 100%;
 }
 
+/* ── Demo notice dialog ─────────────────────────────────────────── */
+
+.demo-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 15vh;
+  z-index: 600;
+}
+
+.demo-dialog {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+  width: min(460px, 90vw);
+  padding: 1.25rem;
+}
+
+.demo-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0 0 0.75rem;
+  font-size: 1.1rem;
+}
+
+.demo-body {
+  margin: 0 0 1.25rem;
+  color: var(--muted);
+}
+
+.demo-body p {
+  margin: 0 0 0.75rem;
+}
+
+.demo-body p:last-child {
+  margin-bottom: 0;
+}
+
+.demo-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.demo-actions button {
+  min-width: 6rem;
+}
+
 /* ── Split dialog ───────────────────────────────────────────────── */
 
 .split-overlay,
@@ -1301,6 +1353,22 @@ main.note-view-main {
   margin-top: 0.75rem;
   padding-top: 0.75rem;
   border-top: 1px solid var(--border);
+}
+
+/* Demo builds only (mynotes -demo-server / -demo-bundle): a standing reminder
+   that the notes live in this browser and nowhere else. */
+.demo-badge {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0 0 0.5rem;
+  font-size: 0.75rem;
+  line-height: 1.3;
+  color: var(--muted);
+}
+
+.demo-badge svg {
+  flex: none;
 }
 
 .theme-toggle {

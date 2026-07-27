@@ -12,7 +12,7 @@
 
 declare global {
   interface Window {
-    __serverConfig?: { mymailUrl?: string };
+    __serverConfig?: { mymailUrl?: string; demo?: boolean };
   }
 }
 
@@ -26,4 +26,11 @@ export function mymailUrl(): string {
   const url = window.__serverConfig?.mymailUrl;
   if (typeof url !== 'string' || !ABSOLUTE_HTTP_URL.test(url)) return '';
   return url.replace(/\/+$/, '');
+}
+
+// Whether this is the backend-less demo build (mynotes -demo-server, or a
+// bundle written by -demo-bundle). The app then starts a service worker that
+// answers the REST API from browser-local storage; see web/ts/demo-client.ts.
+export function isDemo(): boolean {
+  return window.__serverConfig?.demo === true;
 }

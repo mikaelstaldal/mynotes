@@ -50,10 +50,14 @@ internal/
   repository/            # SQLite storage; schema + versioned migrations in db.go
   model/                 # shared domain types (storage- and transport-agnostic)
   sanitize/              # HTML sanitization (bluemonday)
+  demo/                  # demo seed content; bundle.go exports it for the browser demo
 web/
   embed.go               # //go:embed of web/static
   ts/                    # TypeScript sources (compiled to web/static by tsc)
     render/host.ts       # render-kit entry point (globalThis.MyNotesRender)
+    demo/                # the demo backend (see below) — worker code, built separately
+    demo-sw.ts           # its service-worker entry point
+    demo-client.ts       # the page half of demo mode
     vendor/rebuild.sh    # maintainer-only: rebuilds the vendored bundles below
   static/                # embedded assets: index.html, app.css, vendored
                           # preact/CodeMirror/markdown-it/DOMPurify/emoji, compiled JS
@@ -123,6 +127,38 @@ UI, exposing `render(markdown)` and `setTheme(theme, vars?)` on
 
 Request flow: `handler → service → repository → SQLite`. The handler is a thin
 adapter; business rules live in the service layer.
+
+## Demo mode
+
+`-demo-server` and `-demo-bundle DIR` build the web UI with **no backend**: a
+service worker (`web/ts/demo-sw.ts` + `web/ts/demo/`) intercepts `/api/v1` and
+answers it from IndexedDB. `main.go` injects `window.__serverConfig={demo:true}`
+(same mechanism as the MyMail URL); `app.tsx` then waits for the worker to be
+installed and in control before rendering, so the first request cannot escape it.
+
+- **Intercepting at the network layer is the point**: the frontend is unchanged
+  between demo and real, including the `<img>` loads for artifacts and icons and
+  the "Download Markdown" navigation, which never go through `api/client.ts`.
+- **Parity with the Go server is the contract.** `web/ts/demo/` re-implements
+  `internal/service` + the Markdown-aware parts of `internal/repository`; every
+  function names the Go original it mirrors. When you change slug generation,
+  excerpts, wikilink extraction, splitting, frontmatter, download wrapping, or
+  content validation on the server, change it there too. The accepted
+  divergences are listed in spec/REQUIREMENTS.md § Demo Mode — don't add more
+  silently.
+- **Not localStorage**: a service worker cannot reach it (it is synchronous and
+  absent from worker scopes), so the store is IndexedDB.
+- These sources are **worker code**: excluded from `web/ts/tsconfig.json` and
+  built by `web/ts/demo/tsconfig.json` against the WebWorker lib. They are
+  classic scripts sharing one global scope via `importScripts`, so they use no
+  `import`/`export` — adding one silently turns a file into a module and its
+  declarations vanish from the shared scope.
+- HTML import is the one thing the worker delegates: parsing HTML needs a
+  DOMParser, which a worker has no access to, so it asks the page to run
+  `web/ts/util/htmlmd.ts` (a DOM port of `internal/htmlmd`) over a MessageChannel.
+- The seed content is not duplicated in JavaScript: `internal/demo/bundle.go`
+  runs the real `-demo` seeding against an in-memory database and exports the
+  result as `demo-data.json`.
 
 ## Code generation (two steps, both run by build.sh)
 

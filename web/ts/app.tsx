@@ -5,6 +5,7 @@ import { getConfig, saveConfig } from './util/config.js';
 import { getTheme, applyTheme, toggleTheme, type Theme } from './util/theme.js';
 import { isValidSlug, slugFromTitle } from './util/slug.js';
 import { showToast } from './util/toast.js';
+import { isDemo } from './util/serverconfig.js';
 import { api, type SortField, type SortOrder } from './api/client.js';
 import { NoteList } from './views/NoteList.js';
 import { NotesOverview } from './views/NotesOverview.js';
@@ -14,6 +15,7 @@ import { TagManager } from './views/TagManager.js';
 import { NotesGraph } from './views/NotesGraph.js';
 import { Toast } from './components/Toast.js';
 import { Icon } from './components/Icon.js';
+import { DemoDialog, demoNoticeSeen, markDemoNoticeSeen } from './components/DemoDialog.js';
 
 type SidebarTab = 'notes' | 'tags' | 'graph';
 
@@ -26,6 +28,8 @@ function App() {
     () => currentRoute().type === 'graph' ? 'graph' : 'notes',
   );
   const [theme, setThemeState] = useState<Theme>(() => getTheme());
+  // The one-time "this is a demo" notice, shown before anything is typed.
+  const [showDemoNotice, setShowDemoNotice] = useState(() => isDemo() && !demoNoticeSeen());
   const uploadRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => onRouteChange(setRoute), []);
@@ -44,6 +48,11 @@ function App() {
   const handleToggleTheme = useCallback(() => setThemeState(toggleTheme()), []);
 
   const refreshList = useCallback(() => setListKey(k => k + 1), []);
+
+  const dismissDemoNotice = useCallback(() => {
+    markDemoNoticeSeen();
+    setShowDemoNotice(false);
+  }, []);
 
   // Upload a Markdown or HTML file as a new note, then open it. Lives here (not
   // in NoteList) because the trigger buttons sit in the sidebar header.
@@ -242,6 +251,12 @@ function App() {
             )}
           </div>
           <div class="sidebar-footer">
+            {isDemo() && (
+              <p class="demo-badge" role="status">
+                <Icon name="flask-conical" size={14} />
+                <span>Demo — notes are stored in this browser only</span>
+              </p>
+            )}
             <button
               class="btn-icon theme-toggle"
               title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
@@ -273,9 +288,26 @@ function App() {
         </main>
       </div>
       <Toast />
+      {showDemoNotice && <DemoDialog onClose={dismissDemoNotice} />}
     </>
   );
 }
 
+// In demo mode the backend is a service worker that has to be installed and in
+// control before the app issues its first request, so rendering waits on it.
+// The import is dynamic so a normal build never fetches the demo code at all.
+async function start(root: HTMLElement): Promise<void> {
+  if (isDemo()) {
+    try {
+      const { startDemoBackend } = await import('./demo-client.js');
+      await startDemoBackend();
+    } catch (e) {
+      root.textContent = e instanceof Error ? e.message : 'The demo backend failed to start.';
+      return;
+    }
+  }
+  render(<App />, root);
+}
+
 const root = document.getElementById('app');
-if (root) render(<App />, root);
+if (root) void start(root);

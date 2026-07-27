@@ -676,6 +676,80 @@ re-running the command against a database that already holds the demo tags fails
 on the duplicate-slug conflict. Progress is printed to stdout; exit code is 0 on
 success.
 
+## Demo Mode
+
+A build of the web UI that runs with no backend: a service worker intercepts the
+REST API and answers it from storage in the browser. It exists so the product
+can be tried — or published as a live demo — without a server, a database, or
+anyone's notes leaving their machine.
+
+### Invocation
+
+```
+./mynotes -demo-server [-port <n>] [-addr <host>] [-public-url <url>]
+./mynotes -demo-bundle <dir> [-public-url <url>]
+```
+
+`-demo-server` serves the web UI and nothing else: no database is opened and no
+REST API is mounted. `-demo-bundle` writes the same thing out as static files
+and exits; the directory must not already exist or must be empty. Neither mode
+accepts `-data` — there is no database — and combining them with it is an error.
+A `-public-url` path component sets the deployment's base path in both, exactly
+as it does for the real server.
+
+The bundle is a plain static site: index.html carrying the Content-Security-
+Policy the server would send as a header, the compiled app, the service worker,
+the seed document, and a `404.html` copy of the shell for hosts that serve it on
+an unknown path. Any web server that serves a directory can host it. A service
+worker requires a secure context, so it must be served over HTTPS or from
+localhost.
+
+### Behavior
+
+- On first load the browser store is filled with the same content `-demo` seeds
+  (§Demo Data) — the same tags, notes, and artifacts, produced by the same
+  seeding code.
+- The first visit opens a modal explaining that there is no server, that
+  everything is stored in this browser, and that nothing is really saved. It has
+  a single OK button, and is also dismissed with Escape or a click outside.
+  Dismissal is recorded in localStorage, so it appears once per browser — not
+  once per store, so clearing the demo's notes does not bring it back. It never
+  appears outside demo mode. A standing reminder stays in the sidebar footer.
+- Every REST operation the web UI performs is available and behaves as it does
+  against the server: listing, full-text search with highlighted snippets,
+  title-prefix filtering, tag filtering and sorting, create, edit with
+  optimistic locking, delete, split, tag management, image upload and display,
+  Lucide icons, Markdown and HTML import, Markdown download, and HTML export.
+- Data persists across reloads and restarts, and is scoped to the browser and
+  origin. Clearing the site's data restores the original demo content.
+- The MyMail integration is never offered in demo mode: there is no server to
+  relay a message.
+- Image uploads are capped at 2 MiB, and a write that exhausts the browser's
+  storage quota is reported as such. Neither limit exists on the server.
+- After the worker is installed it also resolves client-side deep links, so
+  those work on a static host that does not rewrite unknown paths itself.
+
+### Fidelity
+
+The demo backend is a re-implementation, and its observable behavior is expected
+to match the server's: same routes, same status codes, same JSON, same ETag and
+optimistic-locking semantics, same slugs, excerpts, snippets, wikilink graph,
+validation verdicts, and downloaded Markdown. Two differences are accepted:
+
+- Schema-level request errors (a missing title, a malformed slug) are still
+  rejected with 400, but the message is the demo's own rather than the wording
+  the server's generated decoder produces.
+- Search results are ordered by match count instead of SQLite's bm25 ranking.
+  Which notes match, and how their snippets look, is unchanged.
+
+### Security
+
+Demo content never leaves the browser it was typed into, so the write-time
+validation is a consistency guarantee rather than a boundary. It still rejects
+disallowed embedded HTML, event-handler attributes, and link/image schemes
+outside the allow-list; the authoritative XSS gate remains the render-time
+DOMPurify pass on the page, exactly as in the real app.
+
 ## Security (user-facing guarantees)
 
 - The app must not execute scripts or active content embedded in note bodies;
