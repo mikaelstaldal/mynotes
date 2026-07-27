@@ -57,12 +57,11 @@ The SQLite database is created automatically at `data/mynotes.sqlite` on first r
 | `-public-url`      | —           | public base URL for CSRF validation behind a proxy; an `https://` URL also enables `Strict-Transport-Security` |
 | `-basic-auth-file` | —           | htpasswd file (bcrypt) to enable HTTP basic auth                                                               |
 | `-demo-server`     | —           | run the browser-only demo (no database, no REST API); see [Demo mode](#demo-mode)                              |
-| `-demo-bundle`     | —           | write a static demo site to this new directory and exit                                                       |
+| `-demo-bundle`     | —           | write a static demo site to this new directory and exit                                                        |
 
 A `-public-url` with a path component (e.g. `https://example.com/mynotes`) also
-serves the UI under that subpath. The path may contain only `A-Z a-z 0-9 . _ ~
-- /`, since it is injected into the page's `<base href>`; the server refuses to
-start otherwise.
+serves the UI under that subpath. The path may contain only `A-Z a-z 0-9 . _ ~ - /`, 
+since it is injected into the page's `<base href>`; the server refuses to start otherwise.
 
 ## Demo mode
 
@@ -75,7 +74,7 @@ resets it to that. A modal on the first visit says as much, so nobody writes
 anything they care about into it.
 
 ```bash
-./mynotes -demo-server                 # serve the demo on http://127.0.0.1:8080
+./mynotes -demo-server                     # serve the demo on http://127.0.0.1:8080
 ./mynotes -demo-bundle /tmp/mynotes-demo   # or write it out as a static site
 ```
 
