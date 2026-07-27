@@ -303,7 +303,12 @@ button {
 
 button.primary { background: var(--primary); color: #fff; border-color: var(--primary); }
 button.danger { color: var(--danger); }
-button.link { background: none; border: none; color: var(--primary); padding: 0; cursor: pointer; }
+/* App-chrome anchors (note titles in the lists, backlinks, help links). Without
+   this they fall back to the UA link colour, which is a near-black blue in the
+   dark theme. `.note-content a` in note.css is more specific and still wins. */
+a { color: var(--link); }
+
+button.link { background: none; border: none; color: var(--link); padding: 0; cursor: pointer; }
 button:disabled { opacity: 0.6; cursor: default; }
 
 /* Compact ghost icon buttons — follows mycal action-icon convention */
@@ -642,9 +647,12 @@ main.note-view-main {
   background: rgba(255, 255, 255, 0.1);
 }
 
+/* Hand-drawn format-toolbar glyphs. They take their colour from the button's
+   `color` (var(--fg)) rather than a fixed grey, so they follow the theme — a
+   fixed dark grey is all but invisible on the dark theme's background. */
 .fmt-stroke {
   fill: none;
-  stroke: #444;
+  stroke: currentColor;
   stroke-linecap: round;
   stroke-linejoin: round;
   stroke-width: 2;
@@ -654,8 +662,13 @@ main.note-view-main {
   stroke-width: 1;
 }
 
-.fmt-stroke.fmt-fill {
-  fill: #444;
+/* Solid shapes. Many glyphs (the strikethrough S, the table cells, the
+   horizontal rule) are fill-only and carry no .fmt-stroke, so this must stand on
+   its own rather than hang off `.fmt-stroke.fmt-fill` — without a rule they fall
+   back to SVG's default black fill and vanish on the dark theme. Declared after
+   .fmt-stroke so a shape carrying both classes is filled rather than hollow. */
+.fmt-fill {
+  fill: currentColor;
 }
 
 .fmt-even {
@@ -773,8 +786,16 @@ main.note-view-main {
 .cm-content {
   padding: 0.75rem 1rem;
   min-height: 100%;
-  caret-color: var(--fg);
   max-width: 82ch; /* We want to wrap at column 80, for some reason we need to have 82ch for that to happen. */
+}
+
+/* CodeMirror's base theme pins the caret with `&light .cm-content { caret-color:
+   black }` — a specificity a plain `.cm-content` rule here cannot beat, so on the
+   dark theme the caret is black on a near-black background, i.e. invisible. (We
+   never enable CM's own dark theme: styling lives in this file, not in JS themes
+   — see web/ts/vendor/rebuild.sh, which deliberately omits EditorView.theme.) */
+:root[data-theme="dark"] .cm-editor .cm-content {
+  caret-color: var(--fg);
 }
 
 /* Subtle cursor line highlight */
@@ -1329,8 +1350,8 @@ main.note-view-main {
 }
 
 .sidebar-tab.active {
-  color: var(--primary);
-  border-bottom-color: var(--primary);
+  color: var(--link);
+  border-bottom-color: var(--link);
 }
 
 .sidebar-actions {
@@ -1428,7 +1449,7 @@ main.note-view-main {
   white-space: nowrap;
 }
 
-a.tag-chip:hover { border-color: var(--primary); color: var(--primary); }
+a.tag-chip:hover { border-color: var(--link); color: var(--link); }
 
 .tag-chip-remove {
   background: none;
@@ -1540,7 +1561,7 @@ a.tag-chip:hover { border-color: var(--primary); color: var(--primary); }
 
 .tag-picker-create {
   font-style: italic;
-  color: var(--primary);
+  color: var(--link);
 }
 .tag-picker-create:disabled { color: var(--muted); cursor: default; }
 

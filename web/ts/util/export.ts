@@ -21,11 +21,13 @@ import { getTheme } from './theme.js';
 // waste ink and read poorly on paper — so the app's print path exports light and
 // even a saved dark document prints light.
 const LIGHT_VARS = `
+  color-scheme: light;
   --bg: #ffffff;
   --fg: #1f2937;
   --muted: #6b7280;
   --border: #e5e7eb;
   --primary: #2563eb;
+  --link: #2563eb;
   --surface: #f9fafb;
   --callout-blue: #2563eb;
   --callout-green: #16a34a;
@@ -37,11 +39,13 @@ const EXPORT_STYLESHEET = `
 :root {${LIGHT_VARS}
 }
 :root[data-theme="dark"] {
+  color-scheme: dark;
   --bg: #111827;
   --fg: #f3f4f6;
   --muted: #9ca3af;
   --border: #374151;
   --primary: #3b82f6;
+  --link: #60a5fa;
   --surface: #1f2937;
   --callout-blue: #3b82f6;
   --callout-green: #22c55e;
@@ -76,7 +80,7 @@ li > p { margin: 0; }
 li > p + p { margin-top: 0.75em; }
 li:has(input[type="checkbox"]) { list-style: none; }
 input[type="checkbox"] { margin: 0 0.4em 0 -1.3em; vertical-align: middle; }
-a { color: var(--primary); }
+a { color: var(--link); }
 a[href*="/tags/"] {
   text-decoration: none;
   background: var(--surface);

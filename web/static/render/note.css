@@ -14,11 +14,19 @@
  */
 
 :root {
+  /* Tells the browser which palette to draw native widgets (form controls,
+     scrollbars, the task-list checkboxes in .note-content) from; without it a
+     dark theme still gets light-mode controls. */
+  color-scheme: light;
   --bg: #ffffff;
   --fg: #1f2937;
   --muted: #6b7280;
   --border: #e5e7eb;
   --primary: #2563eb;
+  /* Link text. Separate from --primary because --primary also serves as a fill
+     behind white text (buttons, active tabs), which caps how light it may go —
+     while link text sits on --bg/--surface and needs to be light enough there. */
+  --link: #2563eb;
   --danger: #dc2626;
   --surface: #f9fafb;
   --callout-blue: #2563eb;
@@ -30,11 +38,13 @@
 }
 
 :root[data-theme="dark"] {
+  color-scheme: dark;
   --bg: #111827;
   --fg: #f3f4f6;
   --muted: #9ca3af;
   --border: #374151;
   --primary: #3b82f6;
+  --link: #60a5fa;
   --danger: #ef4444;
   --surface: #1f2937;
   --callout-blue: #3b82f6;
@@ -252,7 +262,7 @@
   margin: 1.5em 0;
 }
 
-.note-content a { color: var(--primary); }
+.note-content a { color: var(--link); }
 
 /* Inline tag links produced from [[#slug]] point at /tags/<slug>. Give them a
    subtle pill look so they read as tags, distinct from ordinary links. Styled
