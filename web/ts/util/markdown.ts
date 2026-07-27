@@ -791,15 +791,38 @@ DOMPurify.addHook('uponSanitizeElement', (node, data) => {
   }
 });
 
+// An internal API reference in note content — an artifact image above all — is
+// written either root-relative (`/api/v1/…`, the form the demo seed, imported
+// notes, and hand-written content carry) or already prefixed with the
+// deployment's base path (`<base>/api/v1/…`, what the editor inserts). Both are
+// accepted on the way in, so both have to work on the way out — but a
+// root-relative path ignores <base href> and therefore leaves the deployment
+// altogether under a subpath: it 404s at the origin root, and in demo mode it
+// also falls outside the service worker's scope (which is exactly that subpath),
+// so nothing can answer it. Re-root it on the base path; a path that already
+// carries the base, and any absolute URL, does not match and is left alone.
+const ROOT_RELATIVE_API_RE = /^\/api\/v1\//;
+
+function rerootApiPath(node: Element, attr: string): void {
+  if (!base) return;
+  const value = node.getAttribute(attr);
+  if (value !== null && ROOT_RELATIVE_API_RE.test(value)) {
+    node.setAttribute(attr, base + value);
+  }
+}
+
 // Open external links in a new tab; keep internal links in the same tab.
 // Also force task-list checkboxes to stay non-interactive (read-only view).
 DOMPurify.addHook('afterSanitizeAttributes', (node) => {
   if (node.tagName === 'A') {
+    rerootApiPath(node, 'href');
     const href = node.getAttribute('href') ?? '';
     if (/^https?:\/\//i.test(href)) {
       node.setAttribute('target', '_blank');
       node.setAttribute('rel', 'noopener noreferrer');
     }
+  } else if (node.tagName === 'IMG') {
+    rerootApiPath(node, 'src');
   } else if (node.tagName === 'INPUT') {
     node.setAttribute('disabled', '');
   }

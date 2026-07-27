@@ -198,6 +198,19 @@ identity exists but is never exposed as the URL key.
   colour and follows the light/dark toggle. An unknown name falls back to an `<img>`
   pointing at the icon endpoint (which 404s). The inline `<svg>` passes through the
   same DOMPurify render-time gate as all other note markup.
+- **Internal API references are re-rooted on the deployment's base path.** An
+  artifact image, or any other `/api/v1/…` reference in note content, may be
+  stored either root-relative (`/api/v1/artifacts/{sha256}` — what imported
+  content and the demo seed carry) or already prefixed with the base path (what
+  the editor inserts). Both are accepted, so the render pipeline prefixes a
+  root-relative one with the base path taken from the page's `<base href>`.
+  Without that, a subpath deployment (`-public-url https://example.com/notes`)
+  would resolve the reference at the origin root, outside the deployment — a 404
+  on a real server, and in demo mode also outside the service worker's scope, so
+  none of the seeded images would load. A reference that already carries the base
+  path, an absolute URL, and any non-API path are left untouched. The render kit
+  has no `<base href>`, so references stay root-relative there (see **Shared
+  render kit**).
 - Both the read view and the editor's live preview render the same way and must
   be safe against XSS (see Security).
 - Content is bounded at 1,000,000 characters; empty content is valid.
@@ -284,7 +297,7 @@ Artifacts are stored as BLOBs in the same SQLite database as notes, in a separat
 
 ### Image embedding in the editor
 
-The "embed image" toolbar button in the note editor uploads the selected file as an artifact and inserts a standard Markdown image reference `![alt](/api/v1/artifacts/{sha256})` at the cursor. SVG and MathML files continue to be embedded inline as before. There is no hard file-size limit on upload (the global 10 MiB request body cap applies).
+The "embed image" toolbar button in the note editor uploads the selected file as an artifact and inserts a standard Markdown image reference `![alt](<base>/api/v1/artifacts/{sha256})` at the cursor. SVG and MathML files continue to be embedded inline as before. There is no hard file-size limit on upload (the global 10 MiB request body cap applies).
 
 ## Tags
 
