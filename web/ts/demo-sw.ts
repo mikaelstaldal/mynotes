@@ -30,6 +30,9 @@ const API_PREFIX = 'api/v1';
 /** The message this worker sends a client to have HTML converted (see below). */
 const HTML_CONVERT_MESSAGE = 'mynotes-demo:html-to-markdown';
 
+/** The message a client sends to ask this worker to take control of it. */
+const CLAIM_MESSAGE = 'mynotes-demo:claim';
+
 /** How long to wait for that client to answer before giving up. */
 const HTML_CONVERT_TIMEOUT_MS = 15_000;
 
@@ -66,6 +69,16 @@ sw.addEventListener('activate', (event) => {
     // not wait on a fetch of the demo content.
     await withStore(async () => undefined);
   })());
+});
+
+// Claiming on activate covers a first load, but not a hard reload (Ctrl-Shift-R):
+// the browser loads that navigation with this worker bypassed, so the page ends
+// up uncontrolled while the worker stays activated and activate never fires
+// again. The page notices and asks here (see web/ts/demo-client.ts).
+sw.addEventListener('message', (event) => {
+  const data = event.data as { type?: string } | null;
+  if (data === null || data.type !== CLAIM_MESSAGE) return;
+  event.waitUntil(sw.clients.claim());
 });
 
 // ── Interception ─────────────────────────────────────────────────────────────

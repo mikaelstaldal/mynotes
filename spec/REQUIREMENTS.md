@@ -735,6 +735,10 @@ localhost.
   Lucide icons, Markdown and HTML import, Markdown download, and HTML export.
 - Data persists across reloads and restarts, and is scoped to the browser and
   origin. Clearing the site's data restores the original demo content.
+- A hard reload (Ctrl-Shift-R) loads the page with the worker bypassed, leaving
+  it with no backend. The demo recovers on its own — it asks the worker already
+  installed to take control, and reloads once if that does not happen — so the
+  app comes up as usual rather than reporting that the backend did not start.
 - The MyMail integration is never offered in demo mode: there is no server to
   relay a message.
 - Image uploads are capped at 2 MiB, and a write that exhausts the browser's
