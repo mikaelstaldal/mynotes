@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'preact/hooks';
 import {
   EditorView, keymap,
   defaultKeymap, history, historyKeymap,
-  syntaxHighlighting, defaultHighlightStyle,
+  syntaxHighlighting, classHighlighter,
   markdown, EditorSelection,
   ViewPlugin, Decoration, WidgetType,
   type DecorationSet, type ViewUpdate, type EditorState,
@@ -349,7 +349,10 @@ export function NoteEditor({ slug, initialSlug, initialTitle, onSave }: Props) {
         history(),
         keymap.of([...defaultKeymap, ...historyKeymap]),
         EditorView.lineWrapping,
-        syntaxHighlighting(defaultHighlightStyle),
+        // classHighlighter, not defaultHighlightStyle: it marks up tokens with
+        // stable `tok-*` classes and no colours of its own, so the palette lives
+        // in app.css and follows the light/dark theme (see vendor/rebuild.sh).
+        syntaxHighlighting(classHighlighter),
         markdown(),
         dataUrlCollapse,
         EditorView.updateListener.of((update) => {

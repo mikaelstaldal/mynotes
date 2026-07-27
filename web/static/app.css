@@ -798,6 +798,36 @@ main.note-view-main {
   caret-color: var(--fg);
 }
 
+/* Markdown syntax highlighting in the editor.
+
+   The editor runs @lezer/highlight's classHighlighter, which only tags spans
+   with stable `tok-*` class names — every colour is chosen here, off the theme
+   variables, so it follows the light/dark toggle. (CodeMirror's stock
+   defaultHighlightStyle instead bakes fixed light-theme colours into generated
+   class names app.css cannot reach; its markers came out at #404740, about
+   1.5:1 against the dark background.)
+
+   Markdown yields a small subset of the token vocabulary: tok-meta for every
+   literal marker (#, **, `, >, -, and a link's []()), tok-heading, tok-strong,
+   tok-emphasis, tok-link, tok-url, tok-labelName (a fence's language) and
+   tok-comment. Markers carry their construct's class too — `#` is
+   `tok-heading tok-meta` — so tok-meta is declared last to win those ties and
+   keep every marker one consistent colour. */
+.cm-content .tok-heading {
+  font-weight: 600;
+  text-decoration: underline;
+}
+.cm-content .tok-strong { font-weight: 700; }
+.cm-content .tok-emphasis { font-style: italic; }
+.cm-content .tok-link,
+.cm-content .tok-url { color: var(--link); }
+.cm-content .tok-labelName { color: var(--muted); }
+.cm-content .tok-comment {
+  color: var(--muted);
+  font-style: italic;
+}
+.cm-content .tok-meta { color: var(--muted); }
+
 /* Subtle cursor line highlight */
 .cm-activeLine { background: transparent; }
 

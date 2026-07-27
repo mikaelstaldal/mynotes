@@ -69,11 +69,23 @@ EOF
 # Fixed minimal symbol surface (see CLAUDE.md / spec/TASKS.md). Deliberately
 # excludes @codemirror/search, line numbers/gutters, placeholder, bracket
 # matching, and EditorView.theme (styling lives in app.css, not JS themes).
+#
+# For the same reason the syntax highlighter is @lezer/highlight's
+# classHighlighter, NOT @codemirror/language's defaultHighlightStyle: the latter
+# is a HighlightStyle, which compiles its colours into a generated stylesheet
+# under opaque class names (ͼ4, ͼ6, …) that app.css cannot target — and those
+# colours are fixed light-theme values, invisible on the dark theme.
+# classHighlighter instead tags spans with stable `tok-*` class names and ships
+# no colours at all, so the whole palette lives in app.css and follows the theme.
+# @lezer/highlight is a transitive dependency of @codemirror/language and
+# @lezer/markdown; it is listed explicitly in package.json because we now import
+# from it directly.
 cat > "$WORK_DIR/codemirror-entry.mjs" <<'EOF'
 export { EditorView, keymap, ViewPlugin, Decoration, WidgetType } from "@codemirror/view";
 export { EditorState, EditorSelection } from "@codemirror/state";
 export { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
-export { syntaxHighlighting, defaultHighlightStyle } from "@codemirror/language";
+export { syntaxHighlighting } from "@codemirror/language";
+export { classHighlighter } from "@lezer/highlight";
 export { markdown } from "@codemirror/lang-markdown";
 EOF
 

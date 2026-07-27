@@ -311,11 +311,17 @@ audited, and outside the automated build.
   `@codemirror/view` `EditorView` (incl. `updateListener`, `dispatch`,
   `lineWrapping`) + `keymap`; from `@codemirror/state` `EditorState`,
   `EditorSelection`; from `@codemirror/commands` `defaultKeymap`, `history`,
-  `historyKeymap`; from `@codemirror/language` `syntaxHighlighting`,
-  `defaultHighlightStyle`; from `@codemirror/lang-markdown` `markdown`. **Not in
-  v1:** search, line numbers/gutters, placeholder, bracket matching. Editor
-  sizing/styling is done in `app.css` targeting `.cm-editor`/`.cm-scroller`/
-  `.cm-content` (no CodeMirror theme export).
+  `historyKeymap`; from `@codemirror/language` `syntaxHighlighting`; from
+  `@lezer/highlight` `classHighlighter`; from `@codemirror/lang-markdown`
+  `markdown`. **Not in v1:** search, line numbers/gutters, placeholder, bracket
+  matching. Editor sizing/styling is done in `app.css` targeting
+  `.cm-editor`/`.cm-scroller`/`.cm-content` (no CodeMirror theme export).
+  Syntax highlighting follows the same rule: `classHighlighter` is used rather
+  than `@codemirror/language`'s `defaultHighlightStyle` because a
+  `HighlightStyle` compiles fixed light-theme colours into generated class names
+  (`ͼ4`, `ͼ6`, …) that `app.css` cannot target — unreadable on the dark theme.
+  `classHighlighter` only assigns stable `tok-*` classes, so the palette is
+  defined in `app.css` off the theme variables.
 - **TypeScript resolution:** `web/ts/tsconfig.json` needs `paths` entries for
   `codemirror`/`markdown-it`/`dompurify` → `.d.ts` shims under `web/ts/vendor/`
   (upstream `@types/markdown-it`/`@types/dompurify`; a **hand-authored** shim for
