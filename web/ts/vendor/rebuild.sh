@@ -77,16 +77,28 @@ EOF
 # colours are fixed light-theme values, invisible on the dark theme.
 # classHighlighter instead tags spans with stable `tok-*` class names and ships
 # no colours at all, so the whole palette lives in app.css and follows the theme.
+# classHighlighter leaves a few tags unmapped, including tags.strikethrough —
+# so tagHighlighter + tags come along too, letting NoteEditor.tsx add a second
+# highlighter for exactly those (still class-only, still no colours here).
 # @lezer/highlight is a transitive dependency of @codemirror/language and
 # @lezer/markdown; it is listed explicitly in package.json because we now import
 # from it directly.
+#
+# @lezer/markdown likewise: the editor's Markdown parser must recognize the same
+# dialect the read view renders, so GFM (Table, TaskList, Strikethrough,
+# Autolink) and Emoji (`:shortcode:`) are exported and passed to markdown() as
+# `extensions`. Deliberately NOT the ready-made `markdownLanguage` base from
+# @codemirror/lang-markdown: it bundles Subscript and Superscript on top, a
+# Pandoc dialect this app does not implement, which would highlight `~x~`/`^x^`
+# as markup where the read view shows literal text.
 cat > "$WORK_DIR/codemirror-entry.mjs" <<'EOF'
 export { EditorView, keymap, ViewPlugin, Decoration, WidgetType } from "@codemirror/view";
 export { EditorState, EditorSelection } from "@codemirror/state";
 export { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 export { syntaxHighlighting } from "@codemirror/language";
-export { classHighlighter } from "@lezer/highlight";
+export { classHighlighter, tagHighlighter, tags } from "@lezer/highlight";
 export { markdown } from "@codemirror/lang-markdown";
+export { GFM, Emoji } from "@lezer/markdown";
 EOF
 
 cat > "$WORK_DIR/markdown-it-entry.mjs" <<'EOF'

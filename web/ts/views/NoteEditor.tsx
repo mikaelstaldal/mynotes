@@ -2,8 +2,8 @@ import { useState, useEffect, useRef } from 'preact/hooks';
 import {
   EditorView, keymap,
   defaultKeymap, history, historyKeymap,
-  syntaxHighlighting, classHighlighter,
-  markdown, EditorSelection,
+  syntaxHighlighting, classHighlighter, tagHighlighter, tags as highlightTags,
+  markdown, GFM, Emoji, EditorSelection,
   ViewPlugin, Decoration, WidgetType,
   type DecorationSet, type ViewUpdate, type EditorState,
 } from 'codemirror';
@@ -82,6 +82,25 @@ const dataUrlCollapse = ViewPlugin.fromClass(
   },
   { decorations: v => v.decorations },
 );
+
+// The Markdown dialect the editor's parser recognizes, kept in step with what
+// util/markdown.ts renders: CommonMark plus the GFM bundle (tables,
+// strikethrough, task lists, autolinks) and `:shortcode:` emoji. Not
+// @codemirror/lang-markdown's `markdownLanguage` base, which also turns on
+// Pandoc sub/superscript — syntax this app renders as literal text.
+const markdownDialect = markdown({ extensions: [GFM, Emoji] });
+
+// classHighlighter covers most of what the dialect above produces, but it has
+// no rule for tags.strikethrough, so `~~struck~~` would come out unmarked —
+// the one gap worth filling. (The other extension nodes inherit classes that
+// already exist: a table header cell is tok-heading, its `|` and a `~~` marker
+// are tok-meta, a `[x]` task marker is tok-atom, an autolink is tok-url, and an
+// emoji shortcode is tok-string.) Highlighters compose — the classes of every
+// matching one are concatenated — so this rides alongside classHighlighter and
+// likewise ships no colours of its own.
+const extraHighlighter = tagHighlighter([
+  { tag: highlightTags.strikethrough, class: 'tok-strikethrough' },
+]);
 
 function sortedSlugs(tags: Tag[]): string[] {
   return tags.map(t => t.slug).sort();
@@ -353,7 +372,8 @@ export function NoteEditor({ slug, initialSlug, initialTitle, onSave }: Props) {
         // stable `tok-*` classes and no colours of its own, so the palette lives
         // in app.css and follows the light/dark theme (see vendor/rebuild.sh).
         syntaxHighlighting(classHighlighter),
-        markdown(),
+        syntaxHighlighting(extraHighlighter),
+        markdownDialect,
         dataUrlCollapse,
         EditorView.updateListener.of((update) => {
           if (update.docChanged) handleDocChangeRef.current(update.state.doc.toString());

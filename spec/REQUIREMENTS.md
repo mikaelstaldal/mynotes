@@ -548,7 +548,7 @@ existing-note editor (`/notes/{slug}/edit`).
   editing); a tag picker (autocomplete over existing tags, plus an explicit
   "create tag" action — deriving a slug from the typed text — for a slug with no
   match, nudging toward reusing existing tags over creating near-duplicates); a
-  Markdown source editor with a
+  Markdown source editor with syntax highlighting and a
   live local preview; a "Link to note"
   picker that searches notes by title (not body content) and inserts a Markdown
   link to the chosen note's stable URL; Save and Cancel.

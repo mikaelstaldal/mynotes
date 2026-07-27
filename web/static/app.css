@@ -808,9 +808,14 @@ main.note-view-main {
    1.5:1 against the dark background.)
 
    Markdown yields a small subset of the token vocabulary: tok-meta for every
-   literal marker (#, **, `, >, -, and a link's []()), tok-heading, tok-strong,
-   tok-emphasis, tok-link, tok-url, tok-labelName (a fence's language) and
-   tok-comment. Markers carry their construct's class too — `#` is
+   literal marker (#, **, `, >, -, a link's []() and — with the GFM extensions
+   enabled — a table's |, a `~~` and a `[x]`'s brackets), tok-heading (also a
+   table's header cells), tok-strong, tok-emphasis, tok-link, tok-url (also a
+   bare autolinked URL/email), tok-labelName (a fence's language), tok-comment,
+   tok-atom (a task marker's [ ]/[x] state) and tok-string (an emoji
+   `:shortcode:`, a link title). tok-strikethrough is the one class
+   classHighlighter does not emit; NoteEditor.tsx adds a second highlighter for
+   it. Markers carry their construct's class too — `#` is
    `tok-heading tok-meta` — so tok-meta is declared last to win those ties and
    keep every marker one consistent colour. */
 .cm-content .tok-heading {
@@ -819,14 +824,23 @@ main.note-view-main {
 }
 .cm-content .tok-strong { font-weight: 700; }
 .cm-content .tok-emphasis { font-style: italic; }
+.cm-content .tok-strikethrough { text-decoration: line-through; }
 .cm-content .tok-link,
 .cm-content .tok-url { color: var(--link); }
 .cm-content .tok-labelName { color: var(--muted); }
+.cm-content .tok-string { color: var(--primary); }
 .cm-content .tok-comment {
   color: var(--muted);
   font-style: italic;
 }
 .cm-content .tok-meta { color: var(--muted); }
+/* The task marker is the whole `[x]`, brackets included, and carries only
+   tok-atom — no tok-meta tie to lose, so its position here is free. --primary
+   rather than --link: it is a state marker, not something to click. */
+.cm-content .tok-atom {
+  color: var(--primary);
+  font-weight: 600;
+}
 
 /* Subtle cursor line highlight */
 .cm-activeLine { background: transparent; }
