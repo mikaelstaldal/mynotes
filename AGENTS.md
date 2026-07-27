@@ -61,6 +61,46 @@ web/
 tools/dist-renderer.sh   # copies the render kit out for embedding in a native client
 ```
 
+## MyMail integration
+
+"Send as email" posts a note to a sibling
+[MyMail](https://github.com/mikaelstaldal/mymail) instance, whose URL `main.go`
+derives from `-public-url` (path replaced with `/mymail`) and hands to the
+frontend via an injected inline `<script>` setting `window.__serverConfig`
+(hash added to `script-src`). Same-origin, so no CSP or CORS work is needed.
+
+`web/ts/util/emailhtml.ts` rewrites the export fragment into an email body and
+reports, via `EmailBody.degraded`, what the body could not carry. That list
+drives whether `email.ts` attaches the standalone "Download HTML" document —
+attach on content loss (diagrams, formulas, icons, embedded graphics,
+unresolvable images), not on a substitution that preserves the information
+(unfolded callout, ☐/☑ checkbox, styling email cannot express). Because the
+renderer puts a Lucide icon in the title of every **alias** callout
+(`[!warning]`, …), notes using one always attach; `>-`/`>*`/`>+` boxes do not.
+Anything the
+placeholder text tells the reader to find "in the attached file" **must** report
+a degradation, or the body will reference a file that was never sent.
+**MyMail sanitizes what it sends** with `sanitize.OutgoingHTML`
+(`mymail/internal/sanitize.NewOutgoingPolicy`): a fixed element allowlist, no
+`class`, `<style>` dropped with its content, and a fixed CSS-property allowlist
+whose values may not contain escapes, comments, or any functional notation but
+`rgb()`/`hsl()`. So styles must be inline `style=` attributes drawn from that
+list (no `position`, no `display`, no `color-mix()`), and URLs must be absolute.
+
+MyMail's allowlist was widened for this path — per-side longhands
+(`border-left`, `padding-left`), `border-radius`, `list-style`, and the inert
+semantic elements are available. It was widened in **both** of MyMail's
+directions, not just outgoing, so a note emailed to a MyMail address arrives
+rendering exactly as sent; MyMail's `outgoingOnly*` lists are empty and should
+stay that way. Widening further is a change in both repos: MyMail's
+`cssAllowlist`/`allAllowedElements`, and the mirrored allowlists in
+`web/ts/email.test.mjs` here, which restates the policy and asserts the real
+rendered output against it.
+
+Within one style attribute a shorthand must precede the longhand refining it
+(`border` then `border-left`); MyMail preserves declaration order, pinned by its
+`TestDeclarationOrderPreserved`.
+
 ## Shared render kit
 
 Native clients (the Android app) do **not** re-implement the Markdown dialect;

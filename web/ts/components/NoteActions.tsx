@@ -4,7 +4,9 @@ import { navigate, currentPath } from '../router.js';
 import { base } from '../basepath.js';
 import { showToast } from '../util/toast.js';
 import { downloadNoteHtml, noteHtmlDocument } from '../util/export.js';
+import { mymailUrl } from '../util/serverconfig.js';
 import { SplitDialog } from './SplitDialog.js';
+import { EmailDialog } from './EmailDialog.js';
 import { Icon } from './Icon.js';
 
 interface Props {
@@ -24,7 +26,7 @@ interface Props {
   onSplit?: () => void;
 }
 
-// The per-note action toolbar (view, download, print, split, edit, delete)
+// The per-note action toolbar (view, download, print, email, split, edit, delete)
 // shared by the single-note read view and each row of the main-panel overview.
 // The delete and split handlers defer navigation/refresh to the caller via
 // onDeleted / onSplit so the same buttons behave correctly in both contexts.
@@ -32,6 +34,10 @@ export function NoteActions({ slug, title, toolbarClass, showView, onDeleted, on
   const [deleting, setDeleting] = useState(false);
   const [splitting, setSplitting] = useState(false);
   const [showSplit, setShowSplit] = useState(false);
+  const [showEmail, setShowEmail] = useState(false);
+  // Empty unless the server injected a sibling MyMail URL, which it only does
+  // for a path-scoped deployment; the email action is hidden otherwise.
+  const mymail = mymailUrl();
 
   // Print reuses the same standalone HTML document as Download HTML (built in
   // the browser, with Mermaid diagrams rendered and internal images inlined): it
@@ -143,6 +149,10 @@ export function NoteActions({ slug, title, toolbarClass, showView, onDeleted, on
         <a class="btn-icon" href={`${base}/api/v1/notes/${slug}/download-markdown`} title="Download Markdown" aria-label="Download Markdown"><Icon name="file-down" size={16} /></a>
         <button class="btn-icon" title="Download HTML" aria-label="Download HTML" onClick={handleDownloadHtml}>HTML</button>
         <button class="btn-icon" title="Print" aria-label="Print" onClick={handlePrint}><Icon name="printer" size={16} /></button>
+        {mymail && (
+          <button class="btn-icon" title="Send as email" aria-label="Send as email"
+            onClick={() => setShowEmail(true)}><Icon name="mail" size={16} /></button>
+        )}
         <button class="btn-icon" title="Split by headings" aria-label="Split by headings" onClick={() => setShowSplit(true)} disabled={splitting}><Icon name="scissors" size={16} /></button>
         <button class="btn-icon" title="Edit" aria-label="Edit" onClick={() => navigate(`/notes/${slug}/edit`, { returnTo: currentPath() })}><Icon name="pencil" size={16} /></button>
         <button class="danger btn-icon" onClick={handleDelete} disabled={deleting}
@@ -150,6 +160,9 @@ export function NoteActions({ slug, title, toolbarClass, showView, onDeleted, on
       </div>
       {showSplit && (
         <SplitDialog busy={splitting} onClose={() => setShowSplit(false)} onSplit={doSplit} />
+      )}
+      {showEmail && (
+        <EmailDialog slug={slug} title={title} mymailUrl={mymail} onClose={() => setShowEmail(false)} />
       )}
     </>
   );

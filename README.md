@@ -60,6 +60,22 @@ serves the UI under that subpath. The path may contain only `A-Z a-z 0-9 . _ ~
 - /`, since it is injected into the page's `<base href>`; the server refuses to
 start otherwise.
 
+## Sending a note as email
+
+A path-scoped `-public-url` additionally enables the
+[MyMail](https://github.com/mikaelstaldal/mymail) integration: MyNotes assumes a
+MyMail at `/mymail` on the same origin, so `https://example.com/mynotes` implies
+`https://example.com/mymail`. No extra flag is involved, and the feature is
+absent from the UI when nothing can be derived.
+
+With it enabled, each note's toolbar gains a **Send as email** action. The note
+goes out as an HTML formatted email built from the same render as *Download
+HTML*, with the body adapted to what email can carry (styles inlined, absolute
+URLs, diagrams and math degraded). If some of the note cannot survive that —
+a diagram, a formula, an icon, an image — the complete standalone `.html`
+document is attached as well; notes the body renders faithfully are sent
+without one.
+
 ## Importing from Google Docs
 
 The binary can bulk-import all your owned Google Docs as notes. When the two

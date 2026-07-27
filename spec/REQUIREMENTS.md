@@ -245,6 +245,29 @@ is packaged as an embeddable kit that native clients load in a web view.
   well-formed Markdown — every extension is a render-time transform over content
   stored verbatim.
 
+## MyMail integration
+
+MyNotes can hand a note to a sibling [MyMail](https://github.com/mikaelstaldal/mymail)
+instance to send it as an email (see **Send as email**). The integration mirrors
+the one MyCal has with MyMail.
+
+- **Zero configuration, derived from `-public-url`.** A MyMail deployed at
+  `/mymail` on the same origin is assumed: `https://example.com/mynotes` implies
+  `https://example.com/mymail`. Nothing is derived when `-public-url` is unset or
+  names the origin root — a MyNotes at the root leaves no room for siblings — and
+  the feature is then simply absent from the UI. There is no separate flag and no
+  user-facing setting.
+- The derived URL reaches the web UI through an inline `<script>` that the server
+  splices into `index.html`, setting `window.__serverConfig.mymailUrl`. The
+  script is JSON-encoded so no URL can terminate the surrounding element, and its
+  sha256 is added to the page's `script-src` (only that page's — the render kit's
+  host page never carries it).
+- Because MyMail is same-origin, the request needs no CSP relaxation
+  (`default-src 'self'` covers it), carries the shared Basic-Auth session, and
+  satisfies MyMail's Origin-based CSRF check.
+- The web UI posts to MyMail's `POST /api/v1/messages/send-with-attachments`.
+  MyNotes stores nothing about the message and provides no API of its own for it.
+
 ## Artifacts
 
 Binary content (images and other files) may be stored as artifacts and referenced in notes. Artifacts are content-addressed: the SHA-256 of the content is used as the identifier and in the URL, so uploading the same bytes twice returns the existing record unchanged.
@@ -346,6 +369,53 @@ The API manages notes keyed by slug. Operations:
   source note is left unchanged.
 - **Download Markdown** — `GET /notes/{slug}/download-markdown` returns the note as a `.md` file (filename derived from slug). The body is a YAML frontmatter block (`title`, `slug`, `date` — the note's `created_at` as an RFC 3339 UTC timestamp — and `tags`, an array of the note's tag slugs, omitted when the note has none) followed by the Markdown content soft-wrapped at column 80. Wrapping reflows only over-long top-level paragraph lines, inserting soft line breaks at word boundaries (never splitting a word, and never before a token that could start a block); headings, code, tables, blockquotes, and list items are left verbatim. Because a soft break inside a paragraph renders as a space, the wrapped download renders identically to the stored note. The frontmatter is round-trip compatible with the Markdown import feature (re-importing the downloaded file restores the same title, slug, creation date, and tags); a single newline separates the closing `---` from the content (the parsed body is the wrapped content, which renders identically to the original).
 - **Download HTML** — a **web-UI-only** feature (no server endpoint): the browser renders the note to a complete, standalone HTML document and downloads it as a `.html` file (filename derived from slug). It reuses the read-view render pipeline (markdown-it + DOMPurify, AsciiMath → MathML, inline Lucide icon `<svg>`) and additionally renders Mermaid diagrams to SVG, so the exported file matches the on-screen view — including diagrams, which a server render cannot produce. Internal artifact image references (`![alt](/api/v1/artifacts/{sha256})`) are fetched and inlined as base64 `data:` URLs so the document renders standalone, without a live server (an SVG loaded via `<img src="data:">` cannot execute script, so it stays inert); an artifact larger than 16 MiB is replaced by an inline broken-image icon, and unknown or unresolvable references are left as-is. A small embedded stylesheet approximates the read view; the current light/dark theme is baked into the downloaded file (a `data-theme` attribute on `<html>`, and dark-themed Mermaid SVG) so it looks like what the user saw. The **Print** action reuses the same generated document, loaded into an off-screen iframe whose print dialog is invoked, but is always exported light (dark on paper wastes ink and reads poorly); the embedded stylesheet additionally resets to light under `@media print`, so even a saved dark document prints light.
+- **Send as email** — a **web-UI-only** feature (no server endpoint) available
+  only when the MyMail integration is configured (see "MyMail integration"). The
+  note is sent as an HTML formatted email through the sibling MyMail instance,
+  built from the same render as **Download HTML**: the message **body** carries
+  the rendered note as HTML, and the `text/plain` alternative is the note's
+  Markdown source. Always exported light, for the same reason as **Print**: the
+  recipient's mail client supplies its own background.
+
+  The unmodified standalone document from **Download HTML** is **attached** as a
+  `.html` file **only when the body could not carry some of the note's content** —
+  that is, when it contains diagrams, formulas, icons, embedded graphics, or an
+  image whose source cannot be made absolute. A note the body reproduces
+  faithfully is sent without an attachment: a second copy of a note the recipient
+  can already read in full is noise, and it roughly doubles the size of the
+  message. A substitution that carries the same information in a different shape
+  (an unfolded callout, a checkbox rendered as ☐/☑, styling email cannot express)
+  does not trigger the attachment. Messages with an attachment go to MyMail's
+  `send-with-attachments` endpoint, the rest to `send`. The confirmation names
+  what was lost whenever the attachment is included.
+
+  Note that the renderer places a Lucide icon in the title of every **alias**
+  callout (`[!warning]`, `[!note]`, …), so any note using one counts as degraded
+  and is sent with the attachment. A box written without an alias (`>-`, `>*`,
+  `>+`) carries no icon and is not affected.
+
+  The body is adapted for email, because MyMail sanitizes what it sends (it
+  allows a fixed set of elements, no `class`, no `<style>` element, and a fixed
+  set of CSS properties) — which is also roughly how mail clients behave. The
+  adaptation: every rule of the export stylesheet is re-expressed as an inline
+  `style=` attribute; all links and image references are made absolute (a link
+  that cannot be, including a fragment-only one, keeps its text but loses its
+  href; an image that cannot be is dropped); Mermaid diagrams are replaced by a
+  note pointing at the attachment; MathML degrades to its text content in a
+  `<code>` span; inline Lucide icons are dropped (their labels remain in the
+  surrounding text); foldable callouts flatten to
+  always-expanded boxes; and task-list checkboxes become ☐/☑ characters.
+  Everything so removed is present in full in the attachment, which is exactly
+  why those removals are the ones that trigger it. Inlined artifact images
+  (`data:` URLs) are carried through unchanged.
+
+  MyMail's sanitization allowlist accommodates this path, so the email keeps
+  rounded corners, single-sided accent borders on callouts, and bullet-free task
+  lists. It does so symmetrically — MyMail renders on delivery everything it
+  permits on send — so a note emailed to a MyMail address (including your own)
+  arrives exactly as sent rather than stripped back. Styling MyMail permits in
+  neither direction — `position`, `display`, `opacity`, `<style>` elements — is
+  excluded on purpose and is unreliable in mail clients anyway.
 - **Import HTML** — `POST /import-html` accepts a `text/html` request body
   and converts it to Markdown server-side. The title is taken from the HTML
   `<title>` element; if absent, the plain text of the first `h1`–`h6` element is
@@ -444,14 +514,18 @@ existing-note editor (`/notes/{slug}/edit`).
   title, created/updated times, excerpt, and tags, ordered by the shared sort
   choice and paged with "Load more". Each row carries the same per-note action
   toolbar as the read view — "Download Markdown", "Download HTML", "Print",
-  "Split", "Edit", and "Delete" — acting on that row's note; delete and split
+  "Send as email" (only when MyMail is configured), "Split", "Edit", and
+  "Delete" — acting on that row's note; delete and split
   refresh the lists in place. Falls back to a "select or create a note" prompt
   only when the list is genuinely empty.
 - **Read view (main panel):** renders the note's Markdown safely into a styled
   container. The stored title is used as the browser tab title (not duplicated as
   a body heading). The note's tags are shown as chips; clicking one filters the
   sidebar list to that tag. "Edit", "Delete", "Split", "Print", "Download
-  Markdown", and "Download HTML" actions. "Split" opens a dialog with a tag
+  Markdown", "Download HTML", and — when MyMail is configured — "Send as email"
+  actions. "Send as email" opens a dialog with the recipient address and a
+  subject prefilled with the note's title; the note is rendered only on submit.
+  "Split" opens a dialog with a tag
   picker (the same autocomplete-or-create widget as the editor) to optionally
   choose or create a single tag, then splits the note by its top-level headings
   and navigates to the tag's note list (when a tag was chosen) or the first new

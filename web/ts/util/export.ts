@@ -183,7 +183,7 @@ const MAX_INLINE_IMAGE_BYTES = 16 << 20; // 16 MiB
 const BROKEN_IMAGE_SVG =
   '<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120" viewBox="0 0 24 24" fill="none" stroke="#888888" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><title>Broken image (too large to embed)</title><line x1="2" y1="2" x2="22" y2="22"/><path d="M10.41 10.41a2 2 0 1 1-2.83-2.83"/><line x1="13.5" y1="13.5" x2="6" y2="21"/><line x1="18" y1="12" x2="21" y2="15"/><path d="M3.59 3.59A1.99 1.99 0 0 0 3 5v14a2 2 0 0 0 2 2h14c.55 0 1.052-.22 1.41-.59"/><path d="M21 15V5a2 2 0 0 0-2-2H9"/></svg>';
 
-function escapeHtml(s: string): string {
+export function escapeHtml(s: string): string {
   return s
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
@@ -238,11 +238,11 @@ function stripSvgXmlns(container: HTMLElement): void {
   }
 }
 
-// Render a note to a complete, standalone HTML document string: the read-view
-// render plus Mermaid diagrams, with internal artifact images inlined. `dark`
-// bakes the dark theme into the document (a `data-theme` attribute on <html> and
-// dark-themed Mermaid SVG); when false the document is light.
-async function buildDocument(note: Note, dark: boolean): Promise<string> {
+// Render a note's content to a detached element holding the export-ready
+// fragment: the read-view render plus Mermaid diagrams, with internal artifact
+// images inlined. `dark` selects the Mermaid theme. Exported so the email path
+// (util/email.ts) can reuse the exact same fragment the download produces.
+export async function buildNoteFragment(note: Note, dark: boolean): Promise<HTMLElement> {
   const container = document.createElement('div');
   container.innerHTML = renderNote(note.content); // DOMPurify-sanitized
   // mermaid.render() attaches its own measurement node to document.body, so the
@@ -250,6 +250,13 @@ async function buildDocument(note: Note, dark: boolean): Promise<string> {
   await renderMermaidBlocks(container, dark ? 'dark' : 'default');
   await inlineArtifactImages(container);
   stripSvgXmlns(container);
+  return container;
+}
+
+// Wrap an export fragment in a complete, standalone HTML document. `dark` bakes
+// the dark theme into the document via a `data-theme` attribute on <html>; when
+// false the document is light.
+export function wrapNoteDocument(note: Note, container: HTMLElement, dark: boolean): string {
   return (
     `<!DOCTYPE html>\n<html lang="en"${dark ? ' data-theme="dark"' : ''}>\n<head>` +
     '<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">' +
@@ -257,6 +264,11 @@ async function buildDocument(note: Note, dark: boolean): Promise<string> {
     container.innerHTML +
     '</body>\n</html>\n'
   );
+}
+
+// Render a note to a complete, standalone HTML document string.
+async function buildDocument(note: Note, dark: boolean): Promise<string> {
+  return wrapNoteDocument(note, await buildNoteFragment(note, dark), dark);
 }
 
 // Fetch a note and return its standalone HTML document (used by the print flow).

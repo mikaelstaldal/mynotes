@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -211,10 +212,24 @@ func run(addr string, port int, dataDir, publicURL, basicAuthFile, basicAuthReal
 		return fmt.Errorf("read render/index.html: %w", err)
 	}
 
+	// MyMail integration: when this instance is deployed under a path (e.g.
+	// https://example.com/mynotes), a MyMail at /mymail on the same origin is
+	// assumed, and its base URL is handed to the web UI through an injected
+	// inline <script>. The UI shows its "Send as email" action only when this
+	// is set. The extra script needs its own script-src hash — only in the SPA
+	// shell's policy, since the render kit's host page never carries it.
+	var configScriptSrc string
+	if mymailURL := deriveMymailURL(publicURL); mymailURL != "" {
+		configScript := serverConfigScript(mymailURL)
+		configScriptSrc = " " + inlineScriptCSPHash(configScript)
+		indexHTML = injectInlineScript(indexHTML, configScript)
+		log.Printf("MyMail integration enabled, using %s", mymailURL)
+	}
+
 	cspCommon := "default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; " +
 		"base-uri 'self'; form-action 'self'; object-src 'none'; script-src 'self' " +
 		importMapHash + " " + renderImportMapHash
-	csp := cspCommon + "; frame-ancestors 'none'"
+	csp := cspCommon + configScriptSrc + "; frame-ancestors 'none'"
 	// The render kit is an embeddable page (see web/static/render/index.html), so
 	// it — and only it — may be framed by a sibling app deployed on this same
 	// origin. Cross-origin framing stays blocked, and the app's own pages remain unframeable.
@@ -366,6 +381,59 @@ func basePathFromPublicURL(publicURL string) (string, error) {
 		p += "/"
 	}
 	return p, nil
+}
+
+// deriveSiblingURL returns the base URL of a sibling app served from the same
+// origin, derived from publicURL by replacing its path with siblingPath.
+// Returns the empty string if publicURL is empty or has no path segment — a
+// MyNotes deployed at the origin root leaves no room for siblings, so nothing
+// is assumed about them. Mirrors the same helper in MyCal.
+func deriveSiblingURL(publicURL, siblingPath string) string {
+	if publicURL == "" {
+		return ""
+	}
+	u, err := url.Parse(publicURL)
+	if err != nil || strings.Trim(u.Path, "/") == "" {
+		return ""
+	}
+	u.Path = siblingPath
+	u.RawQuery = ""
+	u.Fragment = ""
+	return u.String()
+}
+
+// deriveMymailURL returns the MyMail base URL derived from publicURL. The web
+// UI posts to it to send a note as an email; being same-origin, the request is
+// covered by the CSP's default-src 'self' and by MyMail's own CSRF check.
+func deriveMymailURL(publicURL string) string {
+	return deriveSiblingURL(publicURL, "/mymail")
+}
+
+// serverConfigScript returns an inline JS snippet that sets window.__serverConfig.
+// The snippet is spliced into index.html verbatim, so the values must not be able
+// to terminate the surrounding <script> element. json.Marshal emits <, > and &
+// as Unicode escapes (HTML escaping is on by default), which makes that
+// impossible — do not replace it with an encoder that has SetEscapeHTML(false).
+func serverConfigScript(mymailURL string) string {
+	mymail, _ := json.Marshal(mymailURL)
+	return "window.__serverConfig={mymailUrl:" + string(mymail) + "};"
+}
+
+// inlineScriptCSPHash returns the CSP script-src source expression for an inline
+// script, e.g. "'sha256-2dMPOkkMmKtAjCeEV6Gzv1oxQr4LXNRZ3gftHIzHZ0Y='".
+func inlineScriptCSPHash(script string) string {
+	sum := sha256.Sum256([]byte(script))
+	return "'sha256-" + base64.StdEncoding.EncodeToString(sum[:]) + "'"
+}
+
+// injectInlineScript splices script into indexHTML as an inline <script> just
+// before </head>. Returns indexHTML unchanged when script is empty.
+func injectInlineScript(indexHTML []byte, script string) []byte {
+	if script == "" {
+		return indexHTML
+	}
+	return bytes.Replace(indexHTML, []byte("</head>"),
+		[]byte("<script>"+script+"</script>\n</head>"), 1)
 }
 
 func printVersion() {

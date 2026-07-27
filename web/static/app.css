@@ -1080,7 +1080,8 @@ main.note-view-main {
 
 /* ── Split dialog ───────────────────────────────────────────────── */
 
-.split-overlay {
+.split-overlay,
+.email-overlay {
   position: fixed;
   inset: 0;
   background: rgba(0, 0, 0, 0.4);
@@ -1091,7 +1092,8 @@ main.note-view-main {
   z-index: 600;
 }
 
-.split-dialog {
+.split-dialog,
+.email-dialog {
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -1100,12 +1102,14 @@ main.note-view-main {
   padding: 1.25rem;
 }
 
-.split-title {
+.split-title,
+.email-title {
   margin: 0 0 0.5rem;
   font-size: 1.1rem;
 }
 
-.split-body {
+.split-body,
+.email-body {
   margin: 0 0 1rem;
   color: var(--muted);
 }
@@ -1118,11 +1122,33 @@ main.note-view-main {
   align-items: center;
 }
 
-.split-actions {
+.split-actions,
+.email-actions {
   display: flex;
   justify-content: flex-end;
   gap: 0.5rem;
   margin-top: 1.25rem;
+}
+
+.email-field {
+  display: block;
+  margin-bottom: 0.75rem;
+}
+
+.email-field > span {
+  display: block;
+  margin-bottom: 0.25rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.email-field > input {
+  width: 100%;
+}
+
+.email-error {
+  margin: 0.75rem 0 0;
+  color: var(--danger);
 }
 
 /* ── Markdown help popup ─────────────────────────────────────────── */
