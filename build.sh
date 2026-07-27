@@ -34,7 +34,12 @@ run go generate ./...
 # 2. Generate the TypeScript API types from the OpenAPI spec.
 run openapi-typescript openapi.yaml -o web/ts/api/types.ts
 
-# 3. Compile the TypeScript frontend to web/static/.
+# 3. Unpack the committed TypeScript declarations for the vendored runtime
+#    (idempotent — no-op if already present). tsc needs these to resolve
+#    'markdown-it', 'dompurify' and the CodeMirror re-exports.
+run web/ts/vendor/unpack.sh
+
+# 3a. Compile the TypeScript frontend to web/static/.
 run tsc --project web/ts/tsconfig.json
 
 # 3b. Compile the demo-mode service worker (worker code, built against the

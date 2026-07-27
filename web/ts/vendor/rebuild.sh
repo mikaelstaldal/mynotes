@@ -231,6 +231,56 @@ node "$VENDOR_DIR/gen-lucide.mjs" \
   "$LUCIDE_SRC/icons" \
   "$LUCIDE_SRC/categories"
 
+# --- 1b. TypeScript declarations for the vendored runtime -------------------
+#
+# The bundles above carry no type information, and this vendor dir's
+# node_modules is throwaway (gitignored), so a clean checkout has nothing for
+# tsc to resolve 'markdown-it', 'dompurify', or codemirror.d.ts's re-exports
+# against. Vendor just the declarations — package.json for module resolution,
+# *.d.ts/*.d.mts/*.d.cts, and LICENSE — as ONE deterministic tarball, the same
+# treatment jsdom gets below. No JavaScript goes in, and nothing from it
+# reaches the browser; web/ts/vendor/unpack.sh (tar only, no npm) restores it
+# at build time.
+#
+# The package list is the closure tsc actually needs: the two mapped in
+# tsconfig.json's `paths`, the five CodeMirror packages codemirror.d.ts
+# re-exports from, and what those pull in. If a future tsconfig path or .d.ts
+# stub reaches into a package that is not here, build.sh fails from a clean
+# checkout with TS2307 — add it to this list.
+TYPES_PACKAGES=(
+  "@types/markdown-it" "@types/linkify-it" "@types/mdurl" "@types/trusted-types"
+  uc.micro dompurify
+  "@codemirror/view" "@codemirror/state" "@codemirror/commands"
+  "@codemirror/language" "@codemirror/lang-markdown"
+  style-mod w3c-keyname crelt
+  "@lezer/common" "@lezer/highlight" "@lezer/lr" "@lezer/markdown"
+  "@marijn/find-cluster-break"
+)
+
+TYPES_STAGE="$WORK_DIR/types-stage"
+rm -rf "$TYPES_STAGE"
+for pkg in "${TYPES_PACKAGES[@]}"; do
+  src="$VENDOR_DIR/node_modules/$pkg"
+  if [ ! -d "$src" ]; then
+    echo "rebuild.sh: $pkg is not installed — is it still a dependency?" >&2
+    exit 1
+  fi
+  mkdir -p "$TYPES_STAGE/node_modules/$pkg"
+  ( cd "$src" \
+    && find . -type f \( -name 'package.json' -o -name '*.d.ts' -o -name '*.d.mts' \
+         -o -name '*.d.cts' -o -name 'LICENSE*' \) -print0 \
+    | tar --null -T - -cf - ) \
+    | ( cd "$TYPES_STAGE/node_modules/$pkg" && tar -xf - )
+done
+
+# --sort/--mtime/--numeric-owner + `gzip -n` make the archive byte-identical
+# across rebuilds, so an unchanged tree is no-diff in git.
+( cd "$TYPES_STAGE" \
+  && tar --sort=name --owner=0 --group=0 --numeric-owner --mtime='UTC 2020-01-01' \
+       -cf - node_modules | gzip -n -9 > "$VENDOR_DIR/types-node_modules.tar.gz" )
+rm -rf "$TYPES_STAGE"
+echo "Wrote $VENDOR_DIR/types-node_modules.tar.gz"
+
 # --- 2. Test-only jsdom bundle (never shipped to the browser) ---------------
 #
 # Kept in its own throwaway install, isolated from the browser deps above, so

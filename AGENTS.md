@@ -30,8 +30,22 @@ CI. `esbuild` and `npm` are required only by `web/ts/vendor/rebuild.sh`, a
 separate, manually-run maintainer script that pre-builds the vendored
 CodeMirror/markdown-it/DOMPurify bundles, the emoji dataset
 (`web/static/vendor/emoji-<version>.js`, generated from `emojibase-data` by the committed
-`gen-emoji.mjs`), and the test-only jsdom bundle, and commits the result; it is
-out-of-band, not invoked by `build.sh` or CI.
+`gen-emoji.mjs`), the TypeScript declarations those bundles do not carry
+(`web/ts/vendor/types-node_modules.tar.gz`), and the test-only jsdom bundle, and
+commits the result; it is out-of-band, not invoked by `build.sh` or CI.
+
+`web/ts/vendor/node_modules/` is throwaway and gitignored, so the two things
+`tsc` and the tests need from it are vendored as committed tarballs that
+`build.sh` restores with `tar` alone: `web/ts/vendor/unpack.sh` (declarations —
+`package.json`, `*.d.ts`, LICENSE; no JavaScript, nothing reaching the browser)
+and `web/ts/vendor/test/unpack.sh` (jsdom). Both are no-ops on a machine where
+`rebuild.sh` has installed the real tree. A clean checkout must build with
+`./build.sh` and nothing else — if a new tsconfig `paths` entry or `.d.ts` stub
+reaches into a package the declarations tarball lacks, that breaks, so add the
+package to `TYPES_PACKAGES` in `rebuild.sh` and regenerate.
+
+CI (`.github/workflows/pages.yml`) builds on every push to `main` and publishes
+the browser demo to GitHub Pages.
 
 The database is created automatically on first start under `<data>/mynotes.sqlite`.
 
