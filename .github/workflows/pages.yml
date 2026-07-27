@@ -52,7 +52,7 @@ jobs:
       # source — see README § Demo mode.
       - name: Configure Pages
         id: pages
-        uses: actions/configure-pages@v5
+        uses: actions/configure-pages@v6
 
       # Silent on success; on failure it prints the failing step and exits
       # non-zero, which fails the job before anything is published.
@@ -77,7 +77,7 @@ jobs:
           fi
           ./mynotes -demo-bundle site -public-url "$PAGES_URL"
 
-      - uses: actions/upload-pages-artifact@v4
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: site
 
@@ -89,4 +89,4 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
