@@ -42,7 +42,7 @@ body {
   align-items: stretch;
   gap: 0.6rem;
   flex: none;
-  margin-bottom: 0.75rem;
+  margin: 0 0.75rem 0.75rem;
   border-bottom: 1px solid var(--border);
 }
 
@@ -58,6 +58,9 @@ body {
   overflow: hidden;
 }
 
+/* No horizontal padding of its own — the inset is applied by the header, the
+   footer and .sidebar-content instead, so the notes list can cancel it (see
+   .notes-list) and paint the active row's highlight edge to edge. */
 .sidebar {
   width: 420px;
   flex-shrink: 0;
@@ -66,7 +69,7 @@ body {
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  padding: 0.75rem;
+  padding: 0.75rem 0;
 }
 
 /* The header row stays put; this wrapper holds each tab's content below it. It
@@ -79,6 +82,7 @@ body {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  padding: 0 0.75rem;
 }
 
 /* Tags tab: the whole list is the scroll region within the sidebar content. */
@@ -90,23 +94,37 @@ body {
 
 /* Notes tab: split the list into fixed controls + a scrolling rows region, so
    the search inputs, sort, tag filter and note count stay put while only the
-   rows scroll — and the scrollbar sits beside the rows alone. */
+   rows scroll — and the scrollbar sits beside the rows alone.
+   The negative margin cancels .sidebar-content's inset so the list spans the
+   panel edge to edge (clipping is at the padding box, so nothing is cut off);
+   the inset is re-applied to the controls and to each row, leaving the active
+   row's highlight and the row dividers full-width. */
 .notes-list {
   flex: 1;
   min-height: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  margin: 0 -0.75rem;
 }
 
 .notes-list-controls {
   flex: none;
+  padding: 0 0.75rem;
 }
 
+/* Padded so the loading/empty messages and the "Load more" button keep the
+   sidebar's inset; the row list alone bleeds back out to the panel edge (each
+   row carries the inset as padding instead — see .notes-list-scroll .note-row). */
 .notes-list-scroll {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  padding: 0 0.75rem;
+}
+
+.notes-list-scroll > ul {
+  margin: 0 -0.75rem;
 }
 
 /* Graph tab: the rendered diagram scrolls on both axes within the 420px sidebar
@@ -367,6 +385,14 @@ ul { list-style: none; padding: 0; margin: 0; }
   gap: 0.1rem;
   padding: 0.6rem 0;
   position: relative;
+}
+
+/* Sidebar rows carry the panel's horizontal inset themselves, so the active
+   row's background and the dividers between rows span the panel's full width
+   while the text stays aligned with the controls above. */
+.notes-list-scroll .note-row {
+  padding-left: 0.75rem;
+  padding-right: 0.75rem;
 }
 
 .note-row .link { grid-area: title; font-size: 1rem; }
@@ -1415,7 +1441,7 @@ main.note-view-main {
    sidebar content and above the sidebar's bottom edge, visible on every tab. */
 .sidebar-footer {
   flex: none;
-  margin-top: 0.75rem;
+  margin: 0.75rem 0.75rem 0;
   padding-top: 0.75rem;
   border-top: 1px solid var(--border);
 }
