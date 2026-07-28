@@ -40,6 +40,28 @@ HTML").
 Constructs that are sometimes assumed to be GFM but are not part of the
 GFM spec — footnotes and definition lists — are likewise not interpreted.
 
+## Subscript and superscript (Pandoc)
+
+One [Pandoc](https://pandoc.org/MANUAL.html#superscripts-and-subscripts)
+extension beyond CommonMark and the GFM subset above is interpreted:
+
+| Syntax | Renders as |
+| --- | --- |
+| `H~2~O` | `H<sub>2</sub>O` |
+| `2^10^` | `2<sup>10</sup>` |
+
+As in Pandoc, the text between the delimiters may not contain **unescaped
+whitespace**, which keeps ordinary prose using a lone `~` or `^` (`5 ~ 6`,
+`a ^ b`, a file path, a caret in code-like text) literal. A space is written
+`\ ` (backslash-space); `\~` and `\^` are literal delimiters. Unlike Pandoc, the
+content is parsed as inline Markdown, so the two nest (`x^y~z~^`) and may
+contain other inline constructs.
+
+A delimiter that belongs to another inline construct does not close a sub or
+superscript: in `` ~a`b~c`d `` the `~` inside the code span is part of the code
+span, and in `x^2=$a^b$` the `^` inside the math span is part of the math. A
+`~~…~~` pair is GFM strikethrough, not two subscripts.
+
 ## Math (AsciiMath)
 
 [AsciiMath](https://asciimath.org) written between single dollars (`$x^2$`)

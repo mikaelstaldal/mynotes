@@ -19,9 +19,14 @@ var (
 	// mdWikiLinkRE matches internal wikilinks ([[slug]], [[slug|text]],
 	// [[#slug]], [[#slug|text]]); mirrors WIKI_LINK_RE in web/ts/util/markdown.ts.
 	// Groups: 1=sigil ("#" for a tag), 2=slug, 3=optional display label.
-	mdWikiLinkRE    = regexp.MustCompile(`\[\[(#?)([a-z0-9]+(?:-[a-z0-9]+)*)(?:\|([^\]\n]+))?\]\]`)
-	mdCodeRE        = regexp.MustCompile("`+([^`]*)`+")
-	mdStrikeRE      = regexp.MustCompile(`~~([^~]*)~~`)
+	mdWikiLinkRE = regexp.MustCompile(`\[\[(#?)([a-z0-9]+(?:-[a-z0-9]+)*)(?:\|([^\]\n]+))?\]\]`)
+	mdCodeRE     = regexp.MustCompile("`+([^`]*)`+")
+	mdStrikeRE   = regexp.MustCompile(`~~([^~]*)~~`)
+	// mdSubRE and mdSupRE match the Pandoc sub/superscript spans (~x~, ^x^),
+	// which carry no whitespace. Applied after mdStrikeRE, so a "~~" pair has
+	// already been consumed as strikethrough.
+	mdSubRE         = regexp.MustCompile(`~([^~\s]+)~`)
+	mdSupRE         = regexp.MustCompile(`\^([^^\s]+)\^`)
 	mdOrderedListRE = regexp.MustCompile(`^\d+\.\s+`)
 	mdHRuleRE       = regexp.MustCompile(`^[-*_]{3,}\s*$`)
 	// mdTableCellRE matches a single GFM table delimiter cell (e.g. "---",
@@ -893,8 +898,10 @@ func plainExcerpt(probe string) string {
 		line = mdLinkRE.ReplaceAllString(line, "$1")
 		// Remove inline code backticks (keep content)
 		line = mdCodeRE.ReplaceAllString(line, "$1")
-		// Remove strikethrough
+		// Remove strikethrough, then sub/superscript
 		line = mdStrikeRE.ReplaceAllString(line, "$1")
+		line = mdSubRE.ReplaceAllString(line, "$1")
+		line = mdSupRE.ReplaceAllString(line, "$1")
 		// Remove bold/italic markers (order: *** → ** → *)
 		line = strings.ReplaceAll(line, "***", "")
 		line = strings.ReplaceAll(line, "**", "")

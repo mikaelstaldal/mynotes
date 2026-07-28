@@ -851,6 +851,12 @@ main.note-view-main {
 .cm-content .tok-strong { font-weight: 700; }
 .cm-content .tok-emphasis { font-style: italic; }
 .cm-content .tok-strikethrough { text-decoration: line-through; }
+.cm-content .tok-subscript,
+.cm-content .tok-superscript {
+  font-size: 0.75em;
+}
+.cm-content .tok-subscript { vertical-align: sub; }
+.cm-content .tok-superscript { vertical-align: super; }
 .cm-content .tok-link,
 .cm-content .tok-url { color: var(--link); }
 .cm-content .tok-labelName { color: var(--muted); }

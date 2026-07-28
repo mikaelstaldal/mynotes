@@ -109,6 +109,8 @@ test('text carrying Markdown syntax is escaped', () => {
   // '>' is deliberately not escaped: blockquote syntax only triggers at line start.
   assert.equal(md('<p>&lt;script&gt;alert(1)&lt;/script&gt;</p>'),
     '\\<script>alert(1)\\</script>');
+  // The sub/superscript delimiters, so imported text does not become markup.
+  assert.equal(md('<p>H~2~O and a^b^c</p>'), 'H\\~2\\~O and a\\^b\\^c');
 });
 
 test('hr and br become their Markdown forms', () => {

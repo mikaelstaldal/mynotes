@@ -162,6 +162,12 @@ test('plainExcerpt takes the first non-heading line and strips inline syntax', (
   assert.equal(plainExcerpt('> Quoted line'), 'Quoted line');
 });
 
+test('plainExcerpt strips sub/superscript but leaves lone markers', () => {
+  assert.equal(plainExcerpt('C~n~H~2n+2~ is an alkane.'), 'CnH2n+2 is an alkane.');
+  assert.equal(plainExcerpt('The 2^nd^ and 3^rd^ items.'), 'The 2nd and 3rd items.');
+  assert.equal(plainExcerpt('5 ~ 6 and a ^ b'), '5 ~ 6 and a ^ b');
+});
+
 test('plainExcerpt renders links and wikilinks as their text', () => {
   assert.equal(plainExcerpt('See [the docs](https://example.com).'), 'See the docs.');
   assert.equal(plainExcerpt('See [[my-note|My Note]].'), 'See My Note.');

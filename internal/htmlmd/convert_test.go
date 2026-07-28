@@ -341,6 +341,12 @@ func TestConvert(t *testing.T) {
 			wantTitle:   "",
 			wantContent: `\!`,
 		},
+		{
+			name:        "tilde and caret escaped",
+			html:        `<p>H2O is not H~2~O and a^b^c</p>`,
+			wantTitle:   "",
+			wantContent: `H2O is not H\~2\~O and a\^b\^c`,
+		},
 
 		// ── Body-only: head content ignored ─────────────────────────────────
 		{

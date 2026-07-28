@@ -374,6 +374,37 @@ func TestBrowseExcerptStripsWikiLinks(t *testing.T) {
 	}
 }
 
+func TestBrowseExcerptStripsInlineMarkup(t *testing.T) {
+	ctx := context.Background()
+	repo := NewNoteRepository(newTestDB(t))
+
+	cases := []struct {
+		slug, content, want string
+	}{
+		{"strike-note", "A ~~struck~~ word.", "A struck word."},
+		{"sub-note", "C~n~H~2n+2~ is an alkane.", "CnH2n+2 is an alkane."},
+		{"sup-note", "The 2^nd^ and 3^rd^ items.", "The 2nd and 3rd items."},
+		// No unescaped whitespace between the delimiters, so a lone marker in
+		// prose is left alone — as the renderer leaves it literal.
+		{"loose-note", "5 ~ 6 and a ^ b", "5 ~ 6 and a ^ b"},
+	}
+	for _, c := range cases {
+		_, err := repo.Create(ctx, c.slug, c.slug, c.content)
+		require.NoError(t, err)
+	}
+
+	notes, _, err := repo.List(ctx, "", nil, false, "updated", "desc", 50, 0)
+	require.NoError(t, err)
+	bySlug := map[string]string{}
+	for _, n := range notes {
+		bySlug[n.Slug] = n.Excerpt
+	}
+
+	for _, c := range cases {
+		assert.Equal(t, c.want, bySlug[c.slug])
+	}
+}
+
 func TestSearchMatchesAndSnippet(t *testing.T) {
 	ctx := context.Background()
 	repo := NewNoteRepository(newTestDB(t))

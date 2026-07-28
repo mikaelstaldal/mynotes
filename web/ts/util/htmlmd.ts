@@ -460,7 +460,7 @@ function escapeHTML(s: string): string {
 function escapeMarkdownText(s: string): string {
   let out = '';
   for (const ch of s) {
-    if ('\\*_`[]~<!|'.includes(ch)) out += '\\';
+    if ('\\*_`[]~^<!|'.includes(ch)) out += '\\';
     out += ch;
   }
   return out;

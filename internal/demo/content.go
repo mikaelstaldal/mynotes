@@ -51,6 +51,12 @@ You can write **bold**, *italic*, ***bold italic***, ` + "`inline code`" + `, an
 ~~strikethrough~~ text. Bare URLs auto-link: https://example.com, and so do
 email addresses: hello@example.com.
 
+Subscript and superscript use the Pandoc form ` + "`~sub~`" + ` and ` + "`^sup^`" + `:
+water is H~2~O, C~n~H~2n+2~ is an alkane, 2^10^ = 1024, and this is the 2^nd^
+example. Neither may hold an unescaped space; put a backslash before one to keep
+it, as in ~a\ subscript\ phrase~. So a stray ` + "`~`" + ` or ` + "`^`" + ` in
+ordinary prose stays literal. The two nest: x^y~z~^.
+
 ## Headings
 
 Use ` + "`#`" + ` through ` + "`######`" + ` for the six heading levels.
@@ -145,6 +151,7 @@ func main() {
 | ------------ | :-------: | ------------------------- |
 | Tables       |    ✅     | GFM pipe tables           |
 | Strikethrough|    ✅     | ` + "`~~text~~`" + `                 |
+| Sub/superscript |  ✅   | ` + "`~sub~`" + ` and ` + "`^sup^`" + `      |
 | Autolinks    |    ✅     | bare URLs and emails      |
 | Task lists   |    ✅     | ` + "`- [ ]`" + ` and ` + "`- [x]`" + `        |
 

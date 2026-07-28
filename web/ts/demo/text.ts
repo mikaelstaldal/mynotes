@@ -380,6 +380,13 @@ const MD_IMAGE_RE = /!\[[^\]]*\]\([^)]*\)/g;
 const MD_LINK_RE = /\[([^\]]*)\]\([^)]*\)/g;
 const MD_CODE_RE = /`+([^`]*)`+/g;
 const MD_STRIKE_RE = /~~([^~]*)~~/g;
+/**
+ * The Pandoc sub/superscript spans (~x~, ^x^), which carry no whitespace.
+ * Applied after MD_STRIKE_RE, so a "~~" pair is already consumed as
+ * strikethrough. Mirrors repository.mdSubRE / mdSupRE.
+ */
+const MD_SUB_RE = /~([^~\s]+)~/g;
+const MD_SUP_RE = /\^([^^\s]+)\^/g;
 const MD_ORDERED_LIST_RE = /^\d+\.\s+/;
 const MD_HRULE_RE = /^[-*_]{3,}\s*$/;
 const MD_TABLE_CELL_RE = /^:?-+:?$/;
@@ -446,6 +453,8 @@ function plainExcerpt(probe: string): string {
     line = line.replace(MD_LINK_RE, '$1');
     line = line.replace(MD_CODE_RE, '$1');
     line = line.replace(MD_STRIKE_RE, '$1');
+    line = line.replace(MD_SUB_RE, '$1');
+    line = line.replace(MD_SUP_RE, '$1');
     line = line.split('***').join('').split('**').join('').split('__').join('').split('*').join('');
     line = line.trim();
     if (line === '') continue;

@@ -822,3 +822,65 @@ test('emoji shortcode is not transformed inside a fenced code block', () => {
   assertPresent(out, ':rocket:', 'fence keeps the literal shortcode');
   assertAbsent(out, '🚀', 'no emoji inside fence');
 });
+
+// ---------------------------------------------------------------------------
+// Subscript and Superscript — ~H~2~O~ / ^2^10^
+// ---------------------------------------------------------------------------
+
+test('basic subscript (~…~) renders as <sub>', () => {
+  const out = renderNote('H~2~O');
+  assertPresent(out, 'H<sub>2</sub>O', 'sub tag rendered');
+});
+
+test('basic superscript (^…^) renders as <sup>', () => {
+  const out = renderNote('2^10^');
+  assertPresent(out, '2<sup>10</sup>', 'sup tag rendered');
+});
+
+test('nesting sub and sup works (^…~…~^ and ~…^…^~)', () => {
+  assertPresent(renderNote('x^y~z~^'), 'x<sup>y<sub>z</sub></sup>', 'sup contains sub');
+  assertPresent(renderNote('a~b^c^~'), 'a<sub>b<sup>c</sup></sub>', 'sub contains sup');
+});
+
+test('Pandoc rule: unescaped space stays literal', () => {
+  assertPresent(renderNote('~a cat~'), '~a cat~', 'unescaped space');
+  assertAbsent(renderNote('~a cat~'), '<sub>', 'no sub for unescaped space');
+});
+
+test('Pandoc rule: escaped space renders as space inside <sub>', () => {
+  const out = renderNote('~a\\ cat~');
+  assertPresent(out, '<sub>a cat</sub>', 'escaped space rendered');
+});
+
+test('escaped delimiters stay literal', () => {
+  assertPresent(renderNote('\\~not sub\\~'), '~not sub~', 'escaped ~');
+  assertAbsent(renderNote('\\~not sub\\~'), '<sub>', 'no sub');
+  assertPresent(renderNote('\\^not sup\\^'), '^not sup^', 'escaped ^');
+  assertAbsent(renderNote('\\^not sup\\^'), '<sup>', 'no sup');
+});
+
+test('sub/sup inside a code span stays literal', () => {
+  assertPresent(renderNote('`~sub~`'), '~sub~', 'literal inside code');
+  assertAbsent(renderNote('`~sub~`'), '<sub>', 'no sub inside code');
+});
+
+test('escaped tab renders as a tab inside <sub>', () => {
+  assertPresent(renderNote('~a\\\tb~'), '<sub>a\tb</sub>', 'escaped tab rendered, no stray backslash');
+});
+
+test('a delimiter belonging to a code span does not close a sub/sup', () => {
+  // The '~' at index 4 is inside `b~c`, so nothing here is a subscript.
+  const out = renderNote('~a`b~c`d');
+  assertAbsent(out, '<sub>', 'the code span wins');
+  assertPresent(out, '<code>b~c</code>', 'code span intact');
+});
+
+test('a delimiter belonging to an inline math span does not close a sub/sup', () => {
+  const out = renderNote('x^2=$a^b$');
+  assertAbsent(out, '<sup>', 'the math span wins');
+  assertPresent(out, '<math', 'math rendered');
+});
+
+test('a ~~ pair is strikethrough, not two subscripts', () => {
+  assertPresent(renderNote('~~struck~~'), '<s>struck</s>', 'strikethrough wins over sub');
+});

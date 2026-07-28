@@ -68,6 +68,15 @@ identity exists but is never exposed as the URL key.
 - Supported syntax: CommonMark plus GFM tables, strikethrough, task lists, and
   autolinks; bare URLs/emails auto-link; images render. Task-list markers
   (`- [ ]` / `- [x]`) render as disabled (read-only) checkboxes.
+- **Subscript and superscript:** the Pandoc form — `H~2~O` renders as
+  `H<sub>2</sub>O` and `2^10^` as `2<sup>10</sup>`. As in Pandoc, the text
+  between the delimiters may not contain unescaped whitespace, so ordinary prose
+  using a lone `~` or `^` stays literal; a space is written `\ ` and a literal
+  delimiter `\~` / `\^`. The content is parsed as inline Markdown, so the two
+  nest (`x^y~z~^`). A delimiter that belongs to another inline construct (a code
+  span, an inline math span) does not close the sub/superscript, and a `~~…~~`
+  pair is strikethrough. The editor toolbar has subscript and superscript
+  buttons that wrap the selection in `~…~` / `^…^`.
 - Inline SVG and MathML embedded directly in Markdown HTML blocks are allowed;
   scripts, event handlers, `<foreignObject>`, `<use>`, `<style>`, and other
   unsafe constructs are rejected at write time.

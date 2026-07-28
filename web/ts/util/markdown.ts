@@ -579,6 +579,71 @@ md.renderer.rules.math_inline = (tokens, idx) => renderMathML(tokens[idx].conten
 md.renderer.rules.math_display = (tokens, idx) => renderMathML(tokens[idx].content, true);
 md.renderer.rules.math_block = (tokens, idx) => renderMathML(tokens[idx].content, true) + '\n';
 
+// Whitespace that is not backslash-escaped: an even number of backslashes (none
+// included) before it. Mirrors markdown-it-sub/markdown-it-sup.
+const UNESCAPED_SPACE_RE = /(^|[^\\])(\\\\)*\s/;
+
+// Subscript (H~2~O) and Superscript (2^10^). Pandoc-style: unescaped whitespace
+// between the delimiters is not allowed, so ordinary prose using a lone `~` or
+// `^` stays literal; `\ ` is the way to get a space in. Nesting is supported
+// (~sub^sup^~) — unlike markdown-it-sub/sup, which emit their content as plain
+// text, the content here is parsed as inline Markdown. Escaped delimiters (\~,
+// \^) stay literal.
+//
+// The scan for the closing delimiter advances with `inline.skipToken`, as
+// markdown-it-sub/sup do, rather than character by character: a delimiter that
+// belongs to another inline construct — a code span, an inline math span, an
+// escape — is stepped over as part of that construct instead of closing the
+// sub/sup, so `` ~a`b~c`d `` and `x^2=$a^b$` keep their code span and their
+// math. That makes the rule's position in the inline ruler matter: it is
+// registered after `emphasis` (again as markdown-it-sub/sup do) so that every
+// rule whose token may contain a `~`/`^` — backticks, strikethrough, emphasis,
+// and the math rules registered after `escape` — is tried first while skipping.
+function subSup(state: any, silent: boolean, delim: number, tag: string): boolean {
+  const start = state.pos;
+  const max = state.posMax;
+  if (state.src.charCodeAt(start) !== delim) return false;
+  // Never consumed while another rule scans with skipToken: a nested ~…~/^…^ is
+  // parsed when this rule's own content is parsed, not while looking for its end.
+  if (silent) return false;
+
+  let found = false;
+  state.pos = start + 1;
+  while (state.pos < max) {
+    if (state.src.charCodeAt(state.pos) === delim) {
+      found = true;
+      break;
+    }
+    state.md.inline.skipToken(state);
+  }
+
+  const raw = found ? state.src.slice(start + 1, state.pos) : '';
+  if (!found || raw === '' || UNESCAPED_SPACE_RE.test(raw)) {
+    state.pos = start;
+    return false;
+  }
+
+  const end = state.pos;
+  state.push(tag + '_open', tag, 1);
+  // Markdown's own escapes are resolved by the nested parse below; `\ ` and
+  // `\<TAB>` are not Markdown escapes (a backslash before whitespace is
+  // literal), so this rule's own whitespace escaping is undone here.
+  const content = raw.replace(/\\([ \t])/g, '$1');
+  const tokens: MdToken[] = [];
+  state.md.inline.parse(content, state.md, state.env, tokens);
+  for (const t of tokens) {
+    t.level += state.level;
+    state.tokens.push(t);
+  }
+  state.push(tag + '_close', tag, -1);
+
+  state.pos = end + 1;
+  return true;
+}
+
+md.inline.ruler.after('emphasis', 'sub', (state, silent) => subSup(state, silent, 0x7E /* ~ */, 'sub'));
+md.inline.ruler.after('sub', 'sup', (state, silent) => subSup(state, silent, 0x5E /* ^ */, 'sup'));
+
 // Built-in Lucide icons are stored as compact Markdown image references
 // (![name](<base>/api/v1/icons/lucide/<name>)), but rendering them as <img> loads
 // the SVG in its own document context, where it can't inherit the note's text

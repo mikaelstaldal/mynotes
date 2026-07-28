@@ -18,9 +18,9 @@ interface Section {
 }
 
 // Static cheat-sheet of the Markdown dialect the editor renders (markdown-it
-// with GFM tables/task-lists/strikethrough, autolinks, wiki links, AsciiMath
-// math, emoji shortcodes, and embedded safe HTML/SVG/MathML). Kept in sync with
-// util/markdown.ts.
+// with GFM tables/task-lists/strikethrough, autolinks, wiki links, Pandoc
+// sub/superscript, AsciiMath math, emoji shortcodes, and embedded safe
+// HTML/SVG/MathML). Kept in sync with util/markdown.ts.
 // Ordered to follow the format toolbar: headings, inline text, lists, blocks,
 // then links & images.
 const SECTIONS: Section[] = [
@@ -38,6 +38,9 @@ const SECTIONS: Section[] = [
       { syntax: '*italic*', desc: 'Italic' },
       { syntax: '`code`', desc: 'Inline code' },
       { syntax: '~~strikethrough~~', desc: 'Strikethrough' },
+      { syntax: 'H~2~O', desc: 'Subscript' },
+      { syntax: '2^10^', desc: 'Superscript' },
+      { syntax: '~a\\ b~', desc: 'Sub/superscript holds no unescaped space — write \\ for one' },
     ],
   },
   {

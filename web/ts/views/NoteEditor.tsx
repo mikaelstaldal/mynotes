@@ -3,7 +3,7 @@ import {
   EditorView, keymap,
   defaultKeymap, history, historyKeymap,
   syntaxHighlighting, classHighlighter, tagHighlighter, tags as highlightTags,
-  markdown, GFM, Emoji, EditorSelection,
+  markdown, GFM, Emoji, Subscript, Superscript, Tag as HighlightTag, EditorSelection,
   ViewPlugin, Decoration, WidgetType,
   type DecorationSet, type ViewUpdate, type EditorState,
 } from 'codemirror';
@@ -83,23 +83,50 @@ const dataUrlCollapse = ViewPlugin.fromClass(
   { decorations: v => v.decorations },
 );
 
+// @lezer/highlight ships no tag for sub/superscript, and @lezer/markdown styles
+// both its Subscript and its Superscript node with the same one — special(content)
+// — which cannot express the different vertical alignment the two need. So mint
+// one tag per node and attach them below.
+const subscriptTag = HighlightTag.define();
+const superscriptTag = HighlightTag.define();
+
 // The Markdown dialect the editor's parser recognizes, kept in step with what
 // util/markdown.ts renders: CommonMark plus the GFM bundle (tables,
-// strikethrough, task lists, autolinks) and `:shortcode:` emoji. Not
-// @codemirror/lang-markdown's `markdownLanguage` base, which also turns on
-// Pandoc sub/superscript — syntax this app renders as literal text.
-const markdownDialect = markdown({ extensions: [GFM, Emoji] });
+// strikethrough, task lists, autolinks), `:shortcode:` emoji, and Pandoc
+// sub/superscript. That is the same set as @codemirror/lang-markdown's
+// `markdownLanguage`, but it is spelled out here both to keep the list visibly
+// in step with util/markdown.ts and because the node styles are overridden:
+//
+// The override has to come FIRST. MarkdownParser.configure() skips a defineNodes
+// entry whose node name already exists, so a redefinition placed after the
+// Subscript/Superscript extensions is silently dropped — the nodes must be
+// defined with our tags before those extensions define them with theirs. Their
+// parsers then attach to these definitions, by name.
+const markdownDialect = markdown({
+  extensions: [
+    {
+      defineNodes: [
+        { name: 'Subscript', style: subscriptTag },
+        { name: 'Superscript', style: superscriptTag },
+      ],
+    },
+    GFM, Emoji, Subscript, Superscript,
+  ],
+});
 
 // classHighlighter covers most of what the dialect above produces, but it has
-// no rule for tags.strikethrough, so `~~struck~~` would come out unmarked —
-// the one gap worth filling. (The other extension nodes inherit classes that
-// already exist: a table header cell is tok-heading, its `|` and a `~~` marker
-// are tok-meta, a `[x]` task marker is tok-atom, an autolink is tok-url, and an
-// emoji shortcode is tok-string.) Highlighters compose — the classes of every
-// matching one are concatenated — so this rides alongside classHighlighter and
-// likewise ships no colours of its own.
+// no rule for tags.strikethrough, so `~~struck~~` would come out unmarked, and
+// none for the two tags minted above — the gaps worth filling. (The other
+// extension nodes inherit classes that already exist: a table header cell is
+// tok-heading, its `|` and a `~~`/`~`/`^` marker are tok-meta, a `[x]` task
+// marker is tok-atom, an autolink is tok-url, and an emoji shortcode is
+// tok-string.) Highlighters compose — the classes of every matching one are
+// concatenated — so this rides alongside classHighlighter and likewise ships no
+// colours of its own.
 const extraHighlighter = tagHighlighter([
   { tag: highlightTags.strikethrough, class: 'tok-strikethrough' },
+  { tag: subscriptTag, class: 'tok-subscript' },
+  { tag: superscriptTag, class: 'tok-superscript' },
 ]);
 
 function sortedSlugs(tags: Tag[]): string[] {
@@ -1042,6 +1069,20 @@ export function NoteEditor({ slug, initialSlug, initialTitle, onSave }: Props) {
               <line class="fmt-stroke fmt-thin" x1="15.5" x2="2.5" y1="8.5" y2="9.5"></line>
               <path class="fmt-fill" d="M9.007,8C6.542,7.791,6,7.519,6,6.5,6,5.792,7.283,5,9,5c1.571,0,2.765.679,2.969,1.309a1,1,0,0,0,1.9-.617C13.356,4.106,11.354,3,9,3,6.2,3,4,4.538,4,6.5a3.2,3.2,0,0,0,.5,1.843Z"></path>
               <path class="fmt-fill" d="M8.984,10C11.457,10.208,12,10.479,12,11.5c0,0.708-1.283,1.5-3,1.5-1.571,0-2.765-.679-2.969-1.309a1,1,0,1,0-1.9.617C4.644,13.894,6.646,15,9,15c2.8,0,5-1.538,5-3.5a3.2,3.2,0,0,0-.5-1.843Z"></path>
+            </svg>
+          </button>
+          <button type="button" class="btn-icon" title="Subscript" aria-label="Subscript" onClick={() => insertWrap('~')}>
+            <svg viewBox="0 0 18 18">
+              <line class="fmt-stroke" x1="3" x2="10" y1="4" y2="13"></line>
+              <line class="fmt-stroke" x1="10" x2="3" y1="4" y2="13"></line>
+              <polyline class="fmt-stroke fmt-thin" points="12 11 16 11 16 13.5 12 13.5 12 16 16 16"></polyline>
+            </svg>
+          </button>
+          <button type="button" class="btn-icon" title="Superscript" aria-label="Superscript" onClick={() => insertWrap('^')}>
+            <svg viewBox="0 0 18 18">
+              <line class="fmt-stroke" x1="3" x2="10" y1="5" y2="14"></line>
+              <line class="fmt-stroke" x1="10" x2="3" y1="5" y2="14"></line>
+              <polyline class="fmt-stroke fmt-thin" points="12 2 16 2 16 4.5 12 4.5 12 7 16 7"></polyline>
             </svg>
           </button>
           <button type="button" class="btn-icon" title="Math (AsciiMath)" aria-label="Math" onClick={() => insertWrap('$')}>

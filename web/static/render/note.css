@@ -256,6 +256,16 @@
   text-align: center;
 }
 
+.note-content sub,
+.note-content sup {
+  font-size: 0.75em;
+  line-height: 0;
+  position: relative;
+  vertical-align: baseline;
+}
+.note-content sub { bottom: -0.25em; }
+.note-content sup { top: -0.5em; }
+
 .note-content hr {
   border: none;
   border-top: 1px solid var(--border);

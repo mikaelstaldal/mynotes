@@ -567,7 +567,7 @@ func escapeMarkdownText(s string) string {
 	b.Grow(len(s))
 	for _, r := range s {
 		switch r {
-		case '\\', '*', '_', '`', '[', ']', '~', '<', '!', '|':
+		case '\\', '*', '_', '`', '[', ']', '~', '^', '<', '!', '|':
 			b.WriteByte('\\')
 		}
 		b.WriteRune(r)
