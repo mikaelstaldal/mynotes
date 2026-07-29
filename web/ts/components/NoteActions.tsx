@@ -3,6 +3,7 @@ import { api, NotFoundError } from '../api/client.js';
 import { navigate, currentPath } from '../router.js';
 import { base } from '../basepath.js';
 import { showToast } from '../util/toast.js';
+import { confirmDialog } from '../util/dialog.js';
 import { downloadNoteHtml, noteHtmlDocument } from '../util/export.js';
 import { mymailUrl } from '../util/serverconfig.js';
 import { SplitDialog } from './SplitDialog.js';
@@ -11,7 +12,7 @@ import { Icon } from './Icon.js';
 
 interface Props {
   slug: string;
-  // Used in the delete confirmation prompt.
+  // Used in the delete confirmation dialog.
   title: string;
   // Extra class applied to the toolbar container (e.g. for list-row layout).
   toolbarClass?: string;
@@ -124,7 +125,14 @@ export function NoteActions({ slug, title, toolbarClass, showView, onDeleted, on
   }
 
   async function handleDelete() {
-    if (!confirm(`Delete “${title}”? This cannot be undone.`)) return;
+    const ok = await confirmDialog({
+      title: 'Delete note?',
+      body: `“${title}” will be deleted. This cannot be undone.`,
+      confirmLabel: 'Delete',
+      cancelLabel: 'Keep',
+      danger: true,
+    });
+    if (!ok) return;
     setDeleting(true);
     try {
       await api.notes.delete(slug);

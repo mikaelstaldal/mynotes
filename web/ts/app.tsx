@@ -5,6 +5,7 @@ import { getConfig, saveConfig } from './util/config.js';
 import { getTheme, applyTheme, toggleTheme, type Theme } from './util/theme.js';
 import { isValidSlug, slugFromTitle } from './util/slug.js';
 import { showToast } from './util/toast.js';
+import { promptDialog } from './util/dialog.js';
 import { isDemo } from './util/serverconfig.js';
 import { api, type SortField, type SortOrder } from './api/client.js';
 import { NoteList } from './views/NoteList.js';
@@ -14,6 +15,7 @@ import { NoteView } from './views/NoteView.js';
 import { TagManager } from './views/TagManager.js';
 import { NotesGraph } from './views/NotesGraph.js';
 import { Toast } from './components/Toast.js';
+import { Dialogs } from './components/Dialog.js';
 import { Icon } from './components/Icon.js';
 import { DemoDialog, demoNoticeSeen, markDemoNoticeSeen } from './components/DemoDialog.js';
 
@@ -92,7 +94,13 @@ function App() {
   // same way tag creation elsewhere is, then refreshList() reloads the sidebar's
   // TagManager so the new tag appears.
   const handleNewTag = useCallback(async () => {
-    const name = prompt('New tag name:');
+    const name = await promptDialog({
+      title: 'New tag',
+      label: 'Tag name',
+      // The backend slug limit; the name is slugified, so this is a generous cap.
+      maxLength: 100,
+      confirmLabel: 'Create tag',
+    });
     if (name === null) return;
     const trimmed = name.trim();
     const slug = slugFromTitle(trimmed);
@@ -288,6 +296,7 @@ function App() {
         </main>
       </div>
       <Toast />
+      <Dialogs />
       {showDemoNotice && <DemoDialog onClose={dismissDemoNotice} />}
     </>
   );

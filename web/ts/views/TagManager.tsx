@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'preact/hooks';
 import { api, type TagSummary } from '../api/client.js';
 import { showToast } from '../util/toast.js';
+import { confirmDialog } from '../util/dialog.js';
 import { useSlowLoading } from '../util/loading.js';
 import { Icon } from '../components/Icon.js';
 
@@ -44,9 +45,14 @@ export function TagManager({ listKey, onMutate, onOpenTag }: Props) {
     // since deleting it detaches it from those notes.
     if (tag.note_count > 0) {
       const noun = tag.note_count === 1 ? 'note' : 'notes';
-      const ok = confirm(
-        `Delete tag “${tag.slug}”? It is attached to ${tag.note_count} ${noun}, ` +
-        `which will be untagged. This cannot be undone.`);
+      const ok = await confirmDialog({
+        title: `Delete tag “${tag.slug}”?`,
+        body: `It is attached to ${tag.note_count} ${noun}, which will be untagged. `
+          + 'This cannot be undone.',
+        confirmLabel: 'Delete',
+        cancelLabel: 'Keep',
+        danger: true,
+      });
       if (!ok) return;
     }
     setDeleting(tag.slug);

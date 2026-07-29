@@ -52,8 +52,12 @@ export function currentPath(): string {
   return stripBase(window.location.pathname);
 }
 
-// A navigation guard returns true to allow the navigation, false to block it.
-type NavigationGuard = () => boolean;
+// A navigation guard returns true to allow the navigation and false to block it,
+// or a promise resolving to either when it has to ask the user first — the custom
+// confirmation dialog that replaced window.confirm cannot answer synchronously.
+// A pending guard defers the navigation until it resolves rather than blocking
+// the caller, so navigate() still returns immediately.
+type NavigationGuard = () => boolean | Promise<boolean>;
 let guard: NavigationGuard | null = null;
 
 export function setNavigationGuard(fn: NavigationGuard | null): void {
@@ -65,7 +69,25 @@ export function setNavigationGuard(fn: NavigationGuard | null): void {
 // optional state object is stored on the history entry (e.g. where a navigation
 // originated) and can be read back via history.state.
 export function navigate(path: string, state: unknown = null): void {
-  if (guard && !guard()) return;
+  if (guard) {
+    const asked = guard;
+    const allowed = asked();
+    if (allowed === false) return;
+    if (allowed !== true) {
+      // The guard is asking the user; commit only if it comes back allowed and
+      // the guard that asked is still the one installed. Nothing stops the page
+      // from moving on while the question is on screen (the back button is not
+      // guarded), and once the asking view has unmounted its answer is about a
+      // navigation that no longer makes sense.
+      void allowed.then(ok => { if (ok && guard === asked) commitNavigation(path, state); });
+      return;
+    }
+  }
+  commitNavigation(path, state);
+}
+
+// The navigation itself, past the guard.
+function commitNavigation(path: string, state: unknown): void {
   // Navigating to the path we're already on replaces the current history entry
   // rather than stacking a duplicate. This matters when a note created in place
   // (after following a link to a non-existent note) is saved: the editor and the

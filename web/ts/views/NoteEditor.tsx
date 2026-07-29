@@ -11,6 +11,7 @@ import { api, NotFoundError, PreconditionFailedError, type CreateNoteRequest, ty
 import { base } from '../basepath.js';
 import { navigate, setNavigationGuard } from '../router.js';
 import { showToast } from '../util/toast.js';
+import { confirmDialog, type ConfirmOptions } from '../util/dialog.js';
 import { renderNote, sanitizeSVGOrMathML, rawHtmlBlockSeparator } from '../util/markdown.js';
 import { renderMermaidBlocks } from '../util/mermaid.js';
 import { onThemeChange } from '../util/theme.js';
@@ -190,6 +191,17 @@ export function NoteEditor({ slug, initialSlug, initialTitle, onSave }: Props) {
   // A localStorage draft awaiting load into the CodeMirror editor once it's
   // created (set during the restore decision, consumed by the editor effect).
   const pendingDraftRef = useRef<Draft | null>(null);
+  // The unanswered "leave without saving?" question, if one is on screen.
+  const leaveAnswerRef = useRef<Promise<boolean> | null>(null);
+  // True while a new note's "restore draft?" question is still unanswered, which
+  // holds back editor creation (the answer decides the initial document). Decided
+  // at mount so the editor is never created, then re-created, for one note. Edit
+  // mode has no use for it: there the `loading` gate already covers the wait.
+  const [draftDecisionPending, setDraftDecisionPending] = useState(() => {
+    if (editing) return false;
+    const draft = loadDraft(undefined);
+    return draft !== null && draftDiffersFromBaseline(draft);
+  });
 
   // Diffs (title, content, slug, tags) against the last-saved/loaded snapshot
   // and updates both the dirty state and its synchronous ref mirror.
@@ -219,9 +231,19 @@ export function NoteEditor({ slug, initialSlug, initialTitle, onSave }: Props) {
       || (!editing && (d.slugOverride ?? '') !== (slugOverrideActive ? slugOverride : ''));
   }
 
-  function restorePrompt(savedAt: string): string {
+  // The "restore this draft?" question. Dismissing it discards the draft, which
+  // is what cancelling the confirm() this replaced always did.
+  function restoreDraftDialog(savedAt: string): ConfirmOptions {
     const when = savedAt ? `from ${new Date(savedAt).toLocaleString()}` : 'from a previous session';
-    return `You have unsaved changes ${when}. Restore them?`;
+    return {
+      title: 'Restore unsaved changes?',
+      body: `There are unsaved changes ${when} stored in this browser.`,
+      confirmLabel: 'Restore',
+      cancelLabel: 'Discard',
+      // Discarding is irreversible and there is no undo, so it takes a deliberate
+      // click: neither Escape nor a click outside can throw the draft away.
+      requireAnswer: true,
+    };
   }
 
   // Writes the current edit to localStorage. Kept in a ref so the 30s interval
@@ -242,7 +264,25 @@ export function NoteEditor({ slug, initialSlug, initialTitle, onSave }: Props) {
   useEffect(() => {
     setNavigationGuard(() => {
       if (!dirtyRef.current) return true;
-      return confirm('You have unsaved changes. Leave anyway?');
+      // In-app navigation fires neither beforeunload nor visibilitychange, so
+      // without this the edits made since the last 30s tick would be gone the
+      // moment the user leaves — and the dialog below promises otherwise.
+      persistDraftRef.current();
+      // One question at a time: a second navigate() while this one is unanswered
+      // (e.g. an upload finishing in the background) reuses the pending promise
+      // instead of stacking an identical dialog the user must answer twice.
+      if (!leaveAnswerRef.current) {
+        // A promise, not an answer: the router holds the navigation until the
+        // user has answered the dialog.
+        leaveAnswerRef.current = confirmDialog({
+          title: 'Leave without saving?',
+          body: 'This note has unsaved changes. They are kept as a draft in this '
+            + 'browser, but not saved to the server.',
+          confirmLabel: 'Leave',
+          cancelLabel: 'Keep editing',
+        }).finally(() => { leaveAnswerRef.current = null; });
+      }
+      return leaveAnswerRef.current;
     });
     return () => setNavigationGuard(null);
   }, []);
@@ -320,9 +360,13 @@ export function NoteEditor({ slug, initialSlug, initialTitle, onSave }: Props) {
 
         // Offer to restore any unsaved work from a previous session. The editor
         // isn't mounted yet, so stash the draft for the editor-creation effect.
+        // `loading` stays true across the await, which is what keeps the editor
+        // from being created before the answer is in.
         const draft = loadDraft(slug);
         if (draft && draftDiffersFromBaseline(draft)) {
-          if (confirm(restorePrompt(draft.savedAt))) {
+          const restore = await confirmDialog(restoreDraftDialog(draft.savedAt));
+          if (cancelled) return;
+          if (restore) {
             pendingDraftRef.current = draft;
             setTitle(draft.title);
             setTags(draft.tags);
@@ -342,13 +386,19 @@ export function NoteEditor({ slug, initialSlug, initialTitle, onSave }: Props) {
   }, [slug, editing]);
 
   // For a new note, decide whether to restore an unsaved draft before the editor
-  // is created. Runs synchronously on mount, ahead of the editor-creation effect,
-  // so the stashed draft is in place when the editor initializes.
+  // is created — the answer picks the editor's initial document. Asking is
+  // asynchronous, so the editor-creation effect is held off (see
+  // draftDecisionPending) until the answer is in; a new note has no load to wait
+  // on, so there is no `loading` gate doing that job here.
   useEffect(() => {
-    if (editing) return;
+    if (!draftDecisionPending) return;
     const draft = loadDraft(undefined);
-    if (draft && draftDiffersFromBaseline(draft)) {
-      if (confirm(restorePrompt(draft.savedAt))) {
+    if (!draft) { setDraftDecisionPending(false); return; }
+    let cancelled = false;
+    void (async () => {
+      const restore = await confirmDialog(restoreDraftDialog(draft.savedAt));
+      if (cancelled) return;
+      if (restore) {
         pendingDraftRef.current = draft;
         setTitle(draft.title);
         setTags(draft.tags);
@@ -360,7 +410,9 @@ export function NoteEditor({ slug, initialSlug, initialTitle, onSave }: Props) {
       } else {
         clearDraft(undefined);
       }
-    }
+      setDraftDecisionPending(false);
+    })();
+    return () => { cancelled = true; };
   }, []);
 
   // Render any ```mermaid diagrams in the preview pane after each (debounced)
@@ -386,6 +438,9 @@ export function NoteEditor({ slug, initialSlug, initialTitle, onSave }: Props) {
   // For /new: runs on mount (loading is already false).
   // For edit: runs after loading becomes false and the editor container appears in DOM.
   useEffect(() => {
+    // Null while a new note's draft-restore question is still open — the form is
+    // not rendered until it is answered, since the answer decides the initial
+    // document. This effect re-runs when it lands (see the deps below).
     if (!editorContainerRef.current) return;
 
     const pending = pendingDraftRef.current;
@@ -428,7 +483,7 @@ export function NoteEditor({ slug, initialSlug, initialTitle, onSave }: Props) {
       viewRef.current = null;
       if (debounceRef.current) { clearTimeout(debounceRef.current); debounceRef.current = null; }
     };
-  }, [loading]); // re-runs when loading flips to false (editor container is in DOM by then)
+  }, [loading, draftDecisionPending]); // re-runs when loading flips to false (editor container is in DOM by then)
 
   // When switching away from preview, ask CM to remeasure (display:none clears its size).
   const prevLayoutRef = useRef(layout);
@@ -929,6 +984,12 @@ export function NoteEditor({ slug, initialSlug, initialTitle, onSave }: Props) {
   // Quick loads stay blank rather than flash the indicator; the editor mounts as
   // soon as the fetch settles (this gate still keys off the real `loading`).
   if (loading) return slowLoading ? <p class="muted">Loading…</p> : null;
+
+  // Likewise while a new note's draft-restore question is unanswered: the form
+  // must not be on the page at all, or it could be tabbed into and submitted
+  // (creating the note with the empty document the answer was about to replace).
+  // The editor-creation effect re-runs once this clears and the form is in DOM.
+  if (draftDecisionPending) return null;
 
   const slugPreviewVal = slugFromTitle(title);
 

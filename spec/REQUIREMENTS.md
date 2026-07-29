@@ -502,7 +502,9 @@ existing-note editor (`/notes/{slug}/edit`).
     note is highlighted in the list.
   - **Tags tab:** lists every tag sorted by slug, each with the number of notes
     carrying it and a delete button. Clicking a tag's name filters the note list
-    by it and switches back to the Notes tab. Deleting a tag that is still
+    by it and switches back to the Notes tab. A "New tag" action asks for a name
+    in a prompt dialog and creates the tag (empty) from its slugified form.
+    Deleting a tag that is still
     attached to one or more notes asks for confirmation first (the notes
     themselves are kept, just untagged); deleting an unused tag (zero notes) does
     not prompt. The list refreshes after a delete.
@@ -537,7 +539,8 @@ existing-note editor (`/notes/{slug}/edit`).
   choice and paged with "Load more". Each row carries the same per-note action
   toolbar as the read view — "Download Markdown", "Download HTML", "Print",
   "Send as email" (only when MyMail is configured), "Split", "Edit", and
-  "Delete" — acting on that row's note; delete and split
+  "Delete" — acting on that row's note; delete asks for confirmation first
+  (naming the note), and delete and split
   refresh the lists in place. Falls back to a "select or create a note" prompt
   only when the list is genuinely empty.
 - **Read view (main panel):** renders the note's Markdown safely into a styled
@@ -568,18 +571,34 @@ existing-note editor (`/notes/{slug}/edit`).
     (reverting to saved values clears dirty).
   - The in-progress edit is auto-saved to browser Local Storage every 30 seconds
     while dirty, whenever the page is unloaded or the tab is hidden
-    (`beforeunload`/`visibilitychange`), and once more right before submitting to
-    the backend, so unsaved work survives an unexpected browser close. The stored
+    (`beforeunload`/`visibilitychange`), when the unsaved-changes guard fires on
+    in-app navigation (which neither of those events covers), and once more right
+    before submitting to the backend, so unsaved work survives an unexpected
+    browser close. The stored
     draft is cleared only
     after the backend confirms the save. On reopening the editor (keyed by note
     slug, or a single shared bucket for a new note), if a stored draft differs
-    from the loaded/blank baseline the user is offered a one-time prompt to
-    restore it.
+    from the loaded/blank baseline the user is offered a one-time choice to
+    restore it or discard it; discarding clears the stored draft, and the editor
+    is not rendered until the choice is made, so the answer decides its initial
+    contents and nothing behind the question can be typed into or submitted.
   - On successful save, navigate to the saved note's read view using the slug
     from the response (which may have been auto-generated, suffixed, or renamed).
   - A 404 on save/delete from a stale tab shows a toast and navigates to the
     list. A slug conflict (409) shows the server's error message as a toast.
 - Errors are surfaced through a toast component.
+- **Confirmations and prompts are in-app dialogs**, never the browser-native
+  `alert`/`confirm`/`prompt`: a themed modal (heading, optional explanation, a
+  text field for a prompt) rendered in the app's own styling, dismissible with
+  its cancel button, Escape, or a click outside — which answers "no" for a
+  confirmation and "cancelled" for a prompt. A question whose *dismissing* answer
+  is itself destructive (only the draft-restore one) withholds Escape and
+  click-outside, so discarding takes a deliberate click. Requests queue, so only
+  one is on screen at a time. They answer asynchronously, so anything gated on the answer
+  (in-app navigation, creating the editor for a note with a stored draft) waits
+  for it rather than blocking. The one browser-native dialog that remains is the
+  `beforeunload` unsaved-changes warning on refresh/tab-close, which only the
+  browser can raise.
 
 ## Google Docs Bulk Import
 
