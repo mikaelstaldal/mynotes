@@ -309,6 +309,57 @@ func TestImportMarkdown_FrontmatterFields(t *testing.T) {
 	})
 }
 
+// The fallbacks an out-of-band importer supplies (see mdimport) fill in only
+// what the document itself leaves unsaid.
+func TestImportMarkdownWithDefaults(t *testing.T) {
+	ctx := context.Background()
+	svc := newTestService(t)
+	fallbackDate := time.Date(2020, 5, 6, 7, 8, 9, 0, time.UTC)
+
+	t.Run("fallbacks used when content says nothing", func(t *testing.T) {
+		note, err := svc.ImportMarkdownWithDefaults(ctx, "Body without a heading.", "Fallback Title", fallbackDate)
+		require.NoError(t, err)
+		assert.Equal(t, "Fallback Title", note.Title)
+		assert.Equal(t, "fallback-title", note.Slug)
+		assert.Equal(t, fallbackDate, note.CreatedAt.UTC())
+	})
+
+	t.Run("atx heading beats the fallback title", func(t *testing.T) {
+		note, err := svc.ImportMarkdownWithDefaults(ctx, "# Heading Wins\n\nBody.", "Fallback Title", fallbackDate)
+		require.NoError(t, err)
+		assert.Equal(t, "Heading Wins", note.Title)
+	})
+
+	t.Run("frontmatter beats both fallbacks", func(t *testing.T) {
+		md := "---\ntitle: Frontmatter Wins\ndate: 2018-01-02T03:04:05Z\n---\n\n# Heading\n"
+		note, err := svc.ImportMarkdownWithDefaults(ctx, md, "Fallback Title", fallbackDate)
+		require.NoError(t, err)
+		assert.Equal(t, "Frontmatter Wins", note.Title)
+		assert.Equal(t, time.Date(2018, 1, 2, 3, 4, 5, 0, time.UTC), note.CreatedAt.UTC())
+	})
+
+	t.Run("frontmatter without a title falls back", func(t *testing.T) {
+		md := "---\ntags: [imported]\n---\n\nBody without a heading.\n"
+		note, err := svc.ImportMarkdownWithDefaults(ctx, md, "Named By File", fallbackDate)
+		require.NoError(t, err)
+		assert.Equal(t, "Named By File", note.Title)
+		require.Len(t, note.Tags, 1)
+		assert.Equal(t, "imported", note.Tags[0].Slug)
+	})
+
+	t.Run("empty fallbacks are plain ImportMarkdown", func(t *testing.T) {
+		_, err := svc.ImportMarkdownWithDefaults(ctx, "No title anywhere.", "", time.Time{})
+		assert.ErrorIs(t, err, ErrValidation)
+	})
+
+	t.Run("over-long fallback title is truncated", func(t *testing.T) {
+		note, err := svc.ImportMarkdownWithDefaults(ctx, "Body.", strings.Repeat("t", maxTitleLen+50), time.Time{})
+		require.NoError(t, err)
+		assert.Equal(t, maxTitleLen, len([]rune(note.Title)))
+		assert.True(t, strings.HasSuffix(note.Title, "…"))
+	})
+}
+
 func TestImportMarkdown_FrontmatterTags(t *testing.T) {
 	ctx := context.Background()
 

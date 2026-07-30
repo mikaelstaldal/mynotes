@@ -64,6 +64,8 @@ internal/
   repository/            # SQLite storage; schema + versioned migrations in db.go
   model/                 # shared domain types (storage- and transport-agnostic)
   sanitize/              # HTML sanitization (bluemonday)
+  gdocs/                 # -gdocs-* batch mode: bulk-import owned Google Docs
+  mdimport/              # -import-md-dir batch mode: bulk-import a .md directory tree
   demo/                  # demo seed content; bundle.go exports it for the browser demo
 web/
   embed.go               # //go:embed of web/static

@@ -679,6 +679,100 @@ Imported 41 note(s). 1 failed:
 
 Exit code is 0 on full success, 1 if any document failed to import.
 
+## Markdown Directory Bulk Import
+
+A one-shot batch mode that imports a directory tree of Markdown files as notes
+into the same SQLite database the server uses.  The filesystem counterpart to the
+Google Docs import, sharing its structure: it writes through the same
+`NoteService` the REST API uses, so imported content passes the same validation.
+
+### Invocation
+
+```
+./mynotes -import-md-dir <DIR> [-data <dir>]
+```
+
+When `-import-md-dir` is present the binary runs the importer instead of starting
+the HTTP server.  All other flags except `-data` (which controls the database
+path) are ignored.  The database is created if it does not yet exist.
+Combining `-import-md-dir` with `-demo`, `-demo-server`, `-demo-bundle`, or the
+`-gdocs-*` flags is an error: each batch mode runs instead of the others.
+
+### What is imported
+
+- The directory is walked **recursively**; a missing path, or a path that is not
+  a directory, imports nothing and is an error.
+- **Regular files with a `.md` extension** (matched case-insensitively) only.
+  Every other file is skipped silently — no `.markdown`, `.txt`, or extensionless
+  file is read.
+- **Hidden entries are skipped** — any file or directory whose name starts with
+  `.`, a skipped directory including everything under it, so an Obsidian vault's
+  `.trash` does not resurrect deleted notes and `.git` is not read.  The named
+  root itself is never skipped, so importing `~/.notes` works.  No other
+  directory is excluded: a site repository's `node_modules/` is imported like
+  any other subdirectory.
+- **A symlinked root is resolved**, so naming a symlink to a directory imports
+  its contents rather than finding nothing.  Symbolic links *within* the tree
+  are not followed (neither to files nor to directories), so the walk cannot
+  leave the named directory.
+- Files are visited in lexical order, so an unchanged directory imports in a
+  stable order.
+- A file larger than **10 MiB** is reported as an error rather than read (the
+  content length limit of 1,000,000 characters bites well before that anyway).
+- **Empty files** — nothing but whitespace — are skipped: they are reported as
+  skipped and counted separately, and are neither imported as empty notes nor
+  treated as failures.
+
+### Title, date, slug, and tags
+
+The file's content is authoritative and reaches the service **verbatim**; the
+filesystem only supplies fallbacks for what the file itself does not say.  A
+leading UTF-8 BOM is stripped first, so it cannot defeat frontmatter detection.
+
+Frontmatter is parsed exactly as for the import-Markdown endpoint (YAML `---`,
+TOML `+++`, or JSON), so `title`, `slug`, `date`, and `tags` are honoured; tags
+that do not yet exist are created.
+
+- **Title:** frontmatter `title` → first ATX heading → the file name without its
+  extension (`Shopping list.md` → `Shopping list`).  Truncated to 200 characters
+  like any other imported title.
+- **created_at:** frontmatter `date` → the file's modification time.
+  `updated_at` equals `created_at`, as for every import.
+- **Slug:** frontmatter `slug` verbatim (a collision is an error for that file)
+  → derived from the title and de-conflicted with a numeric suffix, so several
+  files with the same title all import (`my-note`, `my-note-2`, …).
+
+### Validation and error handling
+
+Imported content passes through the same validation pipeline as any note created
+via the REST API.  A file that fails validation (e.g. disallowed embedded HTML,
+invalid UTF-8, no title anywhere), cannot be read, or is too large is reported
+and skipped; the remaining files continue importing.  A directory that cannot be
+read is reported once and skipped, and the rest of the tree still imports.
+
+Re-running the importer creates new notes (with auto-suffixed slugs) for files
+that were already imported.  There is no deduplication — the command is intended
+as a one-shot migration, not a sync.
+
+### Output
+
+Progress is printed to stdout:
+
+```
+Scanning /path/to/markdown for .md files...
+Found 42 file(s). Importing...
+  ✓ My First Note.md → /notes/my-first-note
+  ✓ projects/Ideas.md → /notes/ideas
+  ⊘ scratch.md: skipped, no content
+  ✗ broken.md: content validation error: …
+  …
+Imported 40 note(s). 1 skipped. 1 failed:
+  - broken.md: content validation error: …
+```
+
+File names are shown relative to the import directory.  Exit code is 0 when no
+file failed, 1 otherwise; skipped files do not affect the exit code.
+
 ## Demo Data
 
 A one-shot batch mode that fills the database with a curated set of notes,

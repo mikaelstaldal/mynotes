@@ -374,14 +374,33 @@ func (s *NoteService) ImportHTML(ctx context.Context, htmlContent string) (model
 // `tags` field attaches tags by slug; any tag that does not yet exist is
 // created (an invalid tag slug is a validation error).
 func (s *NoteService) ImportMarkdown(ctx context.Context, markdownContent string) (model.Note, error) {
+	return s.ImportMarkdownWithDefaults(ctx, markdownContent, "", time.Time{})
+}
+
+// ImportMarkdownWithDefaults is ImportMarkdown with fallbacks for the two
+// fields an out-of-band importer may know better than the document does: a
+// title to use when neither frontmatter nor a leading heading supplies one, and
+// a created_at to use when frontmatter carries no `date`. Both are ignored when
+// the content itself provides the field, so a file's own frontmatter always
+// wins. An empty fallbackTitle/zero fallbackDate means "no fallback", which is
+// exactly ImportMarkdown.
+func (s *NoteService) ImportMarkdownWithDefaults(ctx context.Context, markdownContent, fallbackTitle string, fallbackDate time.Time) (model.Note, error) {
 	fm, content := parseFrontmatter(markdownContent)
 
 	title := fm.Title
 	if title == "" {
 		title = firstATXHeading(content)
 	}
+	if title == "" {
+		title = fallbackTitle
+	}
 	if runes := []rune(title); len(runes) > maxTitleLen {
 		title = string(runes[:maxTitleLen-1]) + "…"
+	}
+
+	createdAt := fm.Date
+	if createdAt.IsZero() {
+		createdAt = fallbackDate
 	}
 
 	var slugPtr *string
@@ -393,7 +412,7 @@ func (s *NoteService) ImportMarkdown(ctx context.Context, markdownContent string
 		return model.Note{}, err
 	}
 
-	return s.createNote(ctx, title, &content, slugPtr, fm.Date, time.Time{}, fm.Tags)
+	return s.createNote(ctx, title, &content, slugPtr, createdAt, time.Time{}, fm.Tags)
 }
 
 // ensureTags creates any tag in slugs that does not already exist, so an

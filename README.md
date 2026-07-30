@@ -113,10 +113,68 @@ a diagram, a formula, an icon, an image — the complete standalone `.html`
 document is attached as well; notes the body renders faithfully are sent
 without one.
 
+## Importing a directory of Markdown files
+
+The binary can bulk-import a directory of `.md` files — notes exported from
+another tool, a folder of Obsidian/Hugo/Jekyll files, or a plain pile of
+Markdown. Like it is a one-shot mode that connects to the
+same database and exits when done:
+
+```bash
+./mynotes -import-md-dir /path/to/markdown -data /path/to/your/data
+```
+
+The directory is walked **recursively**; every regular file whose extension is
+`.md` (case-insensitive) is imported and everything else is ignored, so images
+or PDFs sitting next to the notes need no pre-filtering. Hidden files and
+directories are skipped, so an Obsidian vault's `.trash` does not resurrect
+deleted notes and `.git` is left alone — but nothing else is: point the flag at
+a site repository and every `README.md` under `node_modules/` or `themes/`
+becomes a note. A symlinked directory *is* followed when you name it directly;
+symlinks inside the tree are not, so the walk cannot leave the directory you
+named.
+
+Each file's own **frontmatter** is authoritative — YAML (`---`), TOML (`+++`),
+or JSON, exactly as the *Import Markdown* API accepts it, so `title`, `slug`,
+`date`, and `tags` carry over (tags that do not exist yet are created). What the
+file leaves unsaid the filesystem fills in:
+
+- **Title:** frontmatter `title`, else the first Markdown heading, else the file
+  name without its extension (`Shopping list.md` → "Shopping list").
+- **Created date:** frontmatter `date`, else the file's modification time.
+- **Slug:** frontmatter `slug` used verbatim, else derived from the title and
+  de-conflicted with a numeric suffix — so two files with the same title both
+  import, as `my-note` and `my-note-2`.
+
+Content is stored verbatim: nothing is rewritten, and the same validation as any
+other write applies (a file carrying disallowed embedded HTML is rejected).
+
+```
+Scanning /path/to/markdown for .md files...
+Found 42 file(s). Importing...
+  ✓ My First Note.md → /notes/my-first-note
+  ✓ projects/Ideas.md → /notes/ideas
+  ⊘ scratch.md: skipped, no content
+  ✗ broken.md: content validation error: …
+  …
+Imported 40 note(s). 1 skipped. 1 failed:
+  - broken.md: content validation error: …
+```
+
+Empty (or whitespace-only) files are skipped rather than turned into empty
+notes. A file that cannot be read, is larger than 10 MiB, or fails validation is
+reported and the rest of the run continues; a directory that cannot be read is
+reported and skipped. Exit code is 0 when nothing failed, 1 otherwise — skipped
+files are not failures.
+
+`-import-md-dir` cannot be combined with `-demo`, `-demo-server`,
+`-demo-bundle`, or the `-gdocs-*` flags. Re-running it creates a second copy of every note: 
+it is a migration, not a sync.
+
 ## Importing from Google Docs
 
-The binary can bulk-import all your owned Google Docs as notes. When the two
-Google flags are present it runs as a one-shot importer instead of starting the
+The binary can also bulk-import all your owned Google Docs as notes. When the two
+Google flags are present, it runs as a one-shot importer instead of starting the
 server — it connects to the same database and exits when done.
 
 ### One-time setup

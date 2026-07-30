@@ -32,6 +32,7 @@ import (
 	"github.com/mikaelstaldal/mynotes/internal/gdocs"
 	"github.com/mikaelstaldal/mynotes/internal/handler"
 	"github.com/mikaelstaldal/mynotes/internal/icons"
+	"github.com/mikaelstaldal/mynotes/internal/mdimport"
 	"github.com/mikaelstaldal/mynotes/internal/repository"
 	"github.com/mikaelstaldal/mynotes/internal/service"
 	"github.com/mikaelstaldal/mynotes/web"
@@ -51,6 +52,7 @@ func main() {
 	publicURL := flag.String("public-url", "", "public-facing base URL for CSRF validation, e.g. https://example.com (defaults to http://<addr>:<port>)")
 	basicAuthFile := flag.String("basic-auth-file", "", "enable HTTP basic auth using this htpasswd file (bcrypt only)")
 	basicAuthRealm := flag.String("basic-auth-realm", "MyNotes", "realm for HTTP basic auth")
+	importMdDir := flag.String("import-md-dir", "", "import every .md file in this directory (recursively) as a note, then exit")
 	gdocsClientID := flag.String("gdocs-client-id", "", "Google OAuth 2.0 Client ID; when set (with -gdocs-client-secret) runs a bulk Google Docs import instead of the server")
 	gdocsClientSecret := flag.String("gdocs-client-secret", "", "Google OAuth 2.0 Client Secret")
 	demoData := flag.Bool("demo", false, "fill the database with demo notes, artifacts, and tags, then exit")
@@ -61,6 +63,12 @@ func main() {
 	if *version {
 		printVersion()
 		return
+	}
+
+	// Each batch mode runs instead of the server and instead of the others;
+	// combining two is a mistake, not a pipeline.
+	if *importMdDir != "" && (*demoData || *demoServer || *demoBundle != "" || *gdocsClientID != "" || *gdocsClientSecret != "") {
+		log.Fatalf("-import-md-dir cannot be combined with -demo, -demo-server, -demo-bundle, or the -gdocs-* flags")
 	}
 
 	if *demoData {
@@ -95,6 +103,13 @@ func main() {
 			}
 		})
 		if err := runGDocsImport(context.Background(), *gdocsClientID, *gdocsClientSecret, *dataDir, callbackPort); err != nil {
+			log.Fatalf("%v", err)
+		}
+		return
+	}
+
+	if *importMdDir != "" {
+		if err := runMarkdownImport(context.Background(), *importMdDir, *dataDir); err != nil {
 			log.Fatalf("%v", err)
 		}
 		return
@@ -147,6 +162,41 @@ func runGDocsImport(ctx context.Context, clientID, clientSecret, dataDir string,
 	imported, errs := gdocs.Run(ctx, drive, noteSvc, os.Stdout)
 
 	fmt.Printf("\nImported %d note(s).", imported)
+	if len(errs) > 0 {
+		fmt.Printf(" %d failed:\n", len(errs))
+		for _, e := range errs {
+			fmt.Printf("  - %v\n", e)
+		}
+		return fmt.Errorf("%d import(s) failed", len(errs))
+	}
+	fmt.Println()
+	return nil
+}
+
+// runMarkdownImport imports a directory tree of .md files as notes and returns.
+// Like the Google Docs importer it is a one-shot batch mode that runs instead of
+// the server, against the same database.
+func runMarkdownImport(ctx context.Context, importDir, dataDir string) error {
+	dbPath := filepath.Join(dataDir, databaseName)
+	if err := repository.CreateDataDir(dbPath); err != nil {
+		return err
+	}
+	db, err := repository.OpenDB(dbPath, 5000, "synchronous=NORMAL")
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+
+	noteRepo := repository.NewNoteRepository(db)
+	tagRepo := repository.NewTagRepository(db)
+	noteSvc := service.NewNoteService(noteRepo, tagRepo)
+
+	imported, skipped, errs := mdimport.Run(ctx, importDir, noteSvc, os.Stdout)
+
+	fmt.Printf("\nImported %d note(s).", imported)
+	if skipped > 0 {
+		fmt.Printf(" %d skipped.", skipped)
+	}
 	if len(errs) > 0 {
 		fmt.Printf(" %d failed:\n", len(errs))
 		for _, e := range errs {
