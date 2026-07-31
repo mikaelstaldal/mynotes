@@ -44,8 +44,9 @@ and `web/ts/vendor/test/unpack.sh` (jsdom). Both are no-ops on a machine where
 reaches into a package the declarations tarball lacks, that breaks, so add the
 package to `TYPES_PACKAGES` in `rebuild.sh` and regenerate.
 
-CI (`.github/workflows/pages.yml`) builds on every push to `main` and publishes
-the browser demo to GitHub Pages.
+CI (`.github/workflows/pages.yml`) builds on every push to `main`, publishes
+the browser demo to GitHub Pages, and publishes the linux/amd64 binary as a
+rolling `latest` release (tag moved to the built commit each run).
 
 The database is created automatically on first start under `<data>/mynotes.sqlite`.
 

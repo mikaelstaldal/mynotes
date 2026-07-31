@@ -37,8 +37,12 @@ same origin can embed it in an iframe and drive the same API.
 
 ## Getting started
 
-Prerequisites on `$PATH`: `go`, `ogen`, `tsc`, `openapi-typescript`,
-`golangci-lint`.
+Every green build of `main` is published as a static linux/amd64 binary under
+the rolling [`latest` release](https://github.com/mikaelstaldal/mynotes/releases/latest)
+(asset `mynotes-linux-amd64`), so running it needs no toolchain at all.
+
+To build it yourself, prerequisites on `$PATH`: `go`, `ogen`, `tsc`,
+`openapi-typescript`, `golangci-lint`.
 
 ```bash
 ./build.sh            # generate code, compile TS, build, test, lint
