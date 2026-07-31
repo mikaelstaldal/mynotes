@@ -154,8 +154,8 @@ export function NoteActions({ slug, title, toolbarClass, showView, onDeleted, on
         {showView && (
           <a class="btn-icon" href={`${base}/notes/${slug}`} title="View" aria-label="View"><Icon name="eye" size={16} /></a>
         )}
-        <a class="btn-icon" href={`${base}/api/v1/notes/${slug}/download-markdown`} title="Download Markdown" aria-label="Download Markdown"><Icon name="file-down" size={16} /></a>
-        <button class="btn-icon" title="Download HTML" aria-label="Download HTML" onClick={handleDownloadHtml}>HTML</button>
+        <a class="btn-icon" href={`${base}/api/v1/notes/${slug}/download-markdown`} title="Download Markdown" aria-label="Download Markdown"><Icon name="file-down" size={16} /> MD</a>
+        <button class="btn-icon" title="Download HTML" aria-label="Download HTML" onClick={handleDownloadHtml}><Icon name="file-down" size={16} /> HTML</button>
         <button class="btn-icon" title="Print" aria-label="Print" onClick={handlePrint}><Icon name="printer" size={16} /></button>
         {mymail && (
           <button class="btn-icon" title="Send as email" aria-label="Send as email"
