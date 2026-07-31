@@ -8,7 +8,6 @@ import {
   type DecorationSet, type ViewUpdate, type EditorState,
 } from 'codemirror';
 import { api, NotFoundError, PreconditionFailedError, type CreateNoteRequest, type UpdateNoteRequest, type Tag } from '../api/client.js';
-import { base } from '../basepath.js';
 import { navigate, setNavigationGuard } from '../router.js';
 import { showToast } from '../util/toast.js';
 import { confirmDialog, type ConfirmOptions } from '../util/dialog.js';
@@ -945,7 +944,7 @@ export function NoteEditor({ slug, initialSlug, initialTitle, onSave }: Props) {
         if (!view) return;
         const { from } = view.state.selection.main;
         const altText = file.name.replace(/\.[^.]+$/, '').replace(/[[\]]/g, '');
-        const insert = `![${altText}](${base}/api/v1/artifacts/${artifact.sha256})`;
+        const insert = `![${altText}](artifact:${artifact.sha256})`;
         view.dispatch({
           changes: { from, insert },
           selection: EditorSelection.cursor(from + insert.length),

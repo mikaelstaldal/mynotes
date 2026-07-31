@@ -32,6 +32,7 @@ import (
 	"github.com/mikaelstaldal/mynotes/internal/gdocs"
 	"github.com/mikaelstaldal/mynotes/internal/handler"
 	"github.com/mikaelstaldal/mynotes/internal/icons"
+	"github.com/mikaelstaldal/mynotes/internal/mdexport"
 	"github.com/mikaelstaldal/mynotes/internal/mdimport"
 	"github.com/mikaelstaldal/mynotes/internal/repository"
 	"github.com/mikaelstaldal/mynotes/internal/service"
@@ -53,6 +54,7 @@ func main() {
 	basicAuthFile := flag.String("basic-auth-file", "", "enable HTTP basic auth using this htpasswd file (bcrypt only)")
 	basicAuthRealm := flag.String("basic-auth-realm", "MyNotes", "realm for HTTP basic auth")
 	importMdDir := flag.String("import-md-dir", "", "import every .md file in this directory (recursively) as a note, then exit")
+	exportMdDir := flag.String("export-md-dir", "", "export every note as a .md file into this directory (created if needed), then exit")
 	gdocsClientID := flag.String("gdocs-client-id", "", "Google OAuth 2.0 Client ID; when set (with -gdocs-client-secret) runs a bulk Google Docs import instead of the server")
 	gdocsClientSecret := flag.String("gdocs-client-secret", "", "Google OAuth 2.0 Client Secret")
 	demoData := flag.Bool("demo", false, "fill the database with demo notes, artifacts, and tags, then exit")
@@ -69,6 +71,9 @@ func main() {
 	// combining two is a mistake, not a pipeline.
 	if *importMdDir != "" && (*demoData || *demoServer || *demoBundle != "" || *gdocsClientID != "" || *gdocsClientSecret != "") {
 		log.Fatalf("-import-md-dir cannot be combined with -demo, -demo-server, -demo-bundle, or the -gdocs-* flags")
+	}
+	if *exportMdDir != "" && (*importMdDir != "" || *demoData || *demoServer || *demoBundle != "" || *gdocsClientID != "" || *gdocsClientSecret != "") {
+		log.Fatalf("-export-md-dir cannot be combined with -import-md-dir, -demo, -demo-server, -demo-bundle, or the -gdocs-* flags")
 	}
 
 	if *demoData {
@@ -110,6 +115,13 @@ func main() {
 
 	if *importMdDir != "" {
 		if err := runMarkdownImport(context.Background(), *importMdDir, *dataDir); err != nil {
+			log.Fatalf("%v", err)
+		}
+		return
+	}
+
+	if *exportMdDir != "" {
+		if err := runMarkdownExport(context.Background(), *exportMdDir, *dataDir); err != nil {
 			log.Fatalf("%v", err)
 		}
 		return
@@ -203,6 +215,45 @@ func runMarkdownImport(ctx context.Context, importDir, dataDir string) error {
 			fmt.Printf("  - %v\n", e)
 		}
 		return fmt.Errorf("%d import(s) failed", len(errs))
+	}
+	fmt.Println()
+	return nil
+}
+
+// runMarkdownExport writes every note in the database to a directory of .md
+// files and returns. The mirror image of runMarkdownImport: a one-shot batch
+// mode that runs instead of the server, against the same database.
+//
+// Unlike the import modes it does not create the database — an export from a
+// mistyped -data would otherwise leave an empty directory and exit 0, reporting
+// success for a database that never held any notes.
+func runMarkdownExport(ctx context.Context, exportDir, dataDir string) error {
+	dbPath := filepath.Join(dataDir, databaseName)
+	if _, err := os.Stat(dbPath); err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return fmt.Errorf("no database at %s: the export reads an existing database, it does not create one", dbPath)
+		}
+		return fmt.Errorf("database %s: %w", dbPath, err)
+	}
+	db, err := repository.OpenDB(dbPath, 5000, "synchronous=NORMAL")
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+
+	noteRepo := repository.NewNoteRepository(db)
+	tagRepo := repository.NewTagRepository(db)
+	noteSvc := service.NewNoteService(noteRepo, tagRepo)
+
+	exported, errs := mdexport.Run(ctx, exportDir, noteSvc, os.Stdout)
+
+	fmt.Printf("\nExported %d note(s).", exported)
+	if len(errs) > 0 {
+		fmt.Printf(" %d failed:\n", len(errs))
+		for _, e := range errs {
+			fmt.Printf("  - %v\n", e)
+		}
+		return fmt.Errorf("%d export(s) failed", len(errs))
 	}
 	fmt.Println()
 	return nil

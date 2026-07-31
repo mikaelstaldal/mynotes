@@ -66,6 +66,7 @@ internal/
   sanitize/              # HTML sanitization (bluemonday)
   gdocs/                 # -gdocs-* batch mode: bulk-import owned Google Docs
   mdimport/              # -import-md-dir batch mode: bulk-import a .md directory tree
+  mdexport/              # -export-md-dir batch mode: bulk-export every note as .md
   demo/                  # demo seed content; bundle.go exports it for the browser demo
 web/
   embed.go               # //go:embed of web/static

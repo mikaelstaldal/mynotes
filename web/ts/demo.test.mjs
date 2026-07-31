@@ -115,7 +115,8 @@ test('validateTitle rejects empty, control characters, and over-length', () => {
 });
 
 test('validateContent accepts the Markdown the app produces', () => {
-  validateContent('# Heading\n\nText with a [link](https://example.com), an ![img](/api/v1/artifacts/x),\n'
+  validateContent('# Heading\n\nText with a [link](https://example.com), an ![img](artifact:'
+    + 'a'.repeat(64) + '),\n'
     + 'a [[wikilink]], `code`, <kbd>Ctrl</kbd>, <mark>hi</mark>, and a data image:\n\n'
     + '![d](data:image/png;base64,AAAA)\n');
   validateContent('<svg xmlns="http://www.w3.org/2000/svg"><circle cx="1" cy="1" r="1"/></svg>');
@@ -136,6 +137,8 @@ test('validateContent enforces the scheme allow-list', () => {
   assertRejects(() => validateContent('[a](//evil.example/)'), 400, 'scheme-relative link');
   assertRejects(() => validateContent('![i](data:image/svg+xml;base64,AAAA)'), 400, 'svg data image');
   assertRejects(() => validateContent('<a href="javascript:x">a</a>'), 400, 'javascript href');
+  assertRejects(() => validateContent('![i](artifact:nope)'), 400, 'malformed artifact ref');
+  assertRejects(() => validateContent(`[a](artifact:${'a'.repeat(64)})`), 400, 'artifact link');
   validateContent('[a](http://example.com) and [b](mailto:x@example.com)');
 });
 

@@ -160,6 +160,39 @@ test('mailto: link survives', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Artifact references — artifact:<sha256> resolves to the artifact endpoint.
+// This document has no <base href>, so base is '' (a root deployment); the
+// subpath case lives in basepath.test.mjs.
+// ---------------------------------------------------------------------------
+
+const SHA = 'a'.repeat(64);
+
+test('an artifact image resolves to the artifact endpoint', () => {
+  const out = renderNote(`![logo](artifact:${SHA})`);
+  assertPresent(out, `src="/api/v1/artifacts/${SHA}"`, 'reference resolved');
+  assertAbsent(out, 'artifact:', 'no artifact scheme left');
+});
+
+test('a raw <img> carrying an artifact reference resolves too', () => {
+  const out = renderNote(`<img src="artifact:${SHA}" alt="logo">`);
+  assertPresent(out, `src="/api/v1/artifacts/${SHA}"`, 'reference resolved');
+});
+
+test('a malformed artifact reference is dropped, not resolved', () => {
+  for (const ref of ['artifact:nope', `artifact:${SHA}/../../evil`, `artifact:${SHA}?x=1`,
+    `artifact:${'A'.repeat(64)}`]) {
+    const out = renderNote(`![x](${ref})`);
+    assertAbsent(out, 'src=', `${ref}: src must be dropped`);
+  }
+});
+
+test('an artifact reference on a link is dropped (images only)', () => {
+  const out = renderNote(`[file](artifact:${SHA})`);
+  assertAbsent(out, 'href=', 'href must be dropped');
+  assertAbsent(out, '/api/v1/artifacts/', 'not resolved on a link');
+});
+
+// ---------------------------------------------------------------------------
 // Built-in Lucide icons — rendered inline as <svg> so they inherit the note's
 // text colour (stroke="currentColor"), instead of a grey <img>.
 // ---------------------------------------------------------------------------

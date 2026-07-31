@@ -197,7 +197,8 @@ Markdown through that API; the DOMPurify gate is the only path to the DOM.
   resolve, since `rebuild.sh` only prints a reminder on a version bump.
 - **Links and images stay URLs.** Wikilinks render as root-relative
   `/notes/{slug}` / `/tags/{slug}` (the page has no `<base href>`, so
-  `basepath.ts` yields `''`), and images as `/api/v1/{artifacts,icons}/…`. An
+  `basepath.ts` yields `''`), and images as `/api/v1/{artifacts,icons}/…` — an
+  `artifact:{sha256}` reference resolves to the former. An
   embedding client intercepts both: navigations route natively, image requests
   are served from its own authenticated, offline-capable storage. Nothing about
   auth or caching leaks into the kit.
@@ -221,11 +222,14 @@ bundle, to keep task-lists off) and walks the AST, rejecting the write with
     `RequireNoReferrer…(false)`, `AddTargetBlankToFullyQualifiedLinks(false)`,
     `RequireCrossOriginAnonymous(false)`). Add URL rules: `<a href>` keeps
     `http`/`https`/`mailto`/relative; `img@src` allows **only** `https`, relative,
-    and the canonical `data:` raster set (`Matching` regexp), excluding
-    `data:image/svg+xml` and dropping `http`.
+    the canonical `data:` raster set, and an `artifact:<sha256>` reference
+    (`Matching` regexp), excluding `data:image/svg+xml` and dropping `http`. The
+    `artifact` scheme is registered with a custom URL policy pinned to the same
+    canonical form.
 - **Disallowed schemes on Markdown-native destinations** (`ast.KindLink` /
   `ast.KindAutoLink` / `ast.KindImage`): links allow `http`/`https`/`mailto`;
-  images allow only `https` + canonical `data:` raster (no `http`). No-scheme
+  images allow only `https`, canonical `data:` raster, and `artifact:` (no
+  `http`). No-scheme
   (root-/bare-relative) allowed; scheme-relative (`//host/…`) rejected on both;
   any other explicit scheme rejected. Scheme comparison case-insensitive.
 - **Nesting deeper than 100 levels** (coarse DoS bound; parity with client
@@ -239,6 +243,13 @@ The canonical `data:` image allow-list — used identically by the server scheme
 check, the bluemonday `img@src` rule, markdown-it `validateLink`, and DOMPurify —
 is the regexp **`^data:image/(gif|png|jpeg|webp);`** (required trailing `;`,
 excludes `svg+xml`).
+
+The canonical artifact reference — used identically by the server scheme check,
+the bluemonday `img@src` rule and custom scheme policy, the demo worker's
+validator, and the render pipeline that resolves it — is the regexp
+**`^artifact:[0-9a-f]{64}$`** (`sanitize.ArtifactRef`): the scheme, a lowercase
+hex SHA-256, and nothing else, so the resolved URL can carry no path, query or
+fragment from the stored content.
 
 Parity between server and client gates is a **goal, not a security dependency**:
 DOMPurify is authoritative at render time, so a divergence is at worst a UX
@@ -264,6 +275,11 @@ hostile and gates on render. Layered defenses:
    `uponSanitizeAttribute` hook permits `data:` **only** on `img@src` matching the
    canonical raster regexp (closes the `data:image/svg+xml` that DOMPurify
    defaults would admit) and strips `data:` everywhere else (e.g. `<a href>`).
+   The same hook resolves an `artifact:<sha256>` image reference to
+   `<base>/api/v1/artifacts/<sha256>` — it runs before the URI allow-list, so the
+   rewritten relative path passes it, while any other `artifact:` spelling (and
+   the scheme on a non-image attribute, e.g. `<a href>`) keeps the unknown scheme
+   and is dropped.
 4. Strict CSP — `script-src 'self'`, all vendor bundles served from origin,
    import-map hash via `commonweb.ImportMapCSPHash` (adapts automatically; no
    manual hash). Keep `frame-ancestors 'none'`. CodeMirror's runtime `<style>` is

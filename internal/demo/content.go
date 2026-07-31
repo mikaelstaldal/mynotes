@@ -2,7 +2,7 @@ package demo
 
 // This file holds the Markdown source for the demo notes and the inline SVG
 // artifact. Notes carrying a %s verb are formatted with an artifact SHA-256 to
-// build the image reference (/api/v1/artifacts/{sha256}).
+// build the image reference (artifact:{sha256}).
 
 // logoSVGSource is stored as an image/svg+xml artifact and referenced from the
 // welcome note. It uses only elements/attributes in the sanitizer allow-list.
@@ -22,7 +22,7 @@ const welcomeNote = `# Welcome to MyNotes 👋
 **MyNotes** is a fast, single-user note manager. Everything you write is stored
 as plain [CommonMark](https://commonmark.org/) Markdown and rendered live.
 
-![The MyNotes logo](/api/v1/artifacts/%s)
+![The MyNotes logo](artifact:%s)
 
 ## What you can do
 
@@ -172,7 +172,7 @@ const recipeNote = `# Sourdough Bread 🍞
 
 A reliable everyday loaf with a crisp crust and open crumb.
 
-![A freshly baked loaf](/api/v1/artifacts/%s)
+![A freshly baked loaf](artifact:%s)
 
 ## Ingredients
 
@@ -203,7 +203,7 @@ const roadmapNote = `# Q3 Project Roadmap
 
 Planning notes for the third quarter. Status is tracked per workstream below.
 
-![Velocity by workstream](/api/v1/artifacts/%s)
+![Velocity by workstream](artifact:%s)
 
 ## Priorities
 

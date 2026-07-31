@@ -171,6 +171,47 @@ files are not failures.
 `-demo-bundle`, or the `-gdocs-*` flags. Re-running it creates a second copy of every note: 
 it is a migration, not a sync.
 
+## Exporting all notes to a directory of Markdown files
+
+The inverse: every note in the database written out as a `.md` file, so nothing
+you write is locked in. Also a one-shot mode that connects to the same database
+and exits when done:
+
+```bash
+./mynotes -export-md-dir /path/to/markdown -data /path/to/your/data
+```
+
+The directory is created if it does not exist. Each file is exactly what the
+*Download Markdown* button gives you for that note — a YAML frontmatter block
+(`title`, `slug`, `date`, `tags`) followed by the note's Markdown — so an
+exported directory imports straight back with `-import-md-dir`.
+
+Each note is written as **`<slug>.md`**: the file is named by the same identifier
+that addresses the note at `/notes/<slug>`, so you can go from a URL to a file
+and back without guessing. Slugs are lowercase ASCII, hyphenated, and unique, so
+there is nothing to sanitise and nothing can collide. (The one adjustment: a note
+whose slug is a DOS device name — `con`, `nul`, `lpt1`, … — gets an `_` prefix,
+since Windows will not open `con.md`.)
+
+```
+Listing notes...
+Found 42 note(s). Exporting to /path/to/markdown...
+  ✓ /notes/my-first-note → my-first-note.md
+  ✓ /notes/ideas → ideas.md
+  …
+Exported 42 note(s).
+```
+
+Re-running overwrites the files it wrote before, so it is a repeatable dump
+rather than a sync: a note you deleted since the last run leaves its file behind,
+and a note you renamed leaves the old file next to the new one. Exit code is 0
+when nothing failed, 1 otherwise.
+
+`-export-md-dir` cannot be combined with `-import-md-dir`, `-demo`,
+`-demo-server`, `-demo-bundle`, or the `-gdocs-*` flags. Unlike the import modes
+it will not create the database: pointing `-data` somewhere empty is an error,
+not an empty export.
+
 ## Importing from Google Docs
 
 The binary can also bulk-import all your owned Google Docs as notes. When the two

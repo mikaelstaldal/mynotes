@@ -187,3 +187,39 @@ func TestInlineScriptCSPHash(t *testing.T) {
 	assert.Equal(t, "'sha256-47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU='", inlineScriptCSPHash(""))
 	assert.NotEqual(t, inlineScriptCSPHash("a"), inlineScriptCSPHash("b"))
 }
+
+// The export reads an existing database rather than creating one, so a mistyped
+// -data fails loudly instead of leaving an empty directory and exiting 0.
+func TestRunMarkdownExportRequiresAnExistingDatabase(t *testing.T) {
+	data := t.TempDir()
+	out := filepath.Join(t.TempDir(), "out")
+
+	err := runMarkdownExport(t.Context(), out, data)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "does not create one")
+	assert.NoDirExists(t, out, "nothing is written when there is no database to export")
+}
+
+// End to end against a real database: seed it, then export it as Markdown files
+// named by the seeded notes' slugs.
+func TestRunMarkdownExportWritesOneFilePerNote(t *testing.T) {
+	data := t.TempDir()
+	out := filepath.Join(t.TempDir(), "out")
+	require.NoError(t, runDemo(t.Context(), data))
+
+	require.NoError(t, runMarkdownExport(t.Context(), out, data))
+
+	entries, err := os.ReadDir(out)
+	require.NoError(t, err)
+	require.NotEmpty(t, entries)
+	for _, e := range entries {
+		assert.Equal(t, ".md", filepath.Ext(e.Name()), e.Name())
+	}
+
+	welcome, err := os.ReadFile(filepath.Join(out, "welcome-to-mynotes.md"))
+	require.NoError(t, err)
+	assert.Contains(t, string(welcome), "title: Welcome to MyNotes\n",
+		"the file carries the download-Markdown frontmatter")
+	assert.Contains(t, string(welcome), "slug: welcome-to-mynotes\n",
+		"the file name is the note's slug, the same identifier as in its URL")
+}

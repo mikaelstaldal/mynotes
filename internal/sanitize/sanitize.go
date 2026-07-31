@@ -30,10 +30,24 @@ import (
 // case-insensitively (RFC 3986 schemes are case-insensitive).
 var DataImageRaster = regexp.MustCompile(`(?i)^data:image/(gif|png|jpeg|webp);`)
 
+// ArtifactRef is the canonical way note content references a stored artifact:
+// the app-defined `artifact:` URL scheme followed by the artifact's SHA-256
+// (`![alt](artifact:<sha256>)`). It is shared by every gate (this policy's
+// img@src rule, the service's Markdown-native image scheme check, and the
+// frontend render pipeline, which expands it to the artifact endpoint under the
+// deployment's base path). Being a bare scheme plus digest, it carries no
+// deployment-specific prefix and no path, query or fragment the expansion could
+// be steered with.
+//
+// Matched strictly, and in lowercase only: the API mints artifact IDs as
+// lowercase hex, so any other spelling can never resolve, and write-time
+// validation rejects rather than rewrites.
+var ArtifactRef = regexp.MustCompile(`^artifact:[0-9a-f]{64}$`)
+
 // imgSrcPattern expresses the intended <img src> allow-list — https, relative
-// URLs (no scheme), and the canonical data: raster set. The relative branch
-// matches any value whose first segment contains no ':' before a '/', '?', '#',
-// or end of string (i.e. no URL scheme).
+// URLs (no scheme), the canonical data: raster set, and an artifact reference.
+// The relative branch matches any value whose first segment contains no ':'
+// before a '/', '?', '#', or end of string (i.e. no URL scheme).
 //
 // NOTE: UGCPolicy registers an unconditional <img src> attribute policy that is
 // evaluated before this Matching regexp and short-circuits it, so this regexp
@@ -41,7 +55,7 @@ var DataImageRaster = regexp.MustCompile(`(?i)^data:image/(gif|png|jpeg|webp);`)
 // enforcement for embedded HTML is therefore done by the service's explicit
 // scheme pass (see internal/service/markdown.go); this regexp and the data:
 // custom policy below remain as the policy-level expression of the same rules.
-var imgSrcPattern = regexp.MustCompile(`(?i)^(https:|data:image/(gif|png|jpeg|webp);|[^:/?#]*(?:[/?#]|$))`)
+var imgSrcPattern = regexp.MustCompile(`(?i)^(https:|data:image/(gif|png|jpeg|webp);|(?-i:artifact:[0-9a-f]{64}$)|[^:/?#]*(?:[/?#]|$))`)
 
 // svgFragmentHref restricts SVG href to same-document fragment references (e.g.
 // "#pathId"). Used for <mpath> and <textpath> which must reference elements in
@@ -83,6 +97,14 @@ func newPolicy() *bluemonday.Policy {
 	// non-raster data: URIs out on every element (including img).
 	p.AllowURLSchemeWithCustomPolicy("data", func(u *url.URL) bool {
 		return DataImageRaster.MatchString(u.String())
+	})
+
+	// The app-defined artifact scheme, restricted to the canonical
+	// `artifact:<sha256>` form. Like data:, the global policy admits it on every
+	// element; the per-element rules below (and the service's scheme pass) keep it
+	// to images, which is where the render pipeline expands it.
+	p.AllowURLSchemeWithCustomPolicy("artifact", func(u *url.URL) bool {
+		return ArtifactRef.MatchString(u.String())
 	})
 
 	// Restrict <img src> to https/relative/canonical-data: via a Matching regexp

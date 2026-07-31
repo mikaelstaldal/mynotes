@@ -856,45 +856,53 @@ DOMPurify.addHook('uponSanitizeElement', (node, data) => {
   }
 });
 
-// An internal API reference in note content — an artifact image above all — is
-// written either root-relative (`/api/v1/…`, the form the demo seed, imported
-// notes, and hand-written content carry) or already prefixed with the
-// deployment's base path (`<base>/api/v1/…`, what the editor inserts). Both are
-// accepted on the way in, so both have to work on the way out — but a
-// root-relative path ignores <base href> and therefore leaves the deployment
-// altogether under a subpath: it 404s at the origin root, and in demo mode it
-// also falls outside the service worker's scope (which is exactly that subpath),
-// so nothing can answer it. Re-root it on the base path; a path that already
-// carries the base, and any absolute URL, does not match and is left alone.
-const ROOT_RELATIVE_API_RE = /^\/api\/v1\//;
-
-function rerootApiPath(node: Element, attr: string): void {
-  if (!base) return;
-  const value = node.getAttribute(attr);
-  if (value !== null && ROOT_RELATIVE_API_RE.test(value)) {
-    node.setAttribute(attr, base + value);
-  }
-}
-
 // Open external links in a new tab; keep internal links in the same tab.
 // Also force task-list checkboxes to stay non-interactive (read-only view).
 DOMPurify.addHook('afterSanitizeAttributes', (node) => {
   if (node.tagName === 'A') {
-    rerootApiPath(node, 'href');
     const href = node.getAttribute('href') ?? '';
     if (/^https?:\/\//i.test(href)) {
       node.setAttribute('target', '_blank');
       node.setAttribute('rel', 'noopener noreferrer');
     }
-  } else if (node.tagName === 'IMG') {
-    rerootApiPath(node, 'src');
   } else if (node.tagName === 'INPUT') {
     node.setAttribute('disabled', '');
   }
 });
 
-// Allow data: only on img@src with the canonical raster MIME set; strip it everywhere else.
+// A stored artifact is referenced from note content by the app-defined
+// `artifact:` URL scheme carrying its SHA-256 (`![alt](artifact:<sha256>)`,
+// what the editor inserts and the demo seed and any import carry). The
+// reference is deployment-independent — resolving it to a URL is this
+// pipeline's job, and it is done here rather than in the markdown-it image rule
+// so a raw <img> in embedded HTML resolves identically. The target is the
+// artifact endpoint under the deployment's base path: root-relative would
+// ignore <base href> and so leave a subpath deployment altogether, 404ing at the
+// origin root and, in demo mode, falling outside the service worker's scope
+// (which is exactly that subpath), so nothing could answer it.
+//
+// The pattern is the strict one the write-time gate enforces
+// (internal/sanitize.ArtifactRef), so nothing beyond a bare digest — no path,
+// query or fragment — is ever spliced into the URL. Anything else keeps the
+// unknown `artifact:` scheme and is dropped by the URI allow-list below.
+const ARTIFACT_REF_RE = /^artifact:([0-9a-f]{64})$/;
+
+// Resolves artifact: references, and allows data: only on img@src with the
+// canonical raster MIME set (stripping it everywhere else). Both run in
+// uponSanitizeAttribute, before DOMPurify validates the value against
+// ALLOWED_URI_REGEXP — the rewritten artifact reference is a plain relative
+// path, so it passes that gate as an ordinary internal URL.
 DOMPurify.addHook('uponSanitizeAttribute', (node, data) => {
+  const tag = node.tagName?.toLowerCase();
+  // Markdown images render to <img src>; an SVG <image href> is the same
+  // reference in embedded HTML, and the write-time gate treats the two alike.
+  if ((tag === 'img' && data.attrName === 'src') || (tag === 'image' && data.attrName === 'href')) {
+    const artifact = ARTIFACT_REF_RE.exec(data.attrValue);
+    if (artifact) {
+      data.attrValue = `${base}/api/v1/artifacts/${artifact[1]}`;
+      return;
+    }
+  }
   if (data.attrName === 'src' && node.tagName === 'IMG' && DATA_IMAGE_RE.test(data.attrValue)) {
     data.keepAttr = true;
     return;

@@ -1,4 +1,4 @@
-// node:test coverage for the base-path re-rooting in web/ts/util/markdown.ts
+// node:test coverage for the base-path handling in web/ts/util/markdown.ts
 // (exercised via its compiled output, web/static/util/markdown.js).  Run via
 // build.sh or directly:
 //   node --import ./web/ts/test-preload.mjs --test web/ts/basepath.test.mjs
@@ -7,12 +7,11 @@
 // load, so a document that HAS one cannot be arranged inside markdown.test.mjs,
 // which deliberately has none (base === '' there, the root deployment).
 //
-// What is under test is what a subpath deployment does to an internal API
-// reference stored root-relative — the form the demo seed content and any
-// imported note carry. Without re-rooting, the browser resolves /api/v1/... at
-// the origin root, outside the deployment: on the published GitHub Pages demo
-// (/mynotes/) that is both a 404 and outside the service worker's scope, so the
-// demo's own images cannot load.
+// What is under test is what a subpath deployment resolves an artifact
+// reference (artifact:<sha256>, deployment-independent as stored) and a wiki
+// link to. A URL resolved at the origin root would fall outside the deployment:
+// on the published GitHub Pages demo (/mynotes/) that is both a 404 and outside
+// the service worker's scope, so the demo's own images could not load.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
@@ -46,30 +45,27 @@ function srcOf(markdown) {
 // Artifact images
 // ---------------------------------------------------------------------------
 
-test('a root-relative artifact image is re-rooted on the base path', () => {
-  assert.equal(srcOf(`![logo](/api/v1/artifacts/${SHA})`), `/mynotes/api/v1/artifacts/${SHA}`);
+test('an artifact reference resolves to the endpoint under the base path', () => {
+  assert.equal(srcOf(`![logo](artifact:${SHA})`), `/mynotes/api/v1/artifacts/${SHA}`);
 });
 
-test('an artifact image already carrying the base path is left alone', () => {
-  assert.equal(srcOf(`![logo](/mynotes/api/v1/artifacts/${SHA})`), `/mynotes/api/v1/artifacts/${SHA}`);
-});
-
-test('an absolute artifact URL is left alone', () => {
-  const src = `https://notes.example.com/api/v1/artifacts/${SHA}`;
-  assert.equal(srcOf(`![logo](${src})`), src);
-});
-
-test('a raw <img> reaching the render gate is re-rooted too', () => {
-  assert.equal(srcOf(`<img src="/api/v1/artifacts/${SHA}" alt="logo">`),
+test('a raw <img> reaching the render gate resolves too', () => {
+  assert.equal(srcOf(`<img src="artifact:${SHA}" alt="logo">`),
     `/mynotes/api/v1/artifacts/${SHA}`);
 });
 
-test('an image outside the API namespace is untouched', () => {
+test('an artifact reference on an SVG <image> resolves too', () => {
+  const img = parse(renderNote(`<svg><image href="artifact:${SHA}" width="50" height="50"/></svg>`))
+    .querySelector('image');
+  assert.equal(img.getAttribute('href'), `/mynotes/api/v1/artifacts/${SHA}`);
+});
+
+test('an ordinary image URL is untouched', () => {
   assert.equal(srcOf('![photo](/photos/cat.png)'), '/photos/cat.png');
   assert.equal(srcOf('![remote](https://example.com/cat.png)'), 'https://example.com/cat.png');
 });
 
-test('a data: image survives re-rooting unchanged', () => {
+test('a data: image survives unchanged', () => {
   const src = 'data:image/png;base64,iVBORw0KGgo=';
   assert.equal(srcOf(`![dot](${src})`), src);
 });
@@ -77,12 +73,6 @@ test('a data: image survives re-rooting unchanged', () => {
 // ---------------------------------------------------------------------------
 // Links
 // ---------------------------------------------------------------------------
-
-test('a root-relative artifact link is re-rooted on the base path', () => {
-  const a = parse(renderNote(`[file](/api/v1/artifacts/${SHA})`)).querySelector('a');
-  assert.equal(a.getAttribute('href'), `/mynotes/api/v1/artifacts/${SHA}`);
-  assert.equal(a.hasAttribute('target'), false, 'still an internal link');
-});
 
 test('an external link keeps its href and opens in a new tab', () => {
   const a = parse(renderNote('[site](https://example.com/)')).querySelector('a');
@@ -96,7 +86,7 @@ test('a wiki link is built on the base path', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Icons — matched by path suffix, so both forms already render inline
+// Icons — matched by path suffix, so every form already renders inline
 // ---------------------------------------------------------------------------
 
 test('a built-in icon renders inline in either form', () => {
@@ -105,9 +95,4 @@ test('a built-in icon renders inline in either form', () => {
     assert.ok(body.querySelector('svg.lucide-star'), `${src}: expected inline <svg>`);
     assert.equal(body.querySelector('img'), null, `${src}: expected no <img>`);
   }
-});
-
-test('an unknown icon name falls back to a re-rooted <img>', () => {
-  assert.equal(srcOf('![nope](/api/v1/icons/lucide/definitely-not-an-icon)'),
-    '/mynotes/api/v1/icons/lucide/definitely-not-an-icon');
 });

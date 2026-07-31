@@ -25,6 +25,9 @@ func TestValidateMarkdownStructure_Accepts(t *testing.T) {
 		"https image":           "![alt](https://example.com/a.png)",
 		"relative image":        "![alt](/img/a.png)",
 		"data raster image":     "![alt](data:image/png;base64,iVBORw0KGgo=)",
+		"artifact image":        "![alt](artifact:" + strings.Repeat("a", 64) + ")",
+		"embedded artifact img": "<img src=\"artifact:" + strings.Repeat("b", 64) + "\" alt=\"x\">",
+		"svg image artifact":    "<svg><image href=\"artifact:" + strings.Repeat("c", 64) + "\" width=\"50\" height=\"50\"/></svg>",
 		"autolink url":          "<https://example.com>",
 		"autolink email":        "<a@b.com>",
 		"safe inline html":      "text <b>bold</b> and <a href=\"https://x.com\">link</a>",
@@ -101,6 +104,16 @@ func TestValidateMarkdownStructure_Rejects(t *testing.T) {
 		"http image":              "![x](http://example.com/a.png)",
 		"data svg image":          "![x](data:image/svg+xml;base64,PHN2Zz4=)",
 		"data no-semicolon image": "![x](data:image/png,foo)",
+		// The artifact scheme is images-only, and carries a bare lowercase hex
+		// SHA-256 and nothing else — no path, query, fragment or other digest
+		// spelling the render-time expansion could be steered with.
+		"artifact link":             "[x](artifact:" + strings.Repeat("a", 64) + ")",
+		"artifact short digest":     "![x](artifact:abc123)",
+		"artifact uppercase digest": "![x](artifact:" + strings.Repeat("A", 64) + ")",
+		"artifact with path":        "![x](artifact:" + strings.Repeat("a", 64) + "/../../evil)",
+		"artifact with query":       "![x](artifact:" + strings.Repeat("a", 64) + "?x=1)",
+		"embedded artifact link":    "<a href=\"artifact:" + strings.Repeat("a", 64) + "\">x</a>",
+		"embedded bad artifact img": "<img src=\"artifact:nope\">",
 
 		// SVG unsafe
 		"svg with script":      "<svg><script>alert(1)</script></svg>",

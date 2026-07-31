@@ -18,7 +18,8 @@ info:
     strikethrough, autolinks, task lists), a safe raw-HTML subset, and several
     application-specific render-time transforms — AsciiMath math (`$x^2$`), inline
     Lucide icons (`[!name]`), box / foldable blockquotes (`>-`, `>+`, `>*`) and
-    the callouts built from them, and internal wikilinks (`[[slug]]`). All
+    the callouts built from them, internal wikilinks (`[[slug]]`), and artifact
+    image references (`![alt](artifact:<sha256>)`). All
     transforms are stored verbatim; a consumer that passes `content` through
     unchanged receives the literal source. See `markdown-spec.md` for the
     full grammar, the callout alias/colour table, and the wikilink indexing rules.
@@ -316,8 +317,11 @@ paths:
         Uploads binary content and stores it as a content-addressed artifact
         keyed by the SHA-256 of the content. Uploading the same bytes twice
         returns the existing record unchanged. Supported content types are the
-        common image formats. The SHA-256 hex digest is returned in the response
-        and used in the artifact URL.
+        common image formats. The SHA-256 hex digest is returned in the response,
+        used in the artifact URL, and is how note content references the
+        artifact: `![alt](artifact:<sha256>)`, an application-defined URL scheme
+        a rendering consumer resolves against wherever it fetches artifacts from
+        (see `markdown-spec.md`).
       requestBody:
         required: true
         content:

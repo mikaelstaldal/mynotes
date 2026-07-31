@@ -213,12 +213,16 @@ func checkScheme(dest string, isImage bool) error {
 	scheme := strings.ToLower(m[1])
 
 	if isImage {
-		// Images: https and the canonical data: raster set only — no http (a
-		// CSP-blocked http image renders silently broken, so reject up front).
+		// Images: https, the canonical data: raster set, and a stored artifact
+		// referenced as artifact:<sha256> — no http (a CSP-blocked http image
+		// renders silently broken, so reject up front).
 		if scheme == "https" {
 			return nil
 		}
 		if scheme == "data" && sanitize.DataImageRaster.MatchString(d) {
+			return nil
+		}
+		if scheme == "artifact" && sanitize.ArtifactRef.MatchString(d) {
 			return nil
 		}
 		return schemeError(true)

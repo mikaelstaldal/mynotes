@@ -173,9 +173,11 @@ svg.lucide, img[src*="/api/v1/icons/"] { vertical-align: text-bottom; }
 hr { border: none; border-top: 1px solid var(--border); margin: 1.5em 0; }
 `;
 
-// Matches an internal artifact image URL and captures its hex SHA-256, anchored
-// on the path suffix so it matches root-relative, basepath-prefixed, or absolute
-// references (mirrors the server's artifactSrcPattern).
+// Matches an internal artifact image URL and captures its hex SHA-256. The
+// export runs over the *rendered* fragment, where an `artifact:` reference has
+// already been resolved to the artifact endpoint under the base path
+// (util/markdown.ts); anchoring on the path suffix keeps a hand-written
+// root-relative or absolute URL to the same endpoint working too.
 const ARTIFACT_SRC_RE = /(?:^|\/)api\/v1\/artifacts\/([0-9a-f]{64})$/;
 
 // Cap the raw size of an inlined artifact; a larger one becomes a placeholder so

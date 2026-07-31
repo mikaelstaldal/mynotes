@@ -179,17 +179,26 @@ task-list checkbox — `<input type="checkbox">` with only `checked`/`disabled`
 attributes; any other `input` type or attribute is disallowed. Disallowed
 constructs — `script`, `style`, `iframe`, `object`, other form controls, `on*`
 event-handler attributes, and any URL whose scheme is not `http`, `https` or
-`mailto` — are rejected at write time (`400`), so stored content is always safe.
+`mailto` (images: `https`, a raster `data:` URI, or `artifact:`, see "Images and
+artifacts") — are rejected at write time (`400`), so stored content is always safe.
 Renderers should still sanitize with an equivalent allow-list as defense in
 depth.
 
 ## Images and artifacts
 
 Images use standard Markdown image syntax, `![alt](url)`. Binary images uploaded
-via `POST /artifacts` are content-addressed and referenced by their SHA-256, e.g.
-`![diagram](/api/v1/artifacts/<sha256>)`. Inline `data:` image URIs are also
-allowed for the `gif`, `png`, `jpeg` and `webp` types. Built-in icons may be
-referenced as images too (see "Inline icons").
+via `POST /artifacts` are content-addressed and referenced by the application's
+own `artifact:` URL scheme carrying their SHA-256, e.g.
+`![diagram](artifact:<sha256>)`. Only that exact form is accepted — the scheme
+followed by 64 lowercase hex digits, with no path, query or fragment. It
+deliberately carries no URL: a consumer resolves it against wherever it fetches
+artifacts from (`GET /artifacts/<sha256>` on this API, or its own local store),
+so stored content does not depend on where the server is deployed. The same
+reference works in a raw HTML `<img src>`.
+
+Inline `data:` image URIs are also allowed for the `gif`, `png`, `jpeg` and
+`webp` types. Built-in icons may be referenced as images too (see "Inline
+icons").
 
 ## Internal wikilinks (application-specific)
 

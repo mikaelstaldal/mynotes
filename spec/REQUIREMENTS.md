@@ -207,19 +207,24 @@ identity exists but is never exposed as the URL key.
   colour and follows the light/dark toggle. An unknown name falls back to an `<img>`
   pointing at the icon endpoint (which 404s). The inline `<svg>` passes through the
   same DOMPurify render-time gate as all other note markup.
-- **Internal API references are re-rooted on the deployment's base path.** An
-  artifact image, or any other `/api/v1/…` reference in note content, may be
-  stored either root-relative (`/api/v1/artifacts/{sha256}` — what imported
-  content and the demo seed carry) or already prefixed with the base path (what
-  the editor inserts). Both are accepted, so the render pipeline prefixes a
-  root-relative one with the base path taken from the page's `<base href>`.
-  Without that, a subpath deployment (`-public-url https://example.com/notes`)
-  would resolve the reference at the origin root, outside the deployment — a 404
-  on a real server, and in demo mode also outside the service worker's scope, so
-  none of the seeded images would load. A reference that already carries the base
-  path, an absolute URL, and any non-API path are left untouched. The render kit
-  has no `<base href>`, so references stay root-relative there (see **Shared
-  render kit**).
+- **Artifacts are referenced with the `artifact:` URL scheme.** A stored artifact
+  (§Artifacts) is embedded with ordinary Markdown image syntax carrying an
+  app-defined scheme and the artifact's SHA-256 — `![alt](artifact:{sha256})` —
+  and never a URL. The reference is therefore independent of where the app is
+  deployed, and resolving it is a client render-time transform like every other
+  extension: the pipeline rewrites it to `{base}/api/v1/artifacts/{sha256}`,
+  where `{base}` is the deployment's base path taken from the page's
+  `<base href>`. Without that a subpath deployment
+  (`-public-url https://example.com/notes`) would resolve the reference at the
+  origin root, outside the deployment — a 404 on a real server, and in demo mode
+  also outside the service worker's scope, so none of the seeded images would
+  load. The render kit has no `<base href>`, so references resolve root-relative
+  there (see **Shared render kit**). A raw `<img src>` (and an SVG
+  `<image href>`) in embedded HTML resolves identically.
+  Only the exact form `artifact:` + 64 lowercase hex digits is accepted: it is
+  validated at write time (§Security) and, at render time, anything else keeps
+  the unknown scheme and is dropped by the sanitizer, so nothing beyond a bare
+  digest is ever spliced into the resolved URL.
 - Both the read view and the editor's live preview render the same way and must
   be safe against XSS (see Security).
 - Content is bounded at 1,000,000 characters; empty content is valid.
@@ -260,9 +265,11 @@ is packaged as an embeddable kit that native clients load in a web view.
 - Wikilinks and tag links render as the same root-relative `/notes/{slug}` and
   `/tags/{slug}` URLs as in the web UI; an embedding client intercepts those
   navigations and routes them natively. External links carry `target="_blank"`.
-- Images resolve as ordinary requests to `/api/v1/artifacts/{sha256}` and
-  `/api/v1/icons/lucide/{name}`, which an embedding client is expected to serve
-  from its own (authenticated, cached, offline-capable) storage.
+- Images resolve as ordinary requests to `/api/v1/artifacts/{sha256}` (what an
+  `artifact:{sha256}` reference expands to; the kit has no `<base href>`, so the
+  path is root-relative) and `/api/v1/icons/lucide/{name}`, which an embedding
+  client is expected to serve from its own (authenticated, cached,
+  offline-capable) storage.
 - A client that only consumes the REST API and does not run the kit still gets
   well-formed Markdown — every extension is a render-time transform over content
   stored verbatim.
@@ -292,7 +299,7 @@ the one MyCal has with MyMail.
 
 ## Artifacts
 
-Binary content (images and other files) may be stored as artifacts and referenced in notes. Artifacts are content-addressed: the SHA-256 of the content is used as the identifier and in the URL, so uploading the same bytes twice returns the existing record unchanged.
+Binary content (images and other files) may be stored as artifacts and referenced in notes. Artifacts are content-addressed: the SHA-256 of the content is used as the identifier, in the API URL, and in the `artifact:{sha256}` reference note content carries (§Content), so uploading the same bytes twice returns the existing record unchanged.
 
 ### Artifact API
 
@@ -306,7 +313,7 @@ Artifacts are stored as BLOBs in the same SQLite database as notes, in a separat
 
 ### Image embedding in the editor
 
-The "embed image" toolbar button in the note editor uploads the selected file as an artifact and inserts a standard Markdown image reference `![alt](<base>/api/v1/artifacts/{sha256})` at the cursor. SVG and MathML files continue to be embedded inline as before. There is no hard file-size limit on upload (the global 10 MiB request body cap applies).
+The "embed image" toolbar button in the note editor uploads the selected file as an artifact and inserts a standard Markdown image reference `![alt](artifact:{sha256})` at the cursor. SVG and MathML files continue to be embedded inline as before. There is no hard file-size limit on upload (the global 10 MiB request body cap applies).
 
 ## Tags
 
@@ -390,7 +397,7 @@ The API manages notes keyed by slug. Operations:
   (`{ "notes": [ … ] }`). A note with no headings is a validation error. The
   source note is left unchanged.
 - **Download Markdown** — `GET /notes/{slug}/download-markdown` returns the note as a `.md` file (filename derived from slug). The body is a YAML frontmatter block (`title`, `slug`, `date` — the note's `created_at` as an RFC 3339 UTC timestamp — and `tags`, an array of the note's tag slugs, omitted when the note has none) followed by the Markdown content soft-wrapped at column 80. Wrapping reflows only over-long top-level paragraph lines, inserting soft line breaks at word boundaries (never splitting a word, and never before a token that could start a block); headings, code, tables, blockquotes, and list items are left verbatim. Because a soft break inside a paragraph renders as a space, the wrapped download renders identically to the stored note. The frontmatter is round-trip compatible with the Markdown import feature (re-importing the downloaded file restores the same title, slug, creation date, and tags); a single newline separates the closing `---` from the content (the parsed body is the wrapped content, which renders identically to the original).
-- **Download HTML** — a **web-UI-only** feature (no server endpoint): the browser renders the note to a complete, standalone HTML document and downloads it as a `.html` file (filename derived from slug). It reuses the read-view render pipeline (markdown-it + DOMPurify, AsciiMath → MathML, inline Lucide icon `<svg>`) and additionally renders Mermaid diagrams to SVG, so the exported file matches the on-screen view — including diagrams, which a server render cannot produce. Internal artifact image references (`![alt](/api/v1/artifacts/{sha256})`) are fetched and inlined as base64 `data:` URLs so the document renders standalone, without a live server (an SVG loaded via `<img src="data:">` cannot execute script, so it stays inert); an artifact larger than 16 MiB is replaced by an inline broken-image icon, and unknown or unresolvable references are left as-is. A small embedded stylesheet approximates the read view; the current light/dark theme is baked into the downloaded file (a `data-theme` attribute on `<html>`, and dark-themed Mermaid SVG) so it looks like what the user saw. The **Print** action reuses the same generated document, loaded into an off-screen iframe whose print dialog is invoked, but is always exported light (dark on paper wastes ink and reads poorly); the embedded stylesheet additionally resets to light under `@media print`, so even a saved dark document prints light.
+- **Download HTML** — a **web-UI-only** feature (no server endpoint): the browser renders the note to a complete, standalone HTML document and downloads it as a `.html` file (filename derived from slug). It reuses the read-view render pipeline (markdown-it + DOMPurify, AsciiMath → MathML, inline Lucide icon `<svg>`) and additionally renders Mermaid diagrams to SVG, so the exported file matches the on-screen view — including diagrams, which a server render cannot produce. Internal artifact image references (`![alt](artifact:{sha256})`) are fetched and inlined as base64 `data:` URLs so the document renders standalone, without a live server (an SVG loaded via `<img src="data:">` cannot execute script, so it stays inert); an artifact larger than 16 MiB is replaced by an inline broken-image icon, and unknown or unresolvable references are left as-is. A small embedded stylesheet approximates the read view; the current light/dark theme is baked into the downloaded file (a `data-theme` attribute on `<html>`, and dark-themed Mermaid SVG) so it looks like what the user saw. The **Print** action reuses the same generated document, loaded into an off-screen iframe whose print dialog is invoked, but is always exported light (dark on paper wastes ink and reads poorly); the embedded stylesheet additionally resets to light under `@media print`, so even a saved dark document prints light.
 - **Send as email** — a **web-UI-only** feature (no server endpoint) available
   only when the MyMail integration is configured (see "MyMail integration"). The
   note is sent as an HTML formatted email through the sibling MyMail instance,
@@ -773,6 +780,99 @@ Imported 40 note(s). 1 skipped. 1 failed:
 File names are shown relative to the import directory.  Exit code is 0 when no
 file failed, 1 otherwise; skipped files do not affect the exit code.
 
+## Markdown Directory Bulk Export
+
+A one-shot batch mode that writes every note in the database to a directory as a
+Markdown file.  The inverse of the Markdown directory bulk import, and its
+structural twin: it reads through the same `NoteService` the REST API uses, and
+serialises each note with the same function behind
+`GET /notes/{slug}/download-markdown`, so an exported file is byte-for-byte what
+the *Download Markdown* button produces and an exported directory re-imports with
+`-import-md-dir`.
+
+### Invocation
+
+```
+./mynotes -export-md-dir <DIR> [-data <dir>]
+```
+
+When `-export-md-dir` is present the binary runs the exporter instead of starting
+the HTTP server.  All other flags except `-data` (which controls the database
+path) are ignored.  The target directory is created, with any missing parent, if
+it does not yet exist.  Unlike the import modes the **database is not created**:
+exporting from a `-data` directory that holds no database is an error, not an
+empty directory and a successful exit.  Combining `-export-md-dir` with
+`-import-md-dir`, `-demo`, `-demo-server`, `-demo-bundle`, or the `-gdocs-*`
+flags is an error: each batch mode runs instead of the others.
+
+### What is written
+
+- **One `.md` file per note**, flat in the target directory — no subdirectories,
+  and no directory structure is reconstructed from tags.
+- Notes are exported **oldest first** (by `created_at`, with an id tiebreak), so
+  a run over an unchanged database produces the same names in the same order.
+- The file content is a **YAML frontmatter block** (title, slug, date, tags,
+  `dialect: mynotes`) followed by the note's Markdown body soft-wrapped for
+  reading — exactly `service.MarkdownWithFrontmatter`, the download-Markdown
+  serialisation, reused rather than reimplemented so the two cannot drift.
+- Artifacts (images) are **not** exported; a note referencing one keeps the
+  `artifact:…` reference in its Markdown.
+
+### File names
+
+A note is written as **`<slug>.md`** — the file is named by the same identifier
+that addresses the note at `/notes/<slug>`, so a URL maps to a file and back
+without guessing.
+
+The slug needs no sanitising, truncation, or de-duplication for this: it is
+already constrained to `^[a-z0-9]+(-[a-z0-9]+)*$` (lowercase ASCII alphanumerics
+and interior hyphens), at most 100 characters, and `UNIQUE` in the schema.  So
+there is no separator, no dot, no invisible or uppercase character, no name past
+a filesystem's limit, and no collision — on any platform.
+
+Two things remain:
+
+- A slug matching a **DOS device name** (`con`, `nul`, `aux`, `prn`, `com1`…`com9`,
+  `lpt1`…`lpt9`) is prefixed with `_`, since Windows rejects `con.md` as firmly as
+  `con`.  Each of these is a valid slug — a note titled "Con" auto-slugs to `con`
+  — so the case is reachable, not theoretical.  The prefix cannot collide with
+  another note's file, because `_con` is not a slug any note can hold.
+- The slug is **re-checked against the pattern** before it is joined into a path.
+  This is the one place a database value becomes a path, and a file name should
+  not rest on an invariant enforced in another package; a slug that is not a bare
+  name is rejected rather than written, costing that one note an error line.
+
+### Re-running
+
+An export overwrites the file it wrote for a note before: the command is a
+repeatable dump of the database, not an incremental sync.  Nothing else in the
+directory is touched, so a note deleted since the previous run leaves its file
+behind, and a note whose slug changed leaves its old file alongside the new one.
+
+### Validation and error handling
+
+A note that cannot be read or written, or whose slug is not a bare name, is
+reported and skipped; the remaining notes still export.  A target path that
+exists as something other than a directory, or that cannot be created, exports
+nothing and is the single reported error.
+
+### Output
+
+Progress is printed to stdout:
+
+```
+Listing notes...
+Found 42 note(s). Exporting to /path/to/out...
+  ✓ /notes/my-first-note → my-first-note.md
+  ✓ /notes/ideas → ideas.md
+  ✗ broken: write /path/to/out/broken.md: no space left on device
+  …
+Exported 41 note(s). 1 failed:
+  - broken: write /path/to/out/broken.md: no space left on device
+```
+
+Exit code is 0 when no note failed, 1 otherwise.
+
 ## Demo Data
 
 A one-shot batch mode that fills the database with a curated set of notes,
@@ -894,7 +994,7 @@ DOMPurify pass on the page, exactly as in the real app.
 - The app must not execute scripts or active content embedded in note bodies;
   rendered notes are sanitized so untrusted content cannot run code.
 - Embedded HTML in notes is allowed only for a safe set of tags/attributes; only
-  `http`/`https`/`mailto` link schemes and `https`/safe-`data:` image sources are
-  permitted; unsafe HTML/schemes cause a write to be rejected.
+  `http`/`https`/`mailto` link schemes and `https`/safe-`data:`/`artifact:` image
+  sources are permitted; unsafe HTML/schemes cause a write to be rejected.
 - The whole app may be gated behind optional HTTP Basic Auth. GET requests never
   modify data.

@@ -149,15 +149,18 @@ const MD_AUTOLINK_RE = /<([a-zA-Z][a-zA-Z0-9+.\-]*:[^\s<>]*)>/g;
 /** The canonical data: image allow-list, shared with sanitize.DataImageRaster. */
 const DATA_IMAGE_RASTER = /^data:image\/(gif|png|jpeg|webp);/i;
 
+/** The canonical artifact reference form, mirroring sanitize.ArtifactRef. */
+const ARTIFACT_REF = /^artifact:[0-9a-f]{64}$/;
+
 /** A leading RFC 3986 scheme. */
 const SCHEME_RE = /^([a-zA-Z][a-zA-Z0-9+.\-]*):/;
 
 /**
  * Validates a link/image destination against the scheme allow-list, which
- * differs by destination kind: images take https and the canonical data: raster
- * set, links take http, https and mailto. No-scheme (relative) destinations are
- * allowed; scheme-relative ("//host/…") ones are not. Mirrors
- * service.checkScheme.
+ * differs by destination kind: images take https, the canonical data: raster
+ * set, and an `artifact:<sha256>` reference; links take http, https and mailto.
+ * No-scheme (relative) destinations are allowed; scheme-relative ("//host/…")
+ * ones are not. Mirrors service.checkScheme.
  */
 function checkScheme(dest: string, isImage: boolean): void {
   const d = dest.trim();
@@ -168,9 +171,11 @@ function checkScheme(dest: string, isImage: boolean): void {
     if (m === null) return; // no scheme: relative destinations are allowed
     const scheme = m[1].toLowerCase();
     if (isImage) {
-      // Images: https and the canonical data: raster set only — no http, whose
-      // CSP-blocked load would render as a silently broken image.
-      if (scheme === 'https' || (scheme === 'data' && DATA_IMAGE_RASTER.test(d))) return;
+      // Images: https, the canonical data: raster set, and a stored artifact —
+      // no http, whose CSP-blocked load would render as a silently broken image.
+      if (scheme === 'https'
+        || (scheme === 'data' && DATA_IMAGE_RASTER.test(d))
+        || (scheme === 'artifact' && ARTIFACT_REF.test(d))) return;
     } else if (scheme === 'http' || scheme === 'https' || scheme === 'mailto') {
       return;
     }
