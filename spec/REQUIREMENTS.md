@@ -284,16 +284,25 @@ the one MyCal has with MyMail.
   `/mymail` on the same origin is assumed: `https://example.com/mynotes` implies
   `https://example.com/mymail`. Nothing is derived when `-public-url` is unset or
   names the origin root — a MyNotes at the root leaves no room for siblings — and
-  the feature is then simply absent from the UI. There is no separate flag and no
-  user-facing setting.
+  the feature is then absent from the UI unless a URL is set in **Settings**.
+  There is no separate server flag.
 - The derived URL reaches the web UI through an inline `<script>` that the server
   splices into `index.html`, setting `window.__serverConfig.mymailUrl`. The
   script is JSON-encoded so no URL can terminate the surrounding element, and its
   sha256 is added to the page's `script-src` (only that page's — the render kit's
   host page never carries it).
+- **Overridable in the web UI** (see **Settings**), for a MyMail that does not
+  sit at `/mymail` or a MyNotes deployed at the origin root. The override is
+  browser-local (localStorage) and takes precedence over the derived URL; an
+  empty setting falls back to it. Being user-editable it is not trusted: a stored
+  value is re-validated on every read (absolute `http`/`https`, no query or
+  fragment) and dropped if it does not hold.
 - Because MyMail is same-origin, the request needs no CSP relaxation
   (`default-src 'self'` covers it), carries the shared Basic-Auth session, and
-  satisfies MyMail's Origin-based CSRF check.
+  satisfies MyMail's Origin-based CSRF check. That is also why the setting
+  **only accepts a same-origin URL**: with no `connect-src` in the policy, the
+  browser would block a request to any other origin, so such a URL is rejected as
+  it is entered rather than failing at send time.
 - The web UI posts to MyMail's `POST /api/v1/messages/send-with-attachments`.
   MyNotes stores nothing about the message and provides no API of its own for it.
 
@@ -526,13 +535,25 @@ existing-note editor (`/notes/{slug}/edit`).
     the note's tags (or "No tags"). Clicking a node opens that note, and the note
     currently open in the main panel is highlighted. The diagram scrolls on both
     axes within the sidebar. Empty and loading states.
-  - **Sidebar footer (all tabs):** a light/dark theme toggle. Light mode is the
+  - **Sidebar footer (all tabs):** a light/dark theme toggle and a **Settings**
+    action. Light mode is the
     default; the choice is persisted (localStorage) and applied to the document
     root as a `data-theme` attribute, which drives every colour via CSS
     variables. It affects the whole web UI and the Markdown render pipeline (read
     view, editor preview, callouts, and Mermaid diagrams — which are re-rendered
     on toggle since their colours are baked into the SVG) and the downloaded HTML,
     but not print (see **Download HTML**).
+- **Settings:** a modal opened from the sidebar footer, holding the preferences
+  that have no control of their own — currently just the **MyMail URL** (see
+  **MyMail integration**). The field shows the user's override; leaving it empty
+  means "use the URL the server derived", which the placeholder and a hint below
+  the field name. Saving validates the URL and reports why one is refused —
+  relative, not `http`/`https`, carrying a query or fragment, or not on this
+  origin; the last because the Content-Security-Policy would block the request.
+  The choice takes effect at once: the note toolbars' "Send as email" action
+  appears or disappears without a reload. Cancel, Escape, or a click outside
+  discards the edit. The action is not offered in demo mode, where MyMail is the
+  only setting and is unavailable anyway.
 - **Upload Markdown or HTML:** pick a single `.md`/`.markdown`/text or
   `.html`/`.htm` file. For Markdown files, the title is derived client-side (first
   heading, else filename without extension, else "Untitled") and the note is created
@@ -962,7 +983,9 @@ localhost.
   installed to take control, and reloads once if that does not happen — so the
   app comes up as usual rather than reporting that the backend did not start.
 - The MyMail integration is never offered in demo mode: there is no server to
-  relay a message.
+  relay a message. Neither is the Settings action, MyMail being all it holds; a
+  MyMail URL left in localStorage by a non-demo deployment on the same origin is
+  ignored rather than acted on.
 - Image uploads are capped at 2 MiB, and a write that exhausts the browser's
   storage quota is reported as such. Neither limit exists on the server.
 - After the worker is installed it also resolves client-side deep links, so

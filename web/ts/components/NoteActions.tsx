@@ -1,11 +1,11 @@
-import { useState } from 'preact/hooks';
+import { useState, useEffect } from 'preact/hooks';
 import { api, NotFoundError } from '../api/client.js';
 import { navigate, currentPath } from '../router.js';
 import { base } from '../basepath.js';
 import { showToast } from '../util/toast.js';
 import { confirmDialog } from '../util/dialog.js';
 import { downloadNoteHtml, noteHtmlDocument } from '../util/export.js';
-import { mymailUrl } from '../util/serverconfig.js';
+import { getMymailUrl, onMymailChange } from '../util/mymail.js';
 import { SplitDialog } from './SplitDialog.js';
 import { EmailDialog } from './EmailDialog.js';
 import { Icon } from './Icon.js';
@@ -36,9 +36,11 @@ export function NoteActions({ slug, title, toolbarClass, showView, onDeleted, on
   const [splitting, setSplitting] = useState(false);
   const [showSplit, setShowSplit] = useState(false);
   const [showEmail, setShowEmail] = useState(false);
-  // Empty unless the server injected a sibling MyMail URL, which it only does
-  // for a path-scoped deployment; the email action is hidden otherwise.
-  const mymail = mymailUrl();
+  // Empty unless a sibling MyMail is configured — by the server for a
+  // path-scoped deployment, or by hand in Settings; the email action is hidden
+  // otherwise, and appears the moment Settings supplies a URL.
+  const [mymail, setMymail] = useState(getMymailUrl);
+  useEffect(() => onMymailChange(setMymail), []);
 
   // Print reuses the same standalone HTML document as Download HTML (built in
   // the browser, with Mermaid diagrams rendered and internal images inlined): it

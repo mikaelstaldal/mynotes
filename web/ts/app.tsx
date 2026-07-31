@@ -18,6 +18,7 @@ import { Toast } from './components/Toast.js';
 import { Dialogs } from './components/Dialog.js';
 import { Icon } from './components/Icon.js';
 import { DemoDialog, demoNoticeSeen, markDemoNoticeSeen } from './components/DemoDialog.js';
+import { SettingsDialog } from './components/SettingsDialog.js';
 
 type SidebarTab = 'notes' | 'tags' | 'graph';
 
@@ -32,6 +33,7 @@ function App() {
   const [theme, setThemeState] = useState<Theme>(() => getTheme());
   // The one-time "this is a demo" notice, shown before anything is typed.
   const [showDemoNotice, setShowDemoNotice] = useState(() => isDemo() && !demoNoticeSeen());
+  const [showSettings, setShowSettings] = useState(false);
   const uploadRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => onRouteChange(setRoute), []);
@@ -265,16 +267,32 @@ function App() {
                 <span>Demo — notes are stored in this browser only</span>
               </p>
             )}
-            <button
-              class="btn-icon theme-toggle"
-              title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
-              aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
-              aria-pressed={theme === 'dark'}
-              onClick={handleToggleTheme}
-            >
-              <Icon name={theme === 'dark' ? 'sun' : 'moon'} size={16} />
-              <span>{theme === 'dark' ? 'Light mode' : 'Dark mode'}</span>
-            </button>
+            <div class="sidebar-footer-actions">
+              <button
+                class="btn-icon theme-toggle"
+                title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+                aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+                aria-pressed={theme === 'dark'}
+                onClick={handleToggleTheme}
+              >
+                <Icon name={theme === 'dark' ? 'sun' : 'moon'} size={16} />
+                <span>{theme === 'dark' ? 'Light mode' : 'Dark mode'}</span>
+              </button>
+              {/* Settings holds the MyMail URL and nothing else, and a demo has
+                  no server to relay a message — so it is offered only outside
+                  demo mode, where it would be an empty dialog. */}
+              {!isDemo() && (
+                <button
+                  class="btn-icon settings-open"
+                  title="Settings"
+                  aria-label="Settings"
+                  onClick={() => setShowSettings(true)}
+                >
+                  <Icon name="settings" size={16} />
+                  <span>Settings</span>
+                </button>
+              )}
+            </div>
           </div>
         </aside>
         <main>
@@ -298,6 +316,7 @@ function App() {
       <Toast />
       <Dialogs />
       {showDemoNotice && <DemoDialog onClose={dismissDemoNotice} />}
+      {showSettings && <SettingsDialog onClose={() => setShowSettings(false)} />}
     </>
   );
 }

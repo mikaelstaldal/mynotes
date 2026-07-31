@@ -9,6 +9,9 @@ export interface AppConfig {
   pageSize: number;
   sortField: SortField;
   sortOrder: SortOrder;
+  // Settings override for the MyMail integration; absent means "use the URL the
+  // server derived from -public-url". See util/mymail.ts.
+  mymailUrl?: string;
 }
 
 const STORAGE_KEY = 'mynotes-settings';
@@ -23,6 +26,11 @@ const DEFAULTS: AppConfig = {
 const VALID_THEMES = ['light', 'dark'] as const;
 const VALID_SORT_FIELDS = ['updated', 'created', 'title'] as const;
 const VALID_SORT_ORDERS = ['asc', 'desc'] as const;
+
+// Absolute http(s) URL with no query, fragment, or character that could smuggle
+// a second URL component past the concatenation in util/email.ts, which appends
+// the API path to this base.
+const MYMAIL_URL_RE = /^https?:\/\/[^\s"'<>\\?#]{1,500}$/;
 
 function sanitize(parsed: unknown): AppConfig {
   if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
@@ -47,7 +55,11 @@ function sanitize(parsed: unknown): AppConfig {
     ? (p.sortOrder as SortOrder)
     : DEFAULTS.sortOrder;
 
-  return { theme, pageSize, sortField, sortOrder };
+  const mymailUrl = typeof p.mymailUrl === 'string' && MYMAIL_URL_RE.test(p.mymailUrl)
+    ? p.mymailUrl
+    : undefined;
+
+  return { theme, pageSize, sortField, sortOrder, ...(mymailUrl !== undefined && { mymailUrl }) };
 }
 
 export function getConfig(): AppConfig {

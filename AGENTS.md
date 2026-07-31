@@ -89,6 +89,12 @@ tools/dist-renderer.sh   # copies the render kit out for embedding in a native c
 derives from `-public-url` (path replaced with `/mymail`) and hands to the
 frontend via an injected inline `<script>` setting `window.__serverConfig`
 (hash added to `script-src`). Same-origin, so no CSP or CORS work is needed.
+The user can override that URL in the web UI's Settings dialog
+(`components/SettingsDialog.tsx`, persisted to localStorage via
+`util/config.ts`); `util/mymail.ts` resolves override-then-derived and is the
+only thing callers ask "is MyMail configured?". The override must be
+same-origin — with no `connect-src` in the policy, `default-src 'self'` blocks
+anything else — so a cross-origin one is rejected as it is entered.
 
 `web/ts/util/emailhtml.ts` rewrites the export fragment into an email body and
 reports, via `EmailBody.degraded`, what the body could not carry. That list

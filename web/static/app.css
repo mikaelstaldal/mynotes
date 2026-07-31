@@ -1230,7 +1230,8 @@ main.note-view-main {
 /* ── Split dialog ───────────────────────────────────────────────── */
 
 .split-overlay,
-.email-overlay {
+.email-overlay,
+.settings-overlay {
   position: fixed;
   inset: 0;
   background: rgba(0, 0, 0, 0.4);
@@ -1242,7 +1243,8 @@ main.note-view-main {
 }
 
 .split-dialog,
-.email-dialog {
+.email-dialog,
+.settings-dialog {
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -1252,7 +1254,8 @@ main.note-view-main {
 }
 
 .split-title,
-.email-title {
+.email-title,
+.settings-title {
   margin: 0 0 0.5rem;
   font-size: 1.1rem;
 }
@@ -1272,7 +1275,8 @@ main.note-view-main {
 }
 
 .split-actions,
-.email-actions {
+.email-actions,
+.settings-actions {
   display: flex;
   justify-content: flex-end;
   gap: 0.5rem;
@@ -1296,6 +1300,37 @@ main.note-view-main {
 }
 
 .email-error {
+  margin: 0.75rem 0 0;
+  color: var(--danger);
+}
+
+/* ── Settings dialog ─────────────────────────────────────────────── */
+
+.settings-field {
+  display: block;
+}
+
+.settings-field > span {
+  display: block;
+  margin-bottom: 0.25rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.settings-field > input {
+  width: 100%;
+}
+
+.settings-hint {
+  margin: 0.4rem 0 0;
+  font-size: 0.8rem;
+  line-height: 1.4;
+  color: var(--muted);
+  /* The derived URL is interpolated here and may be one long token. */
+  overflow-wrap: anywhere;
+}
+
+.settings-error {
   margin: 0.75rem 0 0;
   color: var(--danger);
 }
@@ -1528,7 +1563,16 @@ main.note-view-main {
   flex: none;
 }
 
-.theme-toggle {
+/* The footer's own buttons (theme toggle, Settings), wrapping rather than
+   overflowing when the sidebar is narrow. */
+.sidebar-footer-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.theme-toggle,
+.settings-open {
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
