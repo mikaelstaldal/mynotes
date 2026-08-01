@@ -11,6 +11,7 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/mikaelstaldal/mynotes/internal/api"
 	"github.com/mikaelstaldal/mynotes/internal/model"
@@ -21,10 +22,11 @@ type Handler struct {
 	notes     *service.NoteService
 	artifacts *service.ArtifactService
 	tags      *service.TagService
+	publish   *service.PublishService
 }
 
-func New(notes *service.NoteService, artifacts *service.ArtifactService, tags *service.TagService) *Handler {
-	return &Handler{notes: notes, artifacts: artifacts, tags: tags}
+func New(notes *service.NoteService, artifacts *service.ArtifactService, tags *service.TagService, publish *service.PublishService) *Handler {
+	return &Handler{notes: notes, artifacts: artifacts, tags: tags, publish: publish}
 }
 
 var _ api.Handler = (*Handler)(nil)
@@ -53,6 +55,15 @@ func toAPINoteLinks(links []model.NoteLink) []api.NoteLink {
 	return out
 }
 
+// optDateTime converts an optional timestamp to ogen's OptDateTime: absent from
+// the JSON when the note is not published.
+func optDateTime(t *time.Time) api.OptDateTime {
+	if t == nil {
+		return api.OptDateTime{}
+	}
+	return api.NewOptDateTime(*t)
+}
+
 func toAPI(n model.Note) api.Note {
 	return api.Note{
 		Slug:          n.Slug,
@@ -64,6 +75,7 @@ func toAPI(n model.Note) api.Note {
 		Tags:          toAPITags(n.Tags),
 		IncomingLinks: toAPINoteLinks(n.IncomingLinks),
 		OutgoingLinks: toAPINoteLinks(n.OutgoingLinks),
+		PublishedAt:   optDateTime(n.PublishedAt),
 	}
 }
 
@@ -78,6 +90,7 @@ func toAPISummary(n model.NoteSummary) api.NoteSummary {
 		Tags:          toAPITags(n.Tags),
 		IncomingLinks: toAPINoteLinks(n.IncomingLinks),
 		OutgoingLinks: toAPINoteLinks(n.OutgoingLinks),
+		PublishedAt:   optDateTime(n.PublishedAt),
 	}
 }
 
@@ -235,6 +248,25 @@ func (h *Handler) DownloadNoteMarkdown(ctx context.Context, params api.DownloadN
 		ContentDisposition: `attachment; filename="` + n.Slug + `.md"`,
 		Response:           api.DownloadNoteMarkdownOK{Data: strings.NewReader(service.MarkdownWithFrontmatter(n))},
 	}, nil
+}
+
+// PublishNote stores the client-rendered HTML of a note as its public page.
+// The request body is the rendered fragment; the service sanitizes it, records
+// which artifacts it exposes, and stores it.
+func (h *Handler) PublishNote(ctx context.Context, req api.PublishNoteReq, params api.PublishNoteParams) (*api.PublishedNote, error) {
+	html, err := io.ReadAll(req.Data)
+	if err != nil {
+		return nil, err
+	}
+	p, err := h.publish.Publish(ctx, params.Slug, string(html))
+	if err != nil {
+		return nil, err
+	}
+	return &api.PublishedNote{URL: PublicNotePath(p.Slug), PublishedAt: p.PublishedAt}, nil
+}
+
+func (h *Handler) UnpublishNote(ctx context.Context, params api.UnpublishNoteParams) error {
+	return h.publish.Unpublish(ctx, params.Slug)
 }
 
 func toAPIArtifact(a model.Artifact) api.Artifact {

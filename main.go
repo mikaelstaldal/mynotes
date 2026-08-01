@@ -427,7 +427,9 @@ func run(addr string, port int, dataDir, publicURL, basicAuthFile, basicAuthReal
 		artifactRepo := repository.NewArtifactRepository(db)
 		artifactSvc := service.NewArtifactService(artifactRepo)
 		tagSvc := service.NewTagService(tagRepo)
-		h = handler.New(noteSvc, artifactSvc, tagSvc)
+		publishedRepo := repository.NewPublishedNoteRepository(db)
+		publishSvc := service.NewPublishService(noteRepo, publishedRepo, artifactRepo)
+		h = handler.New(noteSvc, artifactSvc, tagSvc, publishSvc)
 
 		ogenServer, err = api.NewServer(h, api.WithPathPrefix("/api/v1"))
 		if err != nil {
@@ -505,7 +507,26 @@ func run(addr string, port int, dataDir, publicURL, basicAuthFile, basicAuthReal
 		// namespaces the set, leaving room for other icon sets in future.
 		mux.Handle("GET /api/v1/icons/lucide/{name}", handler.WithMiddleware(icons.Handler()))
 		mux.Handle("/api/v1/", handler.WithMiddleware(ogenServer))
+
+		// The public surface: published notes, the artifacts they reference, and
+		// the stylesheet they need. These are the only routes served without
+		// authentication (see the basic-auth wiring below), which is why they sit
+		// under their own prefix rather than alongside the API. Raw handlers for
+		// the same reason the artifact GET above is one — an HTML document and a
+		// dynamic Content-Type are not shapes the generated server produces.
+		publicCSS, err := publicStylesheet()
+		if err != nil {
+			return err
+		}
+		mux.Handle(handler.PublicNotePattern, handler.WithMiddleware(http.HandlerFunc(h.ServePublishedNote)))
+		mux.Handle(handler.PublicArtifactPattern, handler.WithMiddleware(http.HandlerFunc(h.ServePublicArtifact)))
+		mux.Handle(handler.PublicCSSPattern, handler.WithMiddleware(publicCSSHandler(publicCSS)))
 	}
+	// Claims whatever the public routes above did not. Registered in both modes,
+	// and outside the branch, because the prefix is exempt from authentication:
+	// nothing under it may fall through to the generic static handler. In demo
+	// mode there is nothing to publish, so this is all of /public/.
+	mux.Handle(handler.PublicCatchAllPattern, handler.WithMiddleware(handler.PublicNotFoundHandler()))
 	// The render kit's host page. Registered explicitly because the generic
 	// static handler cannot serve it: http.FileServer canonicalises
 	// "/render/index.html" to "/render/", which — being a directory — falls
@@ -539,8 +560,13 @@ func run(addr string, port int, dataDir, publicURL, basicAuthFile, basicAuthReal
 		if err != nil {
 			return fmt.Errorf("load htpasswd: %w", err)
 		}
-		httpHandler = htpasswd.Middleware(basicAuthRealm)(httpHandler)
-		log.Printf("basic authentication enabled")
+		// Everything is private except the published-note surface, which exists
+		// precisely to be shared with people who have no account here. The
+		// exemption is a path prefix rather than a second handler tree so the
+		// public routes keep the body limit, the security headers, and the CSRF
+		// check that wrap everything else.
+		httpHandler = exemptPrefix(handler.PublicPrefix, htpasswd.Middleware(basicAuthRealm))(httpHandler)
+		log.Printf("basic authentication enabled (except %s)", handler.PublicPrefix)
 	}
 	httpHandler = http.MaxBytesHandler(httpHandler, maxRequestBody)
 
@@ -828,6 +854,60 @@ func renderHandler(renderHTML []byte, renderCSP string) http.HandlerFunc {
 		w.Header().Set("Content-Security-Policy", renderCSP)
 		w.Header().Set("X-Frame-Options", "SAMEORIGIN")
 		_, _ = w.Write(renderHTML)
+	}
+}
+
+// exemptPrefix wraps a middleware so it is skipped for request paths under
+// prefix, which pass straight to the wrapped handler.
+//
+// Used for one thing only: leaving the published-note routes reachable without
+// credentials while the rest of the deployment stays behind basic auth. It
+// matches on r.URL.Path, the same value the ServeMux routes on, so *everything*
+// the mux serves under the prefix is served unauthenticated — including a path
+// that matches no specific route. What keeps that safe is
+// handler.PublicCatchAllPattern, which claims the remainder of the prefix so it
+// cannot fall through to the SPA shell; do not remove it as redundant.
+func exemptPrefix(prefix string, mw func(http.Handler) http.Handler) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		guarded := mw(next)
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if strings.HasPrefix(r.URL.Path, prefix) {
+				next.ServeHTTP(w, r)
+				return
+			}
+			guarded.ServeHTTP(w, r)
+		})
+	}
+}
+
+// publicStylesheet builds the single stylesheet a published page links to:
+// note.css — the canonical stylesheet for rendered note content, shared with
+// the web UI and the render kit — followed by the page chrome only a standalone
+// published page needs. Concatenating at startup keeps it one request and, more
+// importantly, keeps published pages on the same rules as the app instead of on
+// a fourth copy of them.
+func publicStylesheet() ([]byte, error) {
+	noteCSS, err := fs.ReadFile(web.Static, "static/render/note.css")
+	if err != nil {
+		return nil, fmt.Errorf("read render/note.css: %w", err)
+	}
+	pageCSS, err := fs.ReadFile(web.Static, "static/public/page.css")
+	if err != nil {
+		return nil, fmt.Errorf("read public/page.css: %w", err)
+	}
+	return append(append(append([]byte{}, noteCSS...), '\n'), pageCSS...), nil
+}
+
+// publicCSSHandler serves the published-page stylesheet. Unlike the app's own
+// assets it may be cached by shared caches, since it is served to readers who
+// are not authenticated; it is revalidated rather than pinned because, unlike an
+// artifact, its URL is not content-addressed.
+func publicCSSHandler(css []byte) http.HandlerFunc {
+	return func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/css; charset=utf-8")
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Header().Set("Cache-Control", "public, no-cache")
+		_, _ = w.Write(css)
 	}
 }
 

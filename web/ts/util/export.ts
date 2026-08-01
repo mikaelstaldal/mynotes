@@ -178,7 +178,9 @@ hr { border: none; border-top: 1px solid var(--border); margin: 1.5em 0; }
 // already been resolved to the artifact endpoint under the base path
 // (util/markdown.ts); anchoring on the path suffix keeps a hand-written
 // root-relative or absolute URL to the same endpoint working too.
-const ARTIFACT_SRC_RE = /(?:^|\/)api\/v1\/artifacts\/([0-9a-f]{64})$/;
+// Exported for util/publish.ts, which matches the same URLs but turns them back
+// into `artifact:` references instead of inlining them.
+export const ARTIFACT_SRC_RE = /(?:^|\/)api\/v1\/artifacts\/([0-9a-f]{64})$/;
 
 // Cap the raw size of an inlined artifact; a larger one becomes a placeholder so
 // the download stays a sane size (mirrors the server's maxInlineImageBytes).
@@ -238,7 +240,8 @@ async function inlineArtifactImages(container: HTMLElement): Promise<void> {
 // the SVG namespace, so the attribute is superfluous (Lucide icons, embedded
 // note SVG, and Mermaid output all carry it). Applied after all SVG has been
 // spliced in (icons, diagrams, and any broken-image placeholder).
-function stripSvgXmlns(container: HTMLElement): void {
+// Exported for util/publish.ts, whose output is likewise served as text/html.
+export function stripSvgXmlns(container: HTMLElement): void {
   for (const svg of container.querySelectorAll('svg')) {
     svg.removeAttribute('xmlns');
   }

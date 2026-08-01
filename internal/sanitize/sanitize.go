@@ -1,5 +1,8 @@
-// Package sanitize provides the write-time embedded-HTML validator used by the
-// service layer. Note content is stored verbatim Markdown and is never mutated;
+// Package sanitize provides the write-time HTML gates used by the service
+// layer. It exports two, for two different jobs:
+//
+// HTML is the embedded-HTML *validator*. Note content is stored verbatim
+// Markdown and is never mutated;
 // the service pulls each embedded raw-HTML fragment out of the parsed Markdown,
 // runs HTML over just that fragment, and compares the result against a canonical
 // re-serialization of the original to decide whether to accept or reject the
@@ -8,6 +11,12 @@
 // rewrites anything (no rel="nofollow", target="_blank", … ), so benign HTML
 // re-serializes identically on both sides and only genuinely unsafe content
 // trips a divergence.
+//
+// PublishedHTML is the published-page *sanitizer*. A published note's HTML is
+// rendered output, not a source of truth, so unlike note content it is cleaned
+// and stored (mutate-on-write) rather than compared and rejected. Its policy is
+// the validator's plus what the render pipeline actually emits — see
+// newPublishedPolicy.
 //
 // DOMPurify on the frontend is the authoritative render-time XSS gate; this
 // package is defense-in-depth. Parity between the two is a goal, not a security
@@ -67,6 +76,8 @@ var svgFragmentHref = regexp.MustCompile(`^#[\w:.\-]+$`)
 var checkboxType = regexp.MustCompile(`(?i)^checkbox$`)
 
 var policy = newPolicy()
+
+var publishedPolicy = newPublishedPolicy()
 
 // newPolicy builds the removal-only validation policy: bluemonday's broad
 // safe-user-content profile (UGCPolicy) with every attribute injector turned
@@ -276,10 +287,69 @@ var mathMLAttrs = []string{
 	"voffset", "width", "xmlns",
 }
 
+// newPublishedPolicy builds the policy for a published note's HTML: the
+// validation policy above, widened by exactly what the frontend render pipeline
+// emits but embedded Markdown HTML never contains.
+//
+// Unlike that policy this one is a *sanitizer* — its output is what gets stored
+// and served — so it need not be removal-only, and a stripped attribute
+// degrades the page rather than rejecting the publish.
+//
+//   - class: the rendered fragment is built on it (callouts, `language-*` code
+//     fences, `.mermaid-diagram`). UGCPolicy withholds it to stop users styling
+//     their own content; here the classes come from our own renderer and the
+//     stylesheet that interprets them is ours too.
+//   - style, both the attribute and the element: Mermaid emits an <svg> that
+//     carries its diagram CSS in a <style> child and inline style attributes,
+//     and web/ts/util/mermaid.ts's DOMPurify instance passes both through. Drop
+//     them and every published diagram renders unstyled.
+//
+// bluemonday will not emit a <style> element's content unless AllowUnsafe is
+// set, and it does not sanitize CSS text, so published CSS is stored verbatim.
+// The compensating control is the response policy on the public route
+// (handler.publishedNoteCSP): no script-src, so a published page cannot execute
+// script no matter what reaches it. AllowUnsafe also ungates <script>, but only
+// for a policy that *declares* it — this one does not, so a <script> element is
+// still dropped along with its content, and so is any element whose content
+// bluemonday skips by default.
+func newPublishedPolicy() *bluemonday.Policy {
+	p := newPolicy()
+
+	p.AllowUnsafe(true)
+
+	// Inert, and load-bearing for the published stylesheet.
+	p.AllowAttrs("class").Globally()
+
+	// Inert accessibility metadata, kept for parity with DOMPurify (which allows
+	// role and every aria-*): the renderer marks decorative Lucide icons
+	// aria-hidden and Mermaid labels its diagrams with role/aria-roledescription,
+	// and a published page should read to a screen reader as the app's does.
+	p.AllowAttrs("role", "aria-hidden", "aria-label", "aria-labelledby",
+		"aria-describedby", "aria-roledescription").Globally()
+
+	p.AllowNoAttrs().OnElements("style")
+	p.AllowElementsContent("style")
+	// Declaring no AllowStyles leaves bluemonday's CSS-property allowlisting
+	// switched off, which is deliberate: an allowlist that Mermaid's output does
+	// not fit would silently mangle diagrams, and the route's CSP is what makes
+	// unlisted CSS harmless.
+	p.AllowAttrs("style").Globally()
+
+	return p
+}
+
 // HTML returns the policy-cleaned form of an HTML fragment. It is used only to
 // decide whether a fragment is accepted: the service compares this output
 // against a canonical re-serialization of the original fragment and rejects the
 // write on any divergence. The result is never stored.
 func HTML(s string) string {
 	return policy.Sanitize(s)
+}
+
+// PublishedHTML returns the cleaned form of a published note's rendered HTML
+// fragment. Unlike HTML this result *is* what gets stored and served, so the
+// call is the write-time guard on the publish endpoint rather than a comparison
+// input. See newPublishedPolicy for what it keeps and why.
+func PublishedHTML(s string) string {
+	return publishedPolicy.Sanitize(s)
 }

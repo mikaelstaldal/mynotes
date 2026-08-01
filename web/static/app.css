@@ -1231,6 +1231,7 @@ main.note-view-main {
 
 .split-overlay,
 .email-overlay,
+.publish-overlay,
 .settings-overlay {
   position: fixed;
   inset: 0;
@@ -1244,6 +1245,7 @@ main.note-view-main {
 
 .split-dialog,
 .email-dialog,
+.publish-dialog,
 .settings-dialog {
   background: var(--bg);
   border: 1px solid var(--border);
@@ -1255,13 +1257,15 @@ main.note-view-main {
 
 .split-title,
 .email-title,
+.publish-title,
 .settings-title {
   margin: 0 0 0.5rem;
   font-size: 1.1rem;
 }
 
 .split-body,
-.email-body {
+.email-body,
+.publish-body {
   margin: 0 0 1rem;
   color: var(--muted);
 }
@@ -1276,6 +1280,7 @@ main.note-view-main {
 
 .split-actions,
 .email-actions,
+.publish-actions,
 .settings-actions {
   display: flex;
   justify-content: flex-end;
@@ -1299,9 +1304,35 @@ main.note-view-main {
   width: 100%;
 }
 
-.email-error {
+.email-error,
+.publish-error {
   margin: 0.75rem 0 0;
   color: var(--danger);
+}
+
+/* ── Publish dialog ──────────────────────────────────────────────── */
+
+.publish-link {
+  display: block;
+}
+
+.publish-link > span {
+  display: block;
+  margin-bottom: 0.25rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.publish-link > input {
+  width: 100%;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.85rem;
+}
+
+/* A published note's toolbar button is tinted so the state is visible without
+   opening the dialog — this is the only note state the toolbar carries. */
+.btn-icon.is-published {
+  color: var(--primary);
 }
 
 /* ── Settings dialog ─────────────────────────────────────────────── */

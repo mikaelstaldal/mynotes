@@ -61,6 +61,18 @@ export function NoteView({ slug, onDelete }: Props) {
     return () => { cancelled = true; };
   }, [slug, reloadKey]);
 
+  // Re-fetch the note in place, without the loading state the effect above
+  // enters. Used after publishing, where the only thing that changed is
+  // published_at and blanking the view would be a pointless flash.
+  async function refreshNote() {
+    try {
+      setNote(await api.notes.get(slug));
+    } catch {
+      // The toolbar has already reported the outcome of the action itself; a
+      // stale published_at until the next navigation is not worth a second toast.
+    }
+  }
+
   useEffect(() => {
     if (!note) return;
     const prev = document.title;
@@ -164,8 +176,10 @@ export function NoteView({ slug, onDelete }: Props) {
         <NoteActions
           slug={note.slug}
           title={note.title}
+          publishedAt={note.published_at}
           onSplit={onDelete}
           onDeleted={() => { onDelete?.(); navigate('/'); }}
+          onPublishChange={refreshNote}
         />
       </div>
       <div class="note-view-scroll">

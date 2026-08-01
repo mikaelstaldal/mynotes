@@ -1,0 +1,38 @@
+/* Page chrome for a published note (/public/notes/{slug}).
+ *
+ * Served concatenated after render/note.css as a single /public/note.css — see
+ * publicStylesheet in main.go. note.css is the canonical stylesheet and is
+ * scoped to `.note-content`, so it styles the note body but says nothing about
+ * the page around it; that is what this file supplies, and it is all this file
+ * may contain. Anything about how rendered Markdown looks belongs in note.css.
+ *
+ * A published page is light regardless of the reader's OS theme. It carries no
+ * script and so cannot toggle, and its Mermaid diagrams were rendered with the
+ * light palette baked into their SVG at publish time — a dark page would frame
+ * them in a light box. note.css's dark palette is opt-in via
+ * :root[data-theme="dark"], which nothing here sets.
+ */
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  padding: 2rem 1.25rem;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+/* note.css caps .note-content at the width the app's scroll gutter leaves it;
+   here the gutter is body padding, so restate the full column and centre it. */
+.note-content {
+  max-width: 65ch;
+  margin: 0 auto;
+}
+
+/* The note title, which the server renders above the fragment. It is the page's
+   heading rather than part of the content, so it gets a little more air than a
+   heading inside the note body would. */
+.note-content > h1:first-child {
+  margin-bottom: 1.5rem;
+}

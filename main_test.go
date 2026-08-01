@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"io/fs"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -10,6 +11,8 @@ import (
 	"testing"
 
 	"github.com/mikaelstaldal/mynotes/internal/demo"
+	"github.com/mikaelstaldal/mynotes/internal/handler"
+	"github.com/mikaelstaldal/mynotes/web"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -68,6 +71,71 @@ func TestRenderHandlerAllowsSameOriginFraming(t *testing.T) {
 	assert.Equal(t, renderCSP, res.Header.Get("Content-Security-Policy"))
 	assert.Equal(t, "SAMEORIGIN", res.Header.Get("X-Frame-Options"))
 	assert.Contains(t, res.Header.Get("Content-Type"), "text/html")
+}
+
+// Publishing only works if the public prefix escapes the basic-auth middleware
+// that wraps everything else — and it is only safe if nothing else does.
+func TestPublicRoutesSkipAuth(t *testing.T) {
+	reached := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+	// Stands in for the htpasswd middleware: refuses everything it is given.
+	denyAll := func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusUnauthorized)
+		})
+	}
+	guarded := exemptPrefix(handler.PublicPrefix, denyAll)(reached)
+
+	tests := map[string]int{
+		"/public/notes/a-note":     http.StatusOK,
+		"/public/artifacts/abc":    http.StatusOK,
+		"/public/note.css":         http.StatusOK,
+		"/api/v1/notes":            http.StatusUnauthorized,
+		"/api/v1/artifacts/abc":    http.StatusUnauthorized,
+		"/":                        http.StatusUnauthorized,
+		"/render/":                 http.StatusUnauthorized,
+		"/publicity":               http.StatusUnauthorized,
+		"/notes/public/still-mine": http.StatusUnauthorized,
+	}
+	for path, want := range tests {
+		t.Run(path, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			guarded.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+			assert.Equal(t, want, rec.Result().StatusCode)
+		})
+	}
+}
+
+// The published-page stylesheet must be the canonical note.css plus the page
+// chrome, not a copy of either — a published page that drifts from the read
+// view is the failure this guards against.
+func TestPublicStylesheetConcatenatesBothSources(t *testing.T) {
+	css, err := publicStylesheet()
+	require.NoError(t, err)
+
+	noteCSS, err := fs.ReadFile(web.Static, "static/render/note.css")
+	require.NoError(t, err)
+	pageCSS, err := fs.ReadFile(web.Static, "static/public/page.css")
+	require.NoError(t, err)
+
+	assert.Contains(t, string(css), string(noteCSS))
+	assert.Contains(t, string(css), string(pageCSS))
+	// note.css owns the colour variables the page chrome refers to, so it must
+	// come first.
+	assert.Less(t, strings.Index(string(css), string(noteCSS)), strings.Index(string(css), string(pageCSS)))
+}
+
+func TestPublicCSSHandler(t *testing.T) {
+	rec := httptest.NewRecorder()
+	publicCSSHandler([]byte(":root{}"))(rec, httptest.NewRequest(http.MethodGet, "/public/note.css", nil))
+
+	res := rec.Result()
+	defer res.Body.Close()
+	assert.Equal(t, "text/css; charset=utf-8", res.Header.Get("Content-Type"))
+	assert.Equal(t, "nosniff", res.Header.Get("X-Content-Type-Options"))
+	// Readable by shared caches: it is served to unauthenticated readers.
+	assert.Equal(t, "public, no-cache", res.Header.Get("Cache-Control"))
 }
 
 func TestDeriveMymailURL(t *testing.T) {

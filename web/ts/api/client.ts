@@ -13,6 +13,7 @@ export type NoteList = components['schemas']['NoteList'];
 export type CreateNoteRequest = components['schemas']['CreateNoteRequest'];
 export type UpdateNoteRequest = components['schemas']['UpdateNoteRequest'];
 export type SplitNoteResponse = components['schemas']['SplitNoteResponse'];
+export type PublishedNote = components['schemas']['PublishedNote'];
 export type Artifact = components['schemas']['Artifact'];
 export type Tag = components['schemas']['Tag'];
 export type TagSummary = components['schemas']['TagSummary'];
@@ -155,6 +156,16 @@ export const api = {
     // note. The source note is left unchanged.
     split: (slug: string, tag?: string) =>
       request<SplitNoteResponse>('POST', `/notes/${slug}/split`, tag ? { tag } : {}),
+
+    // Publish the note as a public page. The body is the note rendered to an
+    // HTML fragment (see util/publish.ts) — the server sanitizes it, wraps it in
+    // a document, and serves it without authentication. Publishing again
+    // replaces the page; the page does not track later edits.
+    publish: (slug: string, html: string): Promise<PublishedNote> =>
+      requestRaw<PublishedNote>('PUT', `/notes/${slug}/publish`, html, 'text/html'),
+
+    unpublish: (slug: string) =>
+      request<void>('DELETE', `/notes/${slug}/publish`),
 
     importHtml: (html: string): Promise<Note> =>
       requestRaw<Note>('POST', '/import', html, 'text/html'),

@@ -55,6 +55,16 @@ func (r *ArtifactRepository) GetBySHA256(ctx context.Context, sha256 string) (mo
 	return a, err
 }
 
+// Exists reports whether an artifact with the given hex digest is stored. Used
+// by the publish path to check a batch of references without loading their
+// (potentially large) content, which GetBySHA256 would.
+func (r *ArtifactRepository) Exists(ctx context.Context, sha256 string) (bool, error) {
+	var exists bool
+	err := r.db.QueryRowContext(ctx,
+		`SELECT EXISTS(SELECT 1 FROM artifacts WHERE sha256 = ?)`, sha256).Scan(&exists)
+	return exists, err
+}
+
 // Delete removes the artifact with the given hex digest. Returns ErrNotFound if
 // no such artifact exists.
 func (r *ArtifactRepository) Delete(ctx context.Context, sha256 string) error {

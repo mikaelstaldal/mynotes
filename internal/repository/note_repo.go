@@ -110,6 +110,14 @@ func (r *NoteRepository) GetBySlug(ctx context.Context, slug string) (model.Note
 	if n.IncomingLinks == nil {
 		n.IncomingLinks = []model.NoteLink{}
 	}
+
+	published, err := publishedForNoteIDs(ctx, r.db, []int64{n.ID})
+	if err != nil {
+		return model.Note{}, err
+	}
+	if at, ok := published[n.ID]; ok {
+		n.PublishedAt = &at
+	}
 	return n, nil
 }
 
@@ -739,6 +747,9 @@ func (r *NoteRepository) querySummaries(ctx context.Context, countQuery string, 
 	if err := attachLinks(ctx, r.db, notes, ids); err != nil {
 		return nil, 0, err
 	}
+	if err := attachPublished(ctx, r.db, notes, ids); err != nil {
+		return nil, 0, err
+	}
 	return notes, total, nil
 }
 
@@ -832,6 +843,9 @@ func (r *NoteRepository) search(ctx context.Context, q string, tagSlugs []string
 		return nil, 0, err
 	}
 	if err := attachLinks(ctx, r.db, notes, ids); err != nil {
+		return nil, 0, err
+	}
+	if err := attachPublished(ctx, r.db, notes, ids); err != nil {
 		return nil, 0, err
 	}
 	return notes, total, nil

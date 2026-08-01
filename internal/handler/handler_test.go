@@ -30,15 +30,29 @@ func newServer(t *testing.T) *httptest.Server {
 	require.NoError(t, repository.InitSchema(db))
 
 	tagRepo := repository.NewTagRepository(db)
+	noteRepo := repository.NewNoteRepository(db)
+	artifactRepo := repository.NewArtifactRepository(db)
 	h := handler.New(
-		service.NewNoteService(repository.NewNoteRepository(db), tagRepo),
-		service.NewArtifactService(repository.NewArtifactRepository(db)),
+		service.NewNoteService(noteRepo, tagRepo),
+		service.NewArtifactService(artifactRepo),
 		service.NewTagService(tagRepo),
+		service.NewPublishService(noteRepo, repository.NewPublishedNoteRepository(db), artifactRepo),
 	)
 	ogenServer, err := api.NewServer(h, api.WithPathPrefix("/api/v1"))
 	require.NoError(t, err)
 
-	srv := httptest.NewServer(ogenServer)
+	// Mirrors main.go's routing, including the raw handlers mounted ahead of the
+	// generated server: the artifact GET, and the unauthenticated public surface
+	// the publish tests exercise. Authentication itself is not wired here — it
+	// wraps the whole tree in main.go and is covered by TestPublicRoutesSkipAuth.
+	mux := http.NewServeMux()
+	mux.Handle("GET /api/v1/artifacts/{sha256}", http.HandlerFunc(h.ServeArtifact))
+	mux.Handle("/api/v1/", ogenServer)
+	mux.Handle(handler.PublicNotePattern, http.HandlerFunc(h.ServePublishedNote))
+	mux.Handle(handler.PublicArtifactPattern, http.HandlerFunc(h.ServePublicArtifact))
+	mux.Handle(handler.PublicCatchAllPattern, handler.PublicNotFoundHandler())
+
+	srv := httptest.NewServer(mux)
 	t.Cleanup(func() {
 		srv.Close()
 		_ = db.Close()

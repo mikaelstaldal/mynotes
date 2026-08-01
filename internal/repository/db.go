@@ -19,6 +19,7 @@ var migrations = [][]string{
 	schemaV4,
 	schemaV5,
 	schemaV6,
+	schemaV7,
 }
 
 // linksSchemaVersion is the schema version that introduces the note_links table
@@ -72,6 +73,42 @@ func InitSchema(db *sql.DB) error {
 // CreateDataDir ensures the directory holding the database file exists.
 func CreateDataDir(dbPath string) error {
 	return sqlite.CreateDataDir(dbPath)
+}
+
+// schemaV7 adds publishing: the rendered HTML a note was published as, plus the
+// set of artifacts that HTML references.
+//
+// The published page is a snapshot — the title and HTML are those of the moment
+// the note was published, and editing the note does not touch them — so title
+// and html are stored here rather than read through to `notes`. Keying on
+// note_id with ON DELETE CASCADE (the note_links precedent, schemaV6) makes
+// deleting a note unpublish it.
+//
+// published_note_artifacts is what keeps the artifact store private: the public
+// artifact route serves a digest only if some published note references it, so
+// publishing one note exposes that note's images and nothing else. It is a join
+// table rather than a column on `artifacts` because the same artifact may be
+// referenced by several published notes, and unpublishing one of them must not
+// withdraw the others.
+var schemaV7 = []string{
+	`CREATE TABLE IF NOT EXISTS published_notes (
+		note_id      INTEGER PRIMARY KEY REFERENCES notes(id) ON DELETE CASCADE,
+		title        TEXT NOT NULL,
+		html         TEXT NOT NULL,
+		published_at TEXT NOT NULL
+	)`,
+
+	`CREATE TABLE IF NOT EXISTS published_note_artifacts (
+		note_id INTEGER NOT NULL REFERENCES published_notes(note_id) ON DELETE CASCADE,
+		sha256  TEXT NOT NULL,
+		PRIMARY KEY (note_id, sha256)
+	)`,
+
+	// The composite PK (note_id, sha256) indexes the "artifacts of published
+	// note N" direction. The public artifact route asks the other question — "is
+	// this digest published at all?" — which needs its own index since sha256 is
+	// not a PK prefix.
+	`CREATE INDEX IF NOT EXISTS idx_published_note_artifacts_sha256 ON published_note_artifacts(sha256)`,
 }
 
 // schemaV6 adds the note_links index: one row per outgoing wikilink from a note

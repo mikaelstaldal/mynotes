@@ -82,10 +82,12 @@ export function NoteRows({ rows, activeSlug, showActions, onMutate }: Props) {
                 <NoteActions
                   slug={n.slug}
                   title={n.title}
+                  publishedAt={n.published_at}
                   toolbarClass="note-row-actions"
                   showView
                   onDeleted={onMutate}
                   onSplit={onMutate}
+                  onPublishChange={onMutate}
                 />
                 <TagChips tags={n.tags} />
               </div>

@@ -6,14 +6,22 @@ import { showToast } from '../util/toast.js';
 import { confirmDialog } from '../util/dialog.js';
 import { downloadNoteHtml, noteHtmlDocument } from '../util/export.js';
 import { getMymailUrl, onMymailChange } from '../util/mymail.js';
+import { isDemo } from '../util/serverconfig.js';
 import { SplitDialog } from './SplitDialog.js';
 import { EmailDialog } from './EmailDialog.js';
+import { PublishDialog } from './PublishDialog.js';
 import { Icon } from './Icon.js';
 
 interface Props {
   slug: string;
   // Used in the delete confirmation dialog.
   title: string;
+  // ISO timestamp of the note's publication, or undefined when it is not
+  // published; drives the publish button's state.
+  publishedAt?: string;
+  // Invoked when publishing or unpublishing succeeds, so the caller can refresh
+  // the note it holds.
+  onPublishChange?: () => void;
   // Extra class applied to the toolbar container (e.g. for list-row layout).
   toolbarClass?: string;
   // Show a "View" button that opens the note's read view. Omitted in the read
@@ -27,15 +35,20 @@ interface Props {
   onSplit?: () => void;
 }
 
-// The per-note action toolbar (view, download, print, email, split, edit, delete)
-// shared by the single-note read view and each row of the main-panel overview.
-// The delete and split handlers defer navigation/refresh to the caller via
-// onDeleted / onSplit so the same buttons behave correctly in both contexts.
-export function NoteActions({ slug, title, toolbarClass, showView, onDeleted, onSplit }: Props) {
+// The per-note action toolbar (view, download, print, publish, email, split,
+// edit, delete) shared by the single-note read view and each row of the
+// main-panel overview. The delete and split handlers defer navigation/refresh
+// to the caller via onDeleted / onSplit so the same buttons behave correctly in
+// both contexts.
+export function NoteActions({ slug, title, publishedAt, toolbarClass, showView, onDeleted, onSplit, onPublishChange }: Props) {
   const [deleting, setDeleting] = useState(false);
   const [splitting, setSplitting] = useState(false);
   const [showSplit, setShowSplit] = useState(false);
   const [showEmail, setShowEmail] = useState(false);
+  const [showPublish, setShowPublish] = useState(false);
+  // Publishing needs a server to serve the public page from, and demo mode has
+  // none — the same reason the MyMail and Settings actions are absent there.
+  const canPublish = !isDemo();
   // Empty unless a sibling MyMail is configured — by the server for a
   // path-scoped deployment, or by hand in Settings; the email action is hidden
   // otherwise, and appears the moment Settings supplies a URL.
@@ -159,6 +172,13 @@ export function NoteActions({ slug, title, toolbarClass, showView, onDeleted, on
         <a class="btn-icon" href={`${base}/api/v1/notes/${slug}/download-markdown`} title="Download Markdown" aria-label="Download Markdown"><Icon name="file-down" size={16} /> MD</a>
         <button class="btn-icon" title="Download HTML" aria-label="Download HTML" onClick={handleDownloadHtml}><Icon name="file-down" size={16} /> HTML</button>
         <button class="btn-icon" title="Print" aria-label="Print" onClick={handlePrint}><Icon name="printer" size={16} /></button>
+        {canPublish && (
+          <button class={`btn-icon${publishedAt ? ' is-published' : ''}`}
+            title={publishedAt ? 'Published — manage public page' : 'Publish'}
+            aria-label={publishedAt ? 'Published — manage public page' : 'Publish'}
+            aria-pressed={publishedAt ? 'true' : 'false'}
+            onClick={() => setShowPublish(true)}><Icon name="globe" size={16} /></button>
+        )}
         {mymail && (
           <button class="btn-icon" title="Send as email" aria-label="Send as email"
             onClick={() => setShowEmail(true)}><Icon name="mail" size={16} /></button>
@@ -173,6 +193,10 @@ export function NoteActions({ slug, title, toolbarClass, showView, onDeleted, on
       )}
       {showEmail && (
         <EmailDialog slug={slug} title={title} mymailUrl={mymail} onClose={() => setShowEmail(false)} />
+      )}
+      {showPublish && (
+        <PublishDialog slug={slug} publishedAt={publishedAt}
+          onChange={() => onPublishChange?.()} onClose={() => setShowPublish(false)} />
       )}
     </>
   );

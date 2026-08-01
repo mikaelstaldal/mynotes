@@ -502,6 +502,66 @@ paths:
         default:
           $ref: "#/components/responses/Error"
 
+  /notes/{slug}/publish:
+    parameters:
+      - name: slug
+        in: path
+        required: true
+        schema:
+          type: string
+          maxLength: 100
+          pattern: "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+    put:
+      operationId: publishNote
+      summary: Publish a note as a public page
+      description: >
+        Stores the rendered HTML of a note and serves it, without
+        authentication, at `/public/notes/{slug}`. The request body is the
+        note content rendered to an HTML *fragment* — not a document; the
+        server wraps it and supplies the stylesheet. The client renders it,
+        because the Markdown dialect is defined by the render pipeline the
+        clients share (see `markdown-spec.md`) and not by the server.
+
+        The fragment is sanitized before it is stored: `<script>`, framed
+        content, event handlers and disallowed URL schemes are removed rather
+        than rejected, since this is rendered output and not a source of truth.
+        Images must reference artifacts in the same `artifact:<sha256>` form
+        note content uses; the server rewrites them to public artifact URLs and
+        makes exactly those artifacts publicly readable. Referencing an
+        artifact that is not stored is a 400.
+
+        The published page is a snapshot. Editing the note afterwards does not
+        change it — publish again to update it. Publishing an already-published
+        note replaces the snapshot; deleting the note withdraws it.
+      requestBody:
+        required: true
+        content:
+          text/html:
+            schema:
+              type: string
+              maxLength: 2000000
+      responses:
+        "200":
+          description: The note is published.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublishedNote"
+        default:
+          $ref: "#/components/responses/Error"
+    delete:
+      operationId: unpublishNote
+      summary: Withdraw a published note
+      description: >
+        Removes the note's public page. Artifacts referenced only by this
+        published note stop being publicly readable. A note that is not
+        published is a 404.
+      responses:
+        "204":
+          description: The note is no longer published.
+        default:
+          $ref: "#/components/responses/Error"
+
   /notes/{slug}/split:
     parameters:
       - name: slug
@@ -600,6 +660,13 @@ components:
             Notes this note's content wikilinks to, resolved to existing notes
             only (dangling links to non-existent notes are omitted). Empty array
             when none, never absent. See NoteLink.
+        published_at:
+          type: string
+          format: date-time
+          description: >
+            When the note was last published, if it is currently published;
+            absent otherwise. The published page is a snapshot taken at this
+            time, so a later `updated_at` means the public page is out of date.
 
     NoteSummary:
       type: object
@@ -645,6 +712,12 @@ components:
             Notes this note's content wikilinks to, resolved to existing notes
             only (dangling links to non-existent notes are omitted). Empty array
             when none, never absent. See NoteLink.
+        published_at:
+          type: string
+          format: date-time
+          description: >
+            When the note was last published, if it is currently published;
+            absent otherwise. See Note.published_at.
 
     NoteLink:
       type: object
@@ -755,6 +828,22 @@ components:
           description: >
             Summaries (without full content) of the notes created by the split,
             in document order.
+
+    PublishedNote:
+      type: object
+      required: [url, published_at]
+      properties:
+        url:
+          type: string
+          maxLength: 200
+          description: >
+            Where the public page is served, relative to the deployment root
+            (e.g. `/public/notes/my-note`). A client makes it absolute against
+            its own base URL; the server does not know how it is reached.
+        published_at:
+          type: string
+          format: date-time
+          description: When this snapshot was taken.
 
     Artifact:
       type: object

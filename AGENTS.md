@@ -80,8 +80,56 @@ web/
   static/                # embedded assets: index.html, app.css, vendored
                           # preact/CodeMirror/markdown-it/DOMPurify/emoji, compiled JS
     render/              # the shared render kit (see below), served at /render/
+    public/page.css      # page chrome for published pages (see Publishing)
 tools/dist-renderer.sh   # copies the render kit out for embedding in a native client
 ```
+
+## Publishing
+
+"Publish" renders a note in the browser (`web/ts/util/publish.ts`, the same
+pipeline as the read view) and PUTs the HTML fragment to
+`/api/v1/notes/{slug}/publish`. The server sanitizes it, stores it, and serves it
+at **`/public/notes/{slug}` without authentication** — the one unauthenticated
+surface in the app. See spec/REQUIREMENTS.md § Publishing for the user-facing
+contract. The parts that are easy to break:
+
+- **`/public/` is exempt from basic auth** (`exemptPrefix` in `main.go`), so
+  everything registered under it is world-readable. A catch-all 404 claims the
+  rest of the prefix; without it an unmatched path would fall through to the SPA
+  shell *unauthenticated*. Do not register anything under `/public/` that is not
+  meant to be public, and do not add files under `web/static/public/` expecting
+  them to be private.
+- **Artifacts are referenced, never inlined.** `util/publish.ts` *reverses* the
+  `artifact:` → URL expansion the render pipeline performs, so the posted
+  fragment carries canonical `artifact:<sha256>` references; the server extracts
+  those into `published_note_artifacts` (which is what gates
+  `/public/artifacts/{sha256}`) and rewrites them to the relative
+  `../artifacts/<sha>`. Relative on purpose — it resolves inside a subpath
+  deployment, same reasoning as the `artifact:` scheme itself. The
+  "Download HTML" path in `util/export.ts` does the opposite (inlines as `data:`)
+  because it must work with no server; do not converge the two.
+- **Wikilinks are re-pointed at public pages**, also in `util/publish.ts`
+  (`rewriteNoteLinks`): `${base}/notes/<slug>` → `./<slug>`, a sibling under
+  `/public/notes/`, relative for the same reason the artifact refs are. Tag links
+  are unwrapped to text — there is no public tag page and, with no public index,
+  never will be. Publishing does not cascade to linked notes; a link to an
+  unpublished note 404s and starts working when that note is published, so do
+  not add re-publish-on-link bookkeeping. The regexes are the exact inverse of
+  how `util/markdown.ts` builds the hrefs — change one and change the other.
+- **`sanitize.PublishedHTML` is sanitize-and-store**, not the validate-and-reject
+  used for note content, and it deliberately allows `class`, `style` and
+  `<style>` (Mermaid diagrams carry their CSS in both). It sets bluemonday's
+  `AllowUnsafe(true)` to keep `<style>` *content*; that is only safe because the
+  policy does not declare `script`, and because `handler.publishedNoteCSP` gives
+  the page no `script-src` at all. Do not add `script` to that policy, and do not
+  loosen that CSP.
+- **The stored fragment is a body fragment**; the document around it is built at
+  serve time (`service.PublishedNoteDocument`) and its stylesheet is
+  `render/note.css` + `web/static/public/page.css`, concatenated at startup. So
+  restyling published pages needs no re-publish — keep it that way, and keep
+  note-content rules in `note.css` rather than `page.css`.
+- **Demo mode does not support publishing** (hidden via `isDemo()`); this is a
+  documented divergence, not an oversight.
 
 ## MyMail integration
 
@@ -240,14 +288,22 @@ go test ./internal/handler/ -run TestCreateAndGetNote
     as this embedded-HTML validator (not removed). DOMPurify is the
     authoritative render-time gate on the frontend.
   - **Note `title`** - only validated for length and no control characters, 
-    no HTML sanitization since it is not used in contexts where that would be an issue
+    no HTML sanitization since it is not used in contexts where that would be an issue.
+    Because it is stored unescaped, anything splicing it into markup must escape
+    it (`service.escapeHTMLText` in the published-page document).
+  - **Published note HTML** — sanitize-and-store with `sanitize.PublishedHTML`;
+    it is rendered output, not a source of truth. See § Publishing.
 - **Validate URL schemes** (allow only `http`, `https`, `mailto`) wherever URLs
   are stored or rendered.
 - **HTTP hardening:** keep the global `http.MaxBytesHandler` body limit, and both
   `ReadTimeout` and `ReadHeaderTimeout` set on the server.
 - **CSP:** keep the Content-Security-Policy tight; include `frame-ancestors
   'none'`. When adding outbound resources, update the relevant directive
-  (`script-src`, `img-src`, `connect-src`) at the same time.
+  (`script-src`, `img-src`, `connect-src`) at the same time. Published pages have
+  their own, stricter policy (§ Publishing) — it must stay script-free.
+- **Authentication is global.** Basic auth wraps the whole handler tree; the only
+  exemption is the `/public/` prefix (§ Publishing). Adding a second one means
+  deciding, deliberately, that everything reachable under it is world-readable.
 - **GET is side-effect free:** never modify the database in a GET handler.
 - Add `maxLength` (and other) constraints in `openapi.yaml` for string query
   parameters and body fields, not just in code.

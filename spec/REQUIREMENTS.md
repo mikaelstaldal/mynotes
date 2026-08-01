@@ -309,6 +309,63 @@ the one MyCal has with MyMail.
 - The web UI posts to MyMail's `POST /api/v1/messages/send-with-attachments`.
   MyNotes stores nothing about the message and provides no API of its own for it.
 
+## Publishing
+
+A note can be **published**: served as a web page that anyone with the link can
+read, with no password, while the rest of the deployment stays private. This is
+the only way content leaves the authenticated boundary — everything else the app
+offers (download, print, email) hands the note to the person who is already
+signed in.
+
+- **The page is rendered by the client.** Publishing renders the note in the
+  browser, using the same pipeline as the read view, and posts the resulting HTML
+  to `PUT /api/v1/notes/{slug}/publish`. The Markdown dialect is defined by that
+  pipeline (§Shared render kit) and the server has no second implementation of
+  it, so what a reader sees is what the author saw.
+- **The page is a snapshot.** Editing a published note does not change its public
+  page; the author publishes again to update it. `published_at` on `Note` and
+  `NoteSummary` says when the snapshot was taken, so a later `updated_at` means
+  the public page is out of date. A note that has never been published, or has
+  been unpublished, has no `published_at`.
+- **Published at `/public/notes/{slug}`.** Nothing lists what is published:
+  there is no public index, so a page is reachable only by knowing its slug. A
+  slug that is not published and a slug that does not exist give the same
+  response, so the set of notes cannot be probed from outside.
+- **Unpublishing** (`DELETE /api/v1/notes/{slug}/publish`) takes the page down;
+  unpublishing a note that is not published is a 404. **Deleting a note
+  unpublishes it.**
+- **Links between notes point at public pages.** A wikilink (§Markdown handling)
+  in a published note addresses the linked note's *public* page, not the app,
+  which a reader has no credentials for. Publishing a note does **not** publish
+  the notes it links to: until a linked note is published its link is simply a
+  link that does not resolve, and it starts working the moment that note is
+  published, with no need to publish the linking note again. Tag links have no
+  public counterpart — nothing lists published notes — so they appear as plain
+  text rather than as a link to a page the reader cannot open.
+- **Images are referenced, not embedded.** An artifact used by a published note
+  becomes readable at `/public/artifacts/{sha256}`, also without
+  authentication — and only while some published note references it. Publishing
+  one note therefore exposes that note's images and nothing else; unpublishing
+  withdraws them again, unless another published note still uses them. Artifacts
+  are not inlined into the page as `data:` URLs, so the same image is fetched and
+  cached once however many published notes show it. Publishing a page that
+  references an artifact the server does not hold is a validation error (400)
+  rather than a page with broken images.
+- **The posted HTML is sanitized, not rejected.** Unlike note content — stored
+  verbatim Markdown, where disallowed HTML fails the write (§Security) — a
+  published page is rendered output, so scripts, framed content, event handlers
+  and disallowed URL schemes are stripped from it and the rest is published.
+  Author CSS is kept, because a diagram cannot be styled without it; the page is
+  served with a policy that permits no script at all, which is what makes that
+  safe. The HTML is bounded at 2,000,000 characters.
+- **Styling comes from the server.** Only the note's body is stored; the server
+  wraps it in a document carrying the note's title (as both the page title and
+  its heading) and a link to `/public/note.css`, which is the same stylesheet the
+  read view uses. Changing how published pages look therefore does not require
+  re-publishing them. A published page is always light: it carries no script and
+  so cannot follow the reader's theme, and its diagrams have the light palette
+  baked in from publish time.
+
 ## Artifacts
 
 Binary content (images and other files) may be stored as artifacts and referenced in notes. Artifacts are content-addressed: the SHA-256 of the content is used as the identifier, in the API URL, and in the `artifact:{sha256}` reference note content carries (§Content), so uploading the same bytes twice returns the existing record unchanged.
@@ -1005,6 +1062,10 @@ localhost.
   relay a message. Neither is the Settings action, MyMail being all it holds; a
   MyMail URL left in localStorage by a non-demo deployment on the same origin is
   ignored rather than acted on.
+- Publishing is never offered either (§Publishing): a published page is served
+  by a server to readers who are not running the demo, and the demo has no server
+  and no readers but the one browser it lives in. `/public/…` answers with a
+  not-found page there, as it does on a real deployment with nothing published.
 - Image uploads are capped at 2 MiB, and a write that exhausts the browser's
   storage quota is reported as such. Neither limit exists on the server.
 - After the worker is installed it also resolves client-side deep links, so
@@ -1038,5 +1099,16 @@ DOMPurify pass on the page, exactly as in the real app.
 - Embedded HTML in notes is allowed only for a safe set of tags/attributes; only
   `http`/`https`/`mailto` link schemes and `https`/safe-`data:`/`artifact:` image
   sources are permitted; unsafe HTML/schemes cause a write to be rejected.
-- The whole app may be gated behind optional HTTP Basic Auth. GET requests never
-  modify data.
+- The whole app may be gated behind optional HTTP Basic Auth, **except the
+  published-note surface** (§Publishing), which exists to be readable without
+  credentials. That exemption covers exactly `/public/…`: a published page, an
+  artifact some published note references, and the stylesheet those pages need.
+  Nothing else under that path is served, so an unauthenticated request cannot
+  fall through to any other part of the app.
+- A published page is static: it is served with a policy that allows it no
+  script, no frames, and no form submission, and can be framed by nobody. That
+  holds whatever reaches it, which is why author CSS may be published verbatim.
+- Publishing is explicit and per-note. Nothing is published as a side effect of
+  creating, editing, or importing a note, and no listing of published notes is
+  served.
+- GET requests never modify data.
