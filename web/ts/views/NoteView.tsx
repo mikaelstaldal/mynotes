@@ -1,9 +1,10 @@
 import { useState, useEffect, useMemo, useRef } from 'preact/hooks';
 import { api, NotFoundError, type Note } from '../api/client.js';
-import { navigate } from '../router.js';
+import { navigate, currentPath } from '../router.js';
 import { base } from '../basepath.js';
 import { showToast } from '../util/toast.js';
 import { renderNote } from '../util/markdown.js';
+import { taskToggleAt } from '../util/tasks.js';
 import { renderMermaidBlocks } from '../util/mermaid.js';
 import { onThemeChange } from '../util/theme.js';
 import { useSlowLoading } from '../util/loading.js';
@@ -69,7 +70,8 @@ export function NoteView({ slug, onDelete }: Props) {
 
   const renderedContent = useMemo(() => {
     if (!note) return '';
-    return renderNote(note.content);
+    // Clickable task-list checkboxes: see handleContentClick.
+    return renderNote(note.content, { interactiveTasks: true });
   }, [note]);
 
   // Render any ```mermaid diagrams once the sanitized HTML is in the DOM.
@@ -102,6 +104,25 @@ export function NoteView({ slug, onDelete }: Props) {
     main?.classList.add('note-view-main');
     return () => main?.classList.remove('note-view-main');
   }, [showNote]);
+
+  // The task-list checkbox is the one interactive thing in the read view:
+  // clicking it opens the note in the editor with that item flipped — and
+  // nothing saved, so the choice between keeping and discarding the change stays
+  // with the user. The checkbox here is left as it is (preventDefault): the copy
+  // in the editor's preview is the one that moves, once the editor has the note.
+  // The edit is resolved here first, against the content this view rendered, so
+  // a click that could not produce one does not cost a trip to the editor.
+  function handleContentClick(e: MouseEvent) {
+    const box = (e.target as Element | null)?.closest?.('input.task-list-item-checkbox[data-task-line]');
+    if (!box) return;
+    e.preventDefault();
+    const line = Number(box.getAttribute('data-task-line'));
+    const checked = (box as HTMLInputElement).defaultChecked;
+    if (!note || !taskToggleAt(note.content, line, checked)) return;
+    navigate(`/notes/${slug}/edit`, {
+      returnTo: currentPath(), toggleTaskLine: line, toggleTaskChecked: checked,
+    });
+  }
 
   // Quick loads stay blank rather than flash the indicator; it appears only if
   // the fetch outlasts the delay.
@@ -148,7 +169,8 @@ export function NoteView({ slug, onDelete }: Props) {
         />
       </div>
       <div class="note-view-scroll">
-        <div class="note-content" ref={contentRef} dangerouslySetInnerHTML={{ __html: renderedContent }} />
+        <div class="note-content" ref={contentRef} onClick={handleContentClick}
+          dangerouslySetInnerHTML={{ __html: renderedContent }} />
         {note.incoming_links.length > 0 && (
           <section class="note-backlinks">
             <h2>Linked from</h2>

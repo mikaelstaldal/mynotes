@@ -400,6 +400,48 @@ test('a non-task list item is left as an ordinary bullet', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Interactive task lists — the web UI's clickable checkboxes (opt-in; every
+// other consumer keeps the disabled ones asserted above)
+// ---------------------------------------------------------------------------
+
+test('interactiveTasks renders enabled checkboxes carrying their source line', () => {
+  const out = renderNote('intro\n\n- [ ] todo\n- [x] done', { interactiveTasks: true });
+  assertAbsent(out, 'disabled', 'no disabled attr');
+  assertPresent(out, 'data-task-line="2"', 'first item line');
+  assertPresent(out, 'data-task-line="3"', 'second item line');
+  assertPresent(out, 'checked', 'checked attr survives for [x]');
+});
+
+test('interactiveTasks lines follow the marker onto a continuation line', () => {
+  // The item opens on its bare bullet, a line before the marker itself.
+  const out = renderNote('-\n  [ ] todo', { interactiveTasks: true });
+  assertPresent(out, 'data-task-line="1"', 'the marker line, not the bullet line');
+});
+
+test('interactiveTasks lines are those of the markers, not of the list', () => {
+  const md = '# Title\n\n> quote\n\n1. [ ] first\n2. [x] second\n\n   - [ ] nested\n';
+  const out = renderNote(md, { interactiveTasks: true });
+  // 0-based: "1. [ ] first" is line 4, "2. [x] second" line 5, the nested one line 7.
+  for (const line of [4, 5, 7]) {
+    assertPresent(out, `data-task-line="${line}"`, `marker on line ${line}`);
+  }
+});
+
+test('interactiveTasks does not enable an <input> from embedded HTML', () => {
+  const out = renderNote('- [ ] todo\n\n<input type="checkbox">', { interactiveTasks: true });
+  // Only the checkbox the task-list rule emitted — the one tagged with a source
+  // line — becomes clickable; the embedded one is read-only as it always is.
+  assertPresent(out, 'data-task-line="0"', 'task item is interactive');
+  assertPresent(out, 'disabled', 'embedded checkbox stays disabled');
+});
+
+test('the default render is unchanged: disabled, no source line', () => {
+  const out = renderNote('- [ ] todo');
+  assertPresent(out, 'disabled', 'disabled attr');
+  assertAbsent(out, 'data-task-line', 'no source line');
+});
+
+// ---------------------------------------------------------------------------
 // Building block: inline Lucide icons — `[!name]` renders an inline <svg>.
 // ---------------------------------------------------------------------------
 

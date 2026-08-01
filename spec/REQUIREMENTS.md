@@ -67,7 +67,10 @@ identity exists but is never exposed as the URL key.
   browser. The server never converts Markdown to HTML.
 - Supported syntax: CommonMark plus GFM tables, strikethrough, task lists, and
   autolinks; bare URLs/emails auto-link; images render. Task-list markers
-  (`- [ ]` / `- [x]`) render as disabled (read-only) checkboxes.
+  (`- [ ]` / `- [x]`) render as checkboxes: clickable in the web UI's read view
+  and editor preview (see §Frontend behavior, **Clickable task items**), and
+  disabled everywhere else — the Download HTML / print document, the email body,
+  and the shared render kit.
 - **Subscript and superscript:** the Pandoc form — `H~2~O` renders as
   `H<sub>2</sub>O` and `2^10^` as `2<sup>10</sup>`. As in Pandoc, the text
   between the delimiters may not contain unescaped whitespace, so ordinary prose
@@ -583,6 +586,22 @@ existing-note editor (`/notes/{slug}/edit`).
   choose or create a single tag, then splits the note by its top-level headings
   and navigates to the tag's note list (when a tag was chosen) or the first new
   note. A 404 (or a malformed-slug deep link) shows a not-found message.
+- **Clickable task items:** a task-list checkbox in the read view is the one
+  interactive part of it. Clicking one opens the note in the editor with that
+  item toggled (`[ ]` ⇄ `[x]`) — and **nothing saved**: the flip is an ordinary
+  unsaved edit, so the user decides between saving and discarding it, and the
+  usual unsaved-changes guard applies. Clicking one in the editor's own preview
+  (already editing) just toggles it in place, likewise unsaved and undoable.
+  Whichever item was clicked is the one that moves, however many the note has and
+  wherever they sit (nested lists, ordered lists, blockquotes, callouts): the
+  click carries the source line of the marker it was rendered from *and* the
+  state it was rendered in, and both are re-checked against the document before
+  anything is touched. A click the document no longer matches does nothing rather
+  than something wrong — and where a re-check cannot tell (the editor restoring a
+  draft, a document the clicked line numbers were never about) the pending toggle
+  is dropped outright.
+  Interactivity is web-UI-only: the exported, printed, emailed and render-kit
+  copies keep the disabled checkbox.
 - **Editor (main panel, new/edit):** title input (with auto-derive-from-heading
   until edited); slug field (suggested for new notes, editable-with-warning when
   editing); a tag picker (autocomplete over existing tags, plus an explicit

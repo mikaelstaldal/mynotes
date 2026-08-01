@@ -113,6 +113,12 @@
   vertical-align: middle;
 }
 
+/* An enabled checkbox exists only where the web UI renders one to be clicked
+   (its note view and editor preview, where a click toggles the item in the
+   editor); it stays disabled in the HTML export, print, email and this kit, so
+   the pointer never appears on a checkbox that does nothing. */
+.note-content .task-list-item-checkbox:not(:disabled) { cursor: pointer; }
+
 .note-content pre {
   background: var(--surface);
   border: 1px solid var(--border);

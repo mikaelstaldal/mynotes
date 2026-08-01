@@ -82,8 +82,10 @@ md.renderer.rules.emoji = (tokens, idx) => tokens[idx].content;
 // its <li>/<ul>/<ol> gain the GitHub-compatible task-list classes for styling.
 // Implemented as a core rule over the token stream (the same approach as
 // markdown-it-task-lists) rather than a plugin, so it stays self-contained and
-// npm-free. Checkboxes are always disabled: the read view is render-only, so a
-// task-list checkbox is a status marker, not an interactive control.
+// npm-free. A checkbox is a status marker, not an interactive control, so it is
+// disabled — except under renderNote's `interactiveTasks` (see RenderOptions),
+// where the web UI turns a click into an unsaved edit and each checkbox instead
+// carries the source line its marker sits on.
 const TASK_MARKER_RE = /^\[[ xX]\] /;
 
 // The @types/markdown-it package does not re-export Token from its entry point,
@@ -116,6 +118,7 @@ function parentListToken(tokens: MdToken[], itemOpen: number): number {
 
 md.core.ruler.after('inline', 'task_lists', (state) => {
   const tokens = state.tokens;
+  const interactive = (state.env as { interactiveTasks?: boolean } | undefined)?.interactiveTasks === true;
   for (let i = 2; i < tokens.length; i++) {
     const inline = tokens[i];
     if (
@@ -127,9 +130,19 @@ md.core.ruler.after('inline', 'task_lists', (state) => {
       continue;
     }
     const checked = inline.content.charCodeAt(1) !== 0x20; // '[x]'/'[X]' vs '[ ]'
+    // The 0-based source line the item's marker sits on — what a click has to
+    // flip in the Markdown (util/tasks.ts). Taken from the paragraph holding the
+    // marker, not from the list item: an item whose content starts on the line
+    // after its bullet ("-\n  [ ] todo") begins a line earlier than its marker
+    // does. The map is absolute in the (newline-normalized) source, so a task
+    // nested in a list or a blockquote maps back just as well.
+    const line = interactive ? tokens[i - 1].map?.[0] ?? -1 : -1;
+    // Interactive checkboxes are left enabled — a disabled control dispatches no
+    // click at all, so there would be nothing to act on.
+    const modeAttr = line >= 0 ? ` data-task-line="${line}"` : ' disabled';
     const box = new state.Token('html_inline', '', 0);
     box.content =
-      `<input class="task-list-item-checkbox" type="checkbox" disabled${checked ? ' checked' : ''}>`;
+      `<input class="task-list-item-checkbox" type="checkbox"${modeAttr}${checked ? ' checked' : ''}>`;
     // Prepend the checkbox and drop the "[ ]"/"[x]" marker (3 chars) from both
     // the flattened content and the leading text token.
     inline.children!.unshift(box);
@@ -856,6 +869,11 @@ DOMPurify.addHook('uponSanitizeElement', (node, data) => {
   }
 });
 
+// True only while renderNote() is rendering with `interactiveTasks`. DOMPurify's
+// hooks are global and cannot see markdown-it's env, so this bridges the two for
+// the duration of that (synchronous) call.
+let interactiveTasks = false;
+
 // Open external links in a new tab; keep internal links in the same tab.
 // Also force task-list checkboxes to stay non-interactive (read-only view).
 DOMPurify.addHook('afterSanitizeAttributes', (node) => {
@@ -866,7 +884,17 @@ DOMPurify.addHook('afterSanitizeAttributes', (node) => {
       node.setAttribute('rel', 'noopener noreferrer');
     }
   } else if (node.tagName === 'INPUT') {
-    node.setAttribute('disabled', '');
+    // The sole exception to the read-only rule: an interactive-mode task-list
+    // checkbox, recognised by the source line the task_lists rule tagged it
+    // with. A plain <input> from a note's embedded HTML carries none and so
+    // stays disabled, as it is in every other mode. (Embedded HTML that copies
+    // the attribute would be enabled too — harmless: what a click does is
+    // decided by re-reading the Markdown at that line, see util/tasks.ts.)
+    if (interactiveTasks && node.hasAttribute('data-task-line')) {
+      node.removeAttribute('disabled');
+    } else {
+      node.setAttribute('disabled', '');
+    }
   }
 });
 
@@ -912,8 +940,24 @@ DOMPurify.addHook('uponSanitizeAttribute', (node, data) => {
   }
 });
 
-export function renderNote(markdown: string): string {
-  return DOMPurify.sanitize(md.render(markdown));
+export interface RenderOptions {
+  // Render task-list checkboxes the reader can click: each is left enabled and
+  // tagged with `data-task-line`, the 0-based source line of its "[ ]"/"[x]"
+  // marker. Only the web UI's note view and editor preview ask for this — they
+  // turn a click into an unsaved edit (util/tasks.ts). Every other consumer —
+  // the HTML export, print, the email body, the render kit — takes the default
+  // and gets the read-only checkbox it always got.
+  interactiveTasks?: boolean;
+}
+
+export function renderNote(markdown: string, opts: RenderOptions = {}): string {
+  const env = { interactiveTasks: opts.interactiveTasks === true };
+  interactiveTasks = env.interactiveTasks;
+  try {
+    return DOMPurify.sanitize(md.render(markdown, env));
+  } finally {
+    interactiveTasks = false;
+  }
 }
 
 // Run an already-rendered HTML fragment back through the same DOMPurify gate.

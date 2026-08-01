@@ -12,6 +12,7 @@ import { navigate, setNavigationGuard } from '../router.js';
 import { showToast } from '../util/toast.js';
 import { confirmDialog, type ConfirmOptions } from '../util/dialog.js';
 import { renderNote, sanitizeSVGOrMathML, rawHtmlBlockSeparator } from '../util/markdown.js';
+import { taskToggleAt } from '../util/tasks.js';
 import { renderMermaidBlocks } from '../util/mermaid.js';
 import { onThemeChange } from '../util/theme.js';
 import { titleFromContent } from '../util/title.js';
@@ -28,6 +29,10 @@ import { ConflictDialog } from '../components/ConflictDialog.js';
 import { saveDraft, loadDraft, clearDraft, type Draft } from '../util/draft.js';
 
 const DATA_URL_RE = /data:([^;,\s]+);base64,[A-Za-z0-9+/]+=*/g;
+
+// The preview renders task-list checkboxes the user can click to flip the
+// matching "[ ]"/"[x]" in the document (handlePreviewClick), like the read view.
+const PREVIEW_RENDER = { interactiveTasks: true };
 
 // Font sizes for the H1–H6 previews in the heading dropdown.
 const HEADING_SIZES = ['1.5rem', '1.3rem', '1.15rem', '1.05rem', '0.95rem', '0.85rem'];
@@ -338,7 +343,7 @@ export function NoteEditor({ slug, initialSlug, initialTitle, onSave }: Props) {
     const currentSlug = editing ? snapshotRef.current.slug : (slugOverrideActive ? slugOverride : undefined);
     applyDirty(currentTitle, doc, currentSlug, tags);
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => setPreviewHtml(renderNote(doc)), 300);
+    debounceRef.current = setTimeout(() => setPreviewHtml(renderNote(doc, PREVIEW_RENDER)), 300);
   };
 
   // Load note for edit mode.
@@ -355,7 +360,7 @@ export function NoteEditor({ slug, initialSlug, initialTitle, onSave }: Props) {
         versionRef.current = note.version;
         snapshotRef.current = { title: note.title, content: note.content, slug: note.slug, tags: sortedSlugs(note.tags) };
         titleTouchedRef.current = true; // suppress auto-sync in edit mode
-        setPreviewHtml(renderNote(note.content));
+        setPreviewHtml(renderNote(note.content, PREVIEW_RENDER));
 
         // Offer to restore any unsaved work from a previous session. The editor
         // isn't mounted yet, so stash the draft for the editor-creation effect.
@@ -473,8 +478,32 @@ export function NoteEditor({ slug, initialSlug, initialTitle, onSave }: Props) {
         ? snapshotRef.current.slug
         : (pending.slugOverride || undefined);
       applyDirty(pending.title, pending.content, restoredSlug, pending.tags);
-      setPreviewHtml(renderNote(pending.content));
+      setPreviewHtml(renderNote(pending.content, PREVIEW_RENDER));
       pendingDraftRef.current = null;
+    }
+
+    // A task checkbox clicked in the read view opens the note here with that
+    // item flipped and nothing saved; the click hands over the source line, and
+    // the state the checkbox was rendered in, through history state. Consumed on
+    // arrival so a remount (or the back button landing on this entry again)
+    // cannot apply it a second time. Applied last, after any restored draft, so
+    // its dispatch — which marks the editor dirty and refreshes the preview
+    // through the update listener — has the final say.
+    //
+    // Dropped entirely when a draft was restored: those line numbers describe
+    // the saved note, and the document now on screen is a different one, in
+    // which the same line can be a different task (taskToggleAt's checks cannot
+    // tell two same-state tasks apart). The click is lost, which is the lesser
+    // harm — the user has just chosen this document over the one they clicked in.
+    const historyState = window.history.state as
+      { toggleTaskLine?: number; toggleTaskChecked?: boolean } | null;
+    if (historyState && typeof historyState.toggleTaskLine === 'number') {
+      const { toggleTaskLine, toggleTaskChecked, ...rest } = historyState;
+      window.history.replaceState(rest, ''); // window.: `history` here is CodeMirror's
+      const change = pending
+        ? null
+        : taskToggleAt(view.state.doc.toString(), toggleTaskLine, toggleTaskChecked === true);
+      if (change) view.dispatch({ changes: change });
     }
 
     return () => {
@@ -561,7 +590,7 @@ export function NoteEditor({ slug, initialSlug, initialTitle, onSave }: Props) {
       if (view) {
         view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: note.content } });
       }
-      setPreviewHtml(renderNote(note.content));
+      setPreviewHtml(renderNote(note.content, PREVIEW_RENDER));
       clearDraft(noteSlug);
       dirtyRef.current = false;
       setDirty(false);
@@ -958,6 +987,29 @@ export function NoteEditor({ slug, initialSlug, initialTitle, onSave }: Props) {
     }
   }
 
+  // Clicking a task checkbox in the preview flips the matching "[ ]"/"[x]" in
+  // the document — an ordinary edit, so it is undoable and, like every other
+  // edit here, saved only when the user saves. The preview trails the document
+  // by up to the debounce interval, so the click is resolved against the
+  // document as it is now, and only applied if the marker there is still the one
+  // the clicked box was drawn from (taskToggleAt).
+  //
+  // The browser's own toggle of the clicked box is left to stand as immediate
+  // feedback (the re-render arrives at the same state shortly after), and is
+  // undone whenever the document is not going to follow, so the box never shows
+  // a state the document does not have.
+  function handlePreviewClick(e: MouseEvent) {
+    const box = (e.target as Element | null)?.closest?.('input.task-list-item-checkbox[data-task-line]');
+    if (!box) return;
+    const view = viewRef.current;
+    const line = Number(box.getAttribute('data-task-line'));
+    const change = view
+      ? taskToggleAt(view.state.doc.toString(), line, (box as HTMLInputElement).defaultChecked)
+      : null;
+    if (!view || !change) { e.preventDefault(); return; }
+    view.dispatch({ changes: change });
+  }
+
   function insertExternalLink() {
     const view = viewRef.current;
     if (!view) return;
@@ -1292,7 +1344,8 @@ export function NoteEditor({ slug, initialSlug, initialTitle, onSave }: Props) {
           <div class="editor-cm" ref={editorContainerRef} />
         </div>
         <div class="preview-pane" ref={previewPaneRef}>
-          <div class="note-content" dangerouslySetInnerHTML={{ __html: previewHtml }} />
+          <div class="note-content" onClick={handlePreviewClick}
+            dangerouslySetInnerHTML={{ __html: previewHtml }} />
         </div>
       </div>
 
