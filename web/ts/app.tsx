@@ -276,7 +276,7 @@ function App() {
                 onClick={handleToggleTheme}
               >
                 <Icon name={theme === 'dark' ? 'sun' : 'moon'} size={16} />
-                <span>{theme === 'dark' ? 'Light mode' : 'Dark mode'}</span>
+                <span>{theme === 'dark' ? 'Light' : 'Dark'}</span>
               </button>
               {/* Settings holds the MyMail URL and nothing else, and a demo has
                   no server to relay a message — so it is offered only outside
