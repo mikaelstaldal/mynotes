@@ -177,6 +177,27 @@ Within one style attribute a shorthand must precede the longhand refining it
 (`border` then `border-left`); MyMail preserves declaration order, pinned by its
 `TestDeclarationOrderPreserved`.
 
+## The sidebar footer is governed from outside this repo
+
+The theme toggle and the **Settings** button at the bottom of the sidebar
+(`.sidebar-footer` in `web/ts/app.tsx` and `web/static/app.css`) implement a
+contract shared with the sibling MyCal and MyMail apps, so the three sit in the
+same place on screen and look the same. It is defined in the sibling `mysuite`
+repository — `../mysuite`, `spec/sidebar-footer.md` — and **not here**. Changing
+any of it is a change in all three repositories.
+
+The declarations in that block look like ordinary CSS and are not. Things that
+would be routine tidying anywhere else in `app.css` break the contract silently:
+normalising `0.80rem` to `0.8rem` (the trailing zero is the convention that makes
+one `grep` find the value in all three repos), folding the rule back into
+`.btn-icon`, dropping a "redundant" `flex-shrink: 0` or `text-align: center`,
+adding a `font-weight` to the base `button` rule, or restoring `outline: none` on
+the focus rule. **Nothing in this repository catches any of that** — there is no
+e2e suite and no test touches these controls, so read the spec and its
+`measurement-protocol.md` before changing them. Note also that a green
+`./build.sh` says nothing about geometry: `web/embed.go` bakes `web/static/` into
+the binary, so an already-running server keeps serving the CSS it started with.
+
 ## Shared render kit
 
 Native clients (the Android app) do **not** re-implement the Markdown dialect;
@@ -187,7 +208,10 @@ UI, exposing `render(markdown)` and `setTheme(theme, vars?)` on
 
 - `web/static/render/note.css` is the **canonical** stylesheet for rendered note
   content — `app.css` `@import`s it. Put `.note-content` rules and the colour
-  variables there, not in `app.css`.
+  variables there, not in `app.css`. Two of those variables (`--hover-bg`,
+  `--faint`) are used by app chrome alone and are inert in the kit and on
+  published pages; they live there deliberately, because this file owns the theme
+  selectors and `app.css` has no `:root` block of its own.
 - `tools/dist-renderer.sh <outdir>` copies the kit (host page + compiled modules
   + the vendor bundles it imports) into a consumer. It is a copy, not a build:
   run `./build.sh` first.

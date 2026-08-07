@@ -603,22 +603,36 @@ existing-note editor (`/notes/{slug}/edit`).
     view, editor preview, callouts, and Mermaid diagrams — which are re-rendered
     on toggle since their colours are baked into the SVG) and the downloaded HTML,
     but not print (see **Download HTML**).
-    Both controls follow a shared appearance contract with the sibling MySuite
-    apps (MyCal, MyMail), so that the three look identical here: an icon-plus-label
-    button 29.2px tall at the default 16px root font size (the box mixes `rem` text
-    with `px` padding, so a larger root scales it only partly)
-    (`0.80rem`/1.5 text, `4px 8px` padding, 16px Lucide icon,
-    6px icon-to-label gap, 1px border, 6px radius), the two 6px apart on one
-    non-wrapping row, inset 8px from the sidebar's left and bottom edges by the
-    padding of a full-bleed footer whose `border-top` spans the whole sidebar.
-    The theme button keeps both words mounted in one grid cell so it does not
-    change width when toggled and **Settings** never shifts. Keyboard focus draws
-    a 2px outline in `--primary` offset 2px, clear of the button's own border so
-    it meets WCAG 1.4.11's 3:1 against the panel behind it in both themes.
-    The 8px inset is deliberately tighter than the 12px the rest of the sidebar
-    uses, so the footer — and the demo badge inside it — sits slightly left of the
-    note list above; that is the price of the shared contract, not an oversight.
-    Changing any of this is a change in all three repositories.
+    Both controls implement the **MySuite sidebar-footer contract**, shared with
+    the sibling MyCal and MyMail apps so that someone with all three open in
+    browser tabs sees nothing move when switching between them. Their geometry,
+    colours, hover and focus treatment, the width-stable label mechanism, and
+    their position relative to the *window* are defined once, in the sibling
+    `mysuite` repository — `../mysuite`, `spec/sidebar-footer.md`. That document
+    is binding and is the only place those values live; this document
+    deliberately restates none of them, and a number found here that contradicts
+    it is stale.
+    Read it, and its `measurement-protocol.md`, before changing anything about
+    these two controls.
+    **Changing any of this is a change in all three repositories** — there is no
+    such thing as fixing it here alone.
+
+    What is particular to MyNotes: **Settings is absent from demo builds** — a
+    demo has no server to hold the MyMail URL — so a demo shows the theme toggle
+    alone, and the contract's geometry then applies to a single control rather
+    than a pair. The palette its colours resolve through lives in
+    `web/static/render/note.css` rather than `app.css`, since that file owns the
+    theme selectors and `app.css` has no `:root` block of its own; two of those
+    variables are used only by app chrome and are inert everywhere else that
+    stylesheet is consumed. And the footer is full-bleed where the sidebar header
+    and note list above it are inset, so the controls — and the demo badge beside
+    them — sit slightly left of the note list; that is the price of the shared
+    contract, not an oversight.
+
+    **Nothing in this repository verifies any of it.** There is no e2e suite, and
+    no unit test touches these controls; `./build.sh` passing says nothing about
+    the rendered result. Every figure in the shared contract attributed to MyNotes
+    was measured by hand in a browser and is guarded by nothing in CI.
 - **Settings:** a modal opened from the sidebar footer, holding the preferences
   that have no control of their own — currently just the **MyMail URL** (see
   **MyMail integration**). The field shows the user's override; leaving it empty

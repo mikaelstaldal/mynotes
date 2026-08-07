@@ -1600,9 +1600,12 @@ main.note-view-main {
   flex: none;
 }
 
-/* The footer's own buttons (theme toggle, Settings). Never wraps: the pair
-   measures 174px in a browser at the default root size — and 217px at a 24px
-   root — inside a 420px sidebar, so there is nothing to wrap. */
+/* The footer's own buttons (theme toggle, Settings). Never wraps, and the budget
+   is generous: the row has 403px of content box here (420px sidebar − 1px border
+   − 16px of this footer's padding). The pair measured 174px when this was
+   written, but that is a Chromium-on-Linux reading of text in whatever
+   `system-ui` resolves to — re-measure it rather than trusting it if a label
+   changes. See mysuite spec/sidebar-footer.md §2.4. */
 .sidebar-footer-actions {
   display: flex;
   flex-wrap: nowrap;
@@ -1610,7 +1613,9 @@ main.note-view-main {
 }
 
 /* Theme toggle and Settings. Geometry, colours and interaction are fixed by the
-   MySuite canonical spec — these two controls must render identically in MyCal,
+   MySuite canonical spec — ../mysuite, spec/sidebar-footer.md, which is where
+   these values are defined and where a change to them has to start.
+   These two controls must render identically in MyCal,
    MyMail and MyNotes, so the numbers below are literals rather than the app's
    usual rem steps, and the computed outer height must stay 29.2px at the default
    16px root font size (1.5 × 0.80rem line box + 8px padding + 2px border).
