@@ -235,7 +235,7 @@ function App() {
                 title={sidebarTab === 'notes' ? 'Reload notes' : sidebarTab === 'tags' ? 'Reload tags' : 'Reload graph'}
                 aria-label={sidebarTab === 'notes' ? 'Reload notes' : sidebarTab === 'tags' ? 'Reload tags' : 'Reload graph'}
                 onClick={refreshList}
-              ><Icon name="rotate-ccw" size={16} /></button>
+              ><Icon name="refresh-cw" size={16} /></button>
             </div>
           </div>
           <div class="sidebar-content">
