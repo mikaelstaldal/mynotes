@@ -1,0 +1,27 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "noEmit": true,
+    // Playwright transpiles the specs without type-checking them, so this file is
+    // only worth anything if `tsc --noEmit -p tsconfig.json` actually runs clean —
+    // otherwise a real error in the spec is indistinguishable from the noise and
+    // nobody looks. MyCal's copy, which this started as, errors 96 times here
+    // before reaching the tests, and none of the 96 is in tests/**.
+    //
+    // The noise is entirely playwright-core's own types: they reference Node
+    // globals (Buffer, fs, stream, child_process) that need @types/node, and
+    // Symbol.asyncDispose, which needs a lib above ES2020. skipLibCheck drops the
+    // first set, ES2022 the second — neither weakens checking of tests/**.
+    // @types/node is deliberately not added: it would be a second dependency in a
+    // lockfile whose being single-dependency is the reason it is reviewable.
+    //
+    // Adopted from MyMail, which hit this first. The 96 is this repo's own count,
+    // not MyMail's — the figures differ per repo and a transcribed one would be a
+    // number in a comment describing a measurement nobody took here.
+    "skipLibCheck": true
+  },
+  "include": ["tests/**/*.ts"]
+}

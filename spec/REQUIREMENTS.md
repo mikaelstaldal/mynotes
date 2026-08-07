@@ -629,10 +629,22 @@ existing-note editor (`/notes/{slug}/edit`).
     them — sit slightly left of the note list; that is the price of the shared
     contract, not an oversight.
 
-    **Nothing in this repository verifies any of it.** There is no e2e suite, and
-    no unit test touches these controls; `./build.sh` passing says nothing about
-    the rendered result. Every figure in the shared contract attributed to MyNotes
-    was measured by hand in a browser and is guarded by nothing in CI.
+    **This is now verified in CI**, by `e2e/tests/sidebar-footer.spec.ts` — run
+    by `./test-e2e.sh` after `./build.sh`, gating the Pages deploy and the rolling
+    release. It measures the rendered page in Chromium: both viewport
+    coordinates across every route and at a content volume that makes the
+    sidebar's inner scrollport scroll, the acceptance height, the pinned computed
+    values *and* their presence as declarations, contrast for the resting label,
+    the focus indicator and the hover fill in both themes, and the full-bleed
+    separator. `./build.sh` alone still says nothing about any of it — the binary
+    embeds `web/static/`, which is why `test-e2e.sh` compares served bytes against
+    on-disk bytes before running a test.
+
+    Two limits, stated because a green suite bounds what was checked rather than
+    what is correct. **`0.80rem` cannot be verified by anything** — it serialises
+    identically to `0.8rem` — so that convention is held by review. And this suite
+    can only see MyNotes: **cross-repo drift remains undetectable**, so a figure
+    agreeing here says nothing about whether MyCal and MyMail still agree with it.
 - **Settings:** a modal opened from the sidebar footer, holding the preferences
   that have no control of their own — currently just the **MyMail URL** (see
   **MyMail integration**). The field shows the user's override; leaving it empty

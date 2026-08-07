@@ -66,11 +66,39 @@ normalising `0.80rem` to `0.8rem` (the trailing zero is the convention that make
 one `grep` find the value in all three repos), folding the rule back into
 `.btn-icon`, dropping a "redundant" `flex-shrink: 0` or `text-align: center`,
 adding a `font-weight` to the base `button` rule, or restoring `outline: none` on
-the focus rule. **Nothing in this repository catches any of that** — there is no
-e2e suite and no test touches these controls, so read the spec and its
-`measurement-protocol.md` before changing them. Note also that a green
-`./build.sh` says nothing about geometry: `web/embed.go` bakes `web/static/` into
-the binary, so an already-running server keeps serving the CSS it started with.
+the focus rule.
+
+`e2e/tests/sidebar-footer.spec.ts` catches most of that, and it is worth knowing
+which items and why, because the exceptions are not the ones you would guess:
+
+- **Caught by reading the CSSOM**, not the rendering: folding the rule away, and
+  dropping `flex-shrink: 0`, `text-align: center`, `font-weight: 400`,
+  `font-style: normal`, `white-space: nowrap` or `font-family: inherit`. These are
+  the pins the *rendered* result cannot defend — deleting `font-weight: 400` today
+  changes no computed value at all here, since `body` sets no weight and the
+  button inherits 400 either way. That was mutation-tested: the declaration test
+  went red, the computed-value test stayed green.
+- **Caught by measurement:** `outline: none`, the geometry, the sizes and the
+  colours, in both themes and at several content volumes.
+- **Not caught, and safe:** adding a `font-weight` to the base `button` rule. Our
+  own pin out-specifies it, which is exactly what the pin is for — so this is only
+  a breakage in a repo that has *also* dropped the pin, and the first bullet
+  covers that half.
+- **Not caught, and not catchable by anything:** normalising `0.80rem` to
+  `0.8rem`. The two serialise identically in the CSSOM and render identically, so
+  the convention is held by review alone (spec §9.2 records it as the one
+  uncatchable item on the list).
+
+Run the suite with `./build.sh && ./test-e2e.sh` — see the root `AGENTS.md` — and
+read the spec and its `measurement-protocol.md` before changing any of these
+values; a change here is a change in three repositories, and the suite can only
+tell you that *this* app still satisfies the contract, never that the three still
+agree.
+
+Note also that a green `./build.sh` says nothing about geometry: `web/embed.go`
+bakes `web/static/` into the binary, so an already-running server keeps serving
+the CSS it started with. That is why `test-e2e.sh` compares served against
+on-disk bytes for every emitted asset before it runs a single test.
 
 ## Shared render kit
 
