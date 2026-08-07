@@ -4,6 +4,9 @@ Guidance for AI coding agents working in this repository. This is a personal
 note manager (MyNotes) with a Go backend, SQLite storage, a REST API defined in
 OpenAPI, and an embedded Preact + TypeScript frontend.
 
+Frontend/web UI instructions: see `web/AGENTS.md` (loaded automatically when
+working under `web/`).
+
 ## Specification
 
 Keep spec/REQUIREMENTS.md updated when new features are added.
@@ -79,10 +82,13 @@ web/
     vendor/rebuild.sh    # maintainer-only: rebuilds the vendored bundles below
   static/                # embedded assets: index.html, app.css, vendored
                           # preact/CodeMirror/markdown-it/DOMPurify/emoji, compiled JS
-    render/              # the shared render kit (see below), served at /render/
+    render/              # the shared render kit (see web/AGENTS.md), served at /render/
     public/page.css      # page chrome for published pages (see Publishing)
 tools/dist-renderer.sh   # copies the render kit out for embedding in a native client
 ```
+
+Request flow: `handler → service → repository → SQLite`. The handler is a thin
+adapter; business rules live in the service layer.
 
 ## Publishing
 
@@ -131,99 +137,6 @@ contract. The parts that are easy to break:
 - **Demo mode does not support publishing** (hidden via `isDemo()`); this is a
   documented divergence, not an oversight.
 
-## MyMail integration
-
-"Send as email" posts a note to a sibling
-[MyMail](https://github.com/mikaelstaldal/mymail) instance, whose URL `main.go`
-derives from `-public-url` (path replaced with `/mymail`) and hands to the
-frontend via an injected inline `<script>` setting `window.__serverConfig`
-(hash added to `script-src`). Same-origin, so no CSP or CORS work is needed.
-The user can override that URL in the web UI's Settings dialog
-(`components/SettingsDialog.tsx`, persisted to localStorage via
-`util/config.ts`); `util/mymail.ts` resolves override-then-derived and is the
-only thing callers ask "is MyMail configured?". The override must be
-same-origin — with no `connect-src` in the policy, `default-src 'self'` blocks
-anything else — so a cross-origin one is rejected as it is entered.
-
-`web/ts/util/emailhtml.ts` rewrites the export fragment into an email body and
-reports, via `EmailBody.degraded`, what the body could not carry. That list
-drives whether `email.ts` attaches the standalone "Download HTML" document —
-attach on content loss (diagrams, formulas, icons, embedded graphics,
-unresolvable images), not on a substitution that preserves the information
-(unfolded callout, ☐/☑ checkbox, styling email cannot express). Because the
-renderer puts a Lucide icon in the title of every **alias** callout
-(`[!warning]`, …), notes using one always attach; `>-`/`>*`/`>+` boxes do not.
-Anything the
-placeholder text tells the reader to find "in the attached file" **must** report
-a degradation, or the body will reference a file that was never sent.
-**MyMail sanitizes what it sends** with `sanitize.OutgoingHTML`
-(`mymail/internal/sanitize.NewOutgoingPolicy`): a fixed element allowlist, no
-`class`, `<style>` dropped with its content, and a fixed CSS-property allowlist
-whose values may not contain escapes, comments, or any functional notation but
-`rgb()`/`hsl()`. So styles must be inline `style=` attributes drawn from that
-list (no `position`, no `display`, no `color-mix()`), and URLs must be absolute.
-
-MyMail's allowlist was widened for this path — per-side longhands
-(`border-left`, `padding-left`), `border-radius`, `list-style`, and the inert
-semantic elements are available. It was widened in **both** of MyMail's
-directions, not just outgoing, so a note emailed to a MyMail address arrives
-rendering exactly as sent; MyMail's `outgoingOnly*` lists are empty and should
-stay that way. Widening further is a change in both repos: MyMail's
-`cssAllowlist`/`allAllowedElements`, and the mirrored allowlists in
-`web/ts/email.test.mjs` here, which restates the policy and asserts the real
-rendered output against it.
-
-Within one style attribute a shorthand must precede the longhand refining it
-(`border` then `border-left`); MyMail preserves declaration order, pinned by its
-`TestDeclarationOrderPreserved`.
-
-## The sidebar footer is governed from outside this repo
-
-The theme toggle and the **Settings** button at the bottom of the sidebar
-(`.sidebar-footer` in `web/ts/app.tsx` and `web/static/app.css`) implement a
-contract shared with the sibling MyCal and MyMail apps, so the three sit in the
-same place on screen and look the same. It is defined in the sibling `mysuite`
-repository — `../mysuite`, `spec/sidebar-footer.md` — and **not here**. Changing
-any of it is a change in all three repositories.
-
-The declarations in that block look like ordinary CSS and are not. Things that
-would be routine tidying anywhere else in `app.css` break the contract silently:
-normalising `0.80rem` to `0.8rem` (the trailing zero is the convention that makes
-one `grep` find the value in all three repos), folding the rule back into
-`.btn-icon`, dropping a "redundant" `flex-shrink: 0` or `text-align: center`,
-adding a `font-weight` to the base `button` rule, or restoring `outline: none` on
-the focus rule. **Nothing in this repository catches any of that** — there is no
-e2e suite and no test touches these controls, so read the spec and its
-`measurement-protocol.md` before changing them. Note also that a green
-`./build.sh` says nothing about geometry: `web/embed.go` bakes `web/static/` into
-the binary, so an already-running server keeps serving the CSS it started with.
-
-## Shared render kit
-
-Native clients (the Android app) do **not** re-implement the Markdown dialect;
-they embed `web/static/render/` and drive it in a web view. It is a plain static
-page hosting the same `util/markdown.ts` + `util/mermaid.ts` pipeline as the web
-UI, exposing `render(markdown)` and `setTheme(theme, vars?)` on
-`globalThis.MyNotesRender`.
-
-- `web/static/render/note.css` is the **canonical** stylesheet for rendered note
-  content — `app.css` `@import`s it. Put `.note-content` rules and the colour
-  variables there, not in `app.css`. Two of those variables (`--hover-bg`,
-  `--faint`) are used by app chrome alone and are inert in the kit and on
-  published pages; they live there deliberately, because this file owns the theme
-  selectors and `app.css` has no `:root` block of its own.
-- `tools/dist-renderer.sh <outdir>` copies the kit (host page + compiled modules
-  + the vendor bundles it imports) into a consumer. It is a copy, not a build:
-  run `./build.sh` first.
-- The kit's host page has its own import map, so a vendor version bump must
-  update **both** `web/static/index.html` and `web/static/render/index.html`, and
-  the latter's `<meta>` CSP hash must be recomputed (`main.go` derives the
-  server's header hash automatically). `web/ts/render-kit.test.mjs` fails the
-  build if any of that is out of sync.
-
-Request flow: `handler → service → repository → SQLite`. The handler is a thin
-adapter; business rules live in the service layer.
-
 ## Demo mode
 
 `-demo-server` and `-demo-bundle DIR` build the web UI with **no backend**: a
@@ -232,9 +145,6 @@ answers it from IndexedDB. `main.go` injects `window.__serverConfig={demo:true}`
 (same mechanism as the MyMail URL); `app.tsx` then waits for the worker to be
 installed and in control before rendering, so the first request cannot escape it.
 
-- **Intercepting at the network layer is the point**: the frontend is unchanged
-  between demo and real, including the `<img>` loads for artifacts and icons and
-  the "Download Markdown" navigation, which never go through `api/client.ts`.
 - **Parity with the Go server is the contract.** `web/ts/demo/` re-implements
   `internal/service` + the Markdown-aware parts of `internal/repository`; every
   function names the Go original it mirrors. When you change slug generation,
@@ -242,16 +152,6 @@ installed and in control before rendering, so the first request cannot escape it
   content validation on the server, change it there too. The accepted
   divergences are listed in spec/REQUIREMENTS.md § Demo Mode — don't add more
   silently.
-- **Not localStorage**: a service worker cannot reach it (it is synchronous and
-  absent from worker scopes), so the store is IndexedDB.
-- These sources are **worker code**: excluded from `web/ts/tsconfig.json` and
-  built by `web/ts/demo/tsconfig.json` against the WebWorker lib. They are
-  classic scripts sharing one global scope via `importScripts`, so they use no
-  `import`/`export` — adding one silently turns a file into a module and its
-  declarations vanish from the shared scope.
-- HTML import is the one thing the worker delegates: parsing HTML needs a
-  DOMParser, which a worker has no access to, so it asks the page to run
-  `web/ts/util/htmlmd.ts` (a DOM port of `internal/htmlmd`) over a MessageChannel.
 - The seed content is not duplicated in JavaScript: `internal/demo/bundle.go`
   runs the real `-demo` seeding against an in-memory database and exports the
   result as `demo-data.json`.
@@ -281,12 +181,6 @@ implementation and the frontend client.
 - **Migrations:** append a new `[]string` to `migrations` in
   `internal/repository/db.go`; never edit an applied migration. Versioning is via
   `PRAGMA user_version`.
-- **Frontend file naming:** components and views are `PascalCase.tsx`; utilities
-  and non-component modules are `lowercase.ts`. Relative imports use `.js`
-  extensions (TypeScript ESM convention — tsc resolves `.ts`/`.tsx`, emits `.js`).
-- **Frontend networking:** all requests go through `api` in `web/ts/api/client.ts`
-  (centralized retry, 401/404 handling, error parsing). Do not call `fetch`
-  directly from components.
 
 ## Tests
 
