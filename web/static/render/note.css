@@ -9,8 +9,12 @@
  *     clients (see tools/dist-renderer.sh);
  *   - any future consumer of the render kit.
  *
- * Keep it free of app-chrome rules: only `:root` variables and `.note-content`
- * selectors belong here.
+ * Keep it free of app-chrome *rules*: only `:root` variables and `.note-content`
+ * selectors belong here. Two of the variables (--hover-bg, --faint) are used by
+ * app.css alone and are inert everywhere this file is consumed — including the
+ * render kit and the unauthenticated /public/note.css. They live here because
+ * this file owns the theme selectors and nothing else has a :root block; they
+ * are marked as such below.
  */
 
 :root {
@@ -29,6 +33,18 @@
   --link: #2563eb;
   --danger: #dc2626;
   --surface: #f9fafb;
+  /* The next two are app-chrome only — nothing in this file uses them, and they
+     are inert in the render kit and on published pages. They live here because
+     this file owns the theme selectors; app.css has no :root block of its own.
+
+     Hover fill for chrome controls. A step darker than --surface, which is
+     itself the sidebar's background — on the sidebar a --surface hover would be
+     invisible. */
+  --hover-bg: #f3f4f6;
+  /* One step fainter than --fg, between --fg and --muted. Used as the hover
+     border on chrome controls: in the dark theme --hover-bg and --border are the
+     same grey, so keeping --border on hover would erase the outline. */
+  --faint: #9ca3af;
   --callout-blue: #2563eb;
   --callout-green: #16a34a;
   --callout-cyan: #0891b2;
@@ -47,6 +63,8 @@
   --link: #60a5fa;
   --danger: #ef4444;
   --surface: #1f2937;
+  --hover-bg: #374151;
+  --faint: #6b7280;
   --callout-blue: #3b82f6;
   --callout-green: #22c55e;
   --callout-cyan: #22d3ee;

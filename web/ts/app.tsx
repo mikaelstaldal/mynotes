@@ -269,21 +269,28 @@ function App() {
             )}
             <div class="sidebar-footer-actions">
               <button
-                class="btn-icon theme-toggle"
+                class="theme-toggle"
                 title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
                 aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
                 aria-pressed={theme === 'dark'}
                 onClick={handleToggleTheme}
               >
                 <Icon name={theme === 'dark' ? 'sun' : 'moon'} size={16} />
-                <span>{theme === 'dark' ? 'Light' : 'Dark'}</span>
+                {/* Both words stay mounted and share one grid cell (see
+                    .theme-toggle-label) so the button does not change width when
+                    toggled and Settings never shifts. The accessible name comes
+                    from aria-label above, so this is hidden from the a11y tree. */}
+                <span class="theme-toggle-label" aria-hidden="true">
+                  <span class={theme === 'dark' ? 'is-shown' : ''}>Light</span>
+                  <span class={theme === 'dark' ? '' : 'is-shown'}>Dark</span>
+                </span>
               </button>
               {/* Settings holds the MyMail URL and nothing else, and a demo has
                   no server to relay a message — so it is offered only outside
                   demo mode, where it would be an empty dialog. */}
               {!isDemo() && (
                 <button
-                  class="btn-icon settings-open"
+                  class="settings-open"
                   title="Settings"
                   aria-label="Settings"
                   onClick={() => setShowSettings(true)}

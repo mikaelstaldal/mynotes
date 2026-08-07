@@ -603,6 +603,22 @@ existing-note editor (`/notes/{slug}/edit`).
     view, editor preview, callouts, and Mermaid diagrams — which are re-rendered
     on toggle since their colours are baked into the SVG) and the downloaded HTML,
     but not print (see **Download HTML**).
+    Both controls follow a shared appearance contract with the sibling MySuite
+    apps (MyCal, MyMail), so that the three look identical here: an icon-plus-label
+    button 29.2px tall at the default 16px root font size (the box mixes `rem` text
+    with `px` padding, so a larger root scales it only partly)
+    (`0.80rem`/1.5 text, `4px 8px` padding, 16px Lucide icon,
+    6px icon-to-label gap, 1px border, 6px radius), the two 6px apart on one
+    non-wrapping row, inset 8px from the sidebar's left and bottom edges by the
+    padding of a full-bleed footer whose `border-top` spans the whole sidebar.
+    The theme button keeps both words mounted in one grid cell so it does not
+    change width when toggled and **Settings** never shifts. Keyboard focus draws
+    a 2px outline in `--primary` offset 2px, clear of the button's own border so
+    it meets WCAG 1.4.11's 3:1 against the panel behind it in both themes.
+    The 8px inset is deliberately tighter than the 12px the rest of the sidebar
+    uses, so the footer — and the demo badge inside it — sits slightly left of the
+    note list above; that is the price of the shared contract, not an oversight.
+    Changing any of this is a change in all three repositories.
 - **Settings:** a modal opened from the sidebar footer, holding the preferences
   that have no control of their own — currently just the **MyMail URL** (see
   **MyMail integration**). The field shows the user's override; leaving it empty

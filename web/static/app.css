@@ -69,7 +69,9 @@ body {
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  padding: 0.75rem 0;
+  /* No bottom padding: .sidebar-footer is full-bleed and owns the 8px inset
+     below its buttons (see there). */
+  padding: 0.75rem 0 0;
 }
 
 /* The header row stays put; this wrapper holds each tab's content below it. It
@@ -1570,11 +1572,15 @@ main.note-view-main {
 }
 
 /* Sidebar footer: holds the global light/dark toggle, pinned below the scrolling
-   sidebar content and above the sidebar's bottom edge, visible on every tab. */
+   sidebar content and above the sidebar's bottom edge, visible on every tab.
+   Full-bleed, unlike the header and .sidebar-content which are inset by 0.75rem:
+   the separator spans the whole sidebar and the MySuite spec's 8px inset to the
+   buttons comes from this element's padding, never a margin. .sidebar therefore
+   contributes no bottom padding — the 8px below the buttons is this padding-bottom. */
 .sidebar-footer {
   flex: none;
-  margin: 0.75rem 0.75rem 0;
-  padding-top: 0.75rem;
+  margin: 0.75rem 0 0;
+  padding: 8px;
   border-top: 1px solid var(--border);
 }
 
@@ -1594,19 +1600,104 @@ main.note-view-main {
   flex: none;
 }
 
-/* The footer's own buttons (theme toggle, Settings), wrapping rather than
-   overflowing when the sidebar is narrow. */
+/* The footer's own buttons (theme toggle, Settings). Never wraps: the pair
+   measures 174px in a browser at the default root size — and 217px at a 24px
+   root — inside a 420px sidebar, so there is nothing to wrap. */
 .sidebar-footer-actions {
   display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
+  flex-wrap: nowrap;
+  gap: 6px;
 }
 
-.theme-toggle,
-.settings-open {
+/* Theme toggle and Settings. Geometry, colours and interaction are fixed by the
+   MySuite canonical spec — these two controls must render identically in MyCal,
+   MyMail and MyNotes, so the numbers below are literals rather than the app's
+   usual rem steps, and the computed outer height must stay 29.2px at the default
+   16px root font size (1.5 × 0.80rem line box + 8px padding + 2px border).
+   Restates every property the spec pins, rather than inheriting it from `button`
+   or `.btn-icon`, so those can change without dragging the pinned appearance with
+   them. `font-family` is the one exception, left as `inherit` by the spec itself.
+   These two carry no `.btn-icon` — the block below overrides every property that
+   class contributes, and keeping it would only mean out-specifying its hover rule
+   here. */
+.sidebar-footer-actions .theme-toggle,
+.sidebar-footer-actions .settings-open {
   display: inline-flex;
   align-items: center;
-  gap: 0.4rem;
+  gap: 6px;
+  /* Content-sized, and it must STAY that way: a flex item shrinks before it
+     overflows, and these are otherwise saved only by `min-width: auto` resolving
+     to the nowrap content width. `min-width: 0` is a routine flex reset (this
+     file uses it in eight places); if one ever reached these, the labels would
+     shrink and clip with no ellipsis to show for it. Pinned so the only possible
+     failure is a visible overflow. */
+  flex-shrink: 0;
+  padding: 4px 8px;
+  /* These three already computed to exactly this before being written down: here
+     they reach it by inheriting from `body` (the `button` rule above is
+     `font: inherit`, so the UA's button font never applies), while the sibling
+     apps arrive at the same values by other routes. Pinned because agreement by
+     coincidence is not a contract — an ordinary `button { font-weight: 500 }` in
+     any one repo would break the match silently. */
+  font-family: inherit;
+  font-weight: 400;
+  font-style: normal;
+  /* 0.80rem, not the 0.8rem used elsewhere in this file: written in the spec's
+     two-decimal form so grepping the canonical value finds all three repos. */
+  font-size: 0.80rem;
+  line-height: 1.5;
+  text-align: center;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: none;
+  color: var(--muted);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+
+/* The spec pins this fill colour but not what it sits on, so it does not read the
+   same in all three apps: here the sidebar paints --surface and the fill is
+   visible against it, while MyCal's footer sits on --bg, which IS this colour, so
+   the fill vanishes there. Hover stays clearly signalled either way — the border
+   and text both change — but "identical on hover" is not currently true across the
+   suite. Known, with the human; do not fix it here alone. */
+.sidebar-footer-actions .theme-toggle:hover:not(:disabled),
+.sidebar-footer-actions .settings-open:hover:not(:disabled) {
+  background: var(--hover-bg);
+  color: var(--fg);
+  border-color: var(--faint);
+}
+
+/* The offset is load-bearing, not decoration: it lifts the outline clear of the
+   button's own 1px border so both of its adjacent colours are the sidebar's
+   --surface, giving 4.9:1 (light) and 4.0:1 (dark) — WCAG 1.4.11 wants 3:1
+   against adjacent colours. Sitting flush against --border instead, the dark
+   outline would reach only 2.8:1, and no opacity could lift it — that is a
+   ceiling of the two hues, which is why the suite settled on an opaque offset
+   outline rather than a translucent ring. An outline is also painted under
+   forced colours, where a box-shadow is not. Keep it at 2px — that is the
+   minimum indicator area WCAG 2.4.13 asks for. */
+.sidebar-footer-actions .theme-toggle:focus-visible,
+.sidebar-footer-actions .settings-open:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+/* Both words stay in the DOM, stacked in one grid cell, so the button keeps its
+   width when toggled and Settings never shifts sideways. The pair is
+   aria-hidden; the accessible name comes from the button's aria-label. */
+.sidebar-footer-actions .theme-toggle-label {
+  display: grid;
+}
+
+.sidebar-footer-actions .theme-toggle-label > span {
+  grid-area: 1 / 1;
+  visibility: hidden;
+}
+
+.sidebar-footer-actions .theme-toggle-label > .is-shown {
+  visibility: visible;
 }
 
 /* ── Tag management ─────────────────────────────────────────────── */
