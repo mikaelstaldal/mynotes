@@ -1661,12 +1661,25 @@ main.note-view-main {
   transition: background 0.12s, color 0.12s, border-color 0.12s;
 }
 
-/* The spec pins this fill colour but not what it sits on, so it does not read the
-   same in all three apps: here the sidebar paints --surface and the fill is
-   visible against it, while MyCal's footer sits on --bg, which IS this colour, so
-   the fill vanishes there. Hover stays clearly signalled either way — the border
-   and text both change — but "identical on hover" is not currently true across the
-   suite. Known, with the human; do not fix it here alone. */
+/* Both halves of this are pinned, separately, in mysuite spec/sidebar-footer.md:
+   §5.1 pins the fill; §5.3 pins what it sits on, per app and theme, and the three
+   are accepted to differ there. (Bare § below are that file; the one AGENTS.md
+   reference is marked, because its §2.2 and the spec's are different rules.) Here
+   the backdrop is --surface — #f9fafb light, #1f2937 dark — reached by the footer
+   being transparent and .sidebar painting it: neither .sidebar-footer nor the
+   resting rule above declares an opaque background, so the panel shows through.
+   Measured against that backdrop, this fill is 1.053:1 light and 1.424:1 dark.
+   The light figure is the weakest in the suite, and §5.1's floor is that figure —
+   so this app does not merely satisfy the floor, it is the source of it. Changing
+   either operand here would put this app below a floor it supplies, and the floor
+   moves in the spec, never here (AGENTS.md §2.2). Note it forbids only getting
+   worse than the worst: clearing it is not evidence the hover is visible, which
+   §10.1 records as open for all three.
+   Do not copy MyCal's light fill (#e5e7eb): that is its recorded deviation, for a
+   backdrop that IS #f3f4f6.
+   Hover stays clearly signalled regardless, since the border and text both change
+   too, but "identical on hover" is not true across the suite — for a reason
+   recorded in §5.1, not by accident. */
 .sidebar-footer-actions .theme-toggle:hover:not(:disabled),
 .sidebar-footer-actions .settings-open:hover:not(:disabled) {
   background: var(--hover-bg);
