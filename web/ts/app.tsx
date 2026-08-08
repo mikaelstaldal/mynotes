@@ -17,6 +17,7 @@ import { NotesGraph } from './views/NotesGraph.js';
 import { Toast } from './components/Toast.js';
 import { Dialogs } from './components/Dialog.js';
 import { Icon } from './components/Icon.js';
+import { Logo } from './components/Logo.js';
 import { DemoDialog, demoNoticeSeen, markDemoNoticeSeen } from './components/DemoDialog.js';
 import { SettingsDialog } from './components/SettingsDialog.js';
 
@@ -177,7 +178,15 @@ function App() {
       <div class="app-body">
         <aside class="sidebar">
           <div class="sidebar-header">
-            <a class="brand sidebar-brand" href="/">MyNotes</a>
+            {/* The badge goes inside the anchor, ahead of the label in reading
+                order, so the whole brand block stays the way home and the link's
+                accessible name is still "MyNotes" — the mark is decorative and
+                aria-hidden (in Logo itself). Both are the shared logo contract;
+                see web/AGENTS.md. */}
+            <a class="brand sidebar-brand" href="/">
+              <span class="brand-logo" aria-hidden="true"><Logo /></span>
+              MyNotes
+            </a>
             <div class="sidebar-tabs" role="tablist">
               <button
                 role="tab"

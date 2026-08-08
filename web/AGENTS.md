@@ -110,6 +110,93 @@ bakes `web/static/` into the binary, so an already-running server keeps serving
 the CSS it started with. That is why `test-e2e.sh` compares served against
 on-disk bytes for every emitted asset before it runs a single test.
 
+## The app logo is governed from outside this repo
+
+The badge at the top left of the sidebar — `.brand-logo` in `web/static/app.css`, drawn by
+`web/ts/components/Logo.tsx`, sitting inside the brand anchor in `web/ts/app.tsx` — implements
+a second contract shared with MyCal and MyMail, so the three apps' marks are the same size and
+sit in the same place. It is defined in the sibling `mysuite` repository — `../mysuite`,
+`spec/app-logo.md` — and **not here**. Read the values there rather than from any prose in this
+repo.
+
+Same rule as the sidebar footer: changing any of it is a change in all three repositories. What
+differs is *which* routine edits break it, because MyNotes' badge lives somewhere neither
+sibling's does — **inside an `<a>`**.
+
+- **The anchor's flex context is load-bearing.** `.sidebar-brand` carries `display: flex;
+  align-items: center; gap: 8px`. It reads like styling and is not: as a flex item of
+  `.sidebar-header` the anchor is otherwise blockified, so removing `display: flex` stacks the
+  badge above the label instead of beside it, and the `gap` **is** the contract's mandated
+  badge-to-label distance. Do not fold it into `.brand`, which is also used where there is no
+  badge.
+- **`.brand-logo`'s `color: #fff` is a pin, not a restatement of the obvious.** The badge is a
+  descendant of an `<a>`, so it is exposed to anything the link does to its own `color` — and
+  that declaration is the only thing standing between the link and the glyph, because the glyph
+  reaches its colour through `currentColor`. Delete it as redundant ("the mark is white anyway")
+  and the glyph immediately inherits `--fg`; add a `.brand:hover { color: var(--link) }` on top
+  of that and it changes colour under the pointer.
+
+  Both halves are measured, not argued — and the order matters, because it is the opposite of
+  what it looks like. **Adding `.brand:hover` while the pin is present does nothing at all**
+  (mutation-tested: the whole suite stayed green, because `.brand-logo`'s own `color`
+  out-specifies the anchor's). **It is removing the pin that breaks it.** So the rule to carry
+  is *keep the `color` declaration*, not *avoid hover rules* — this is the same shape as the
+  footer's `font-weight: 400` above, where the pin is what makes an otherwise-dangerous edit
+  safe. **MyCal and MyMail have no link here, so neither sibling repo will ever catch this —
+  it is ours alone.**
+- **`Logo.tsx`'s `viewBox` is not tidying.** It crops to the letter (`10 10 12 12`) rather than
+  spanning `favicon.svg`'s `0 0 32 32`, because the contract sets a floor on how much of the
+  glyph box the mark's ink must span. "Restoring" the favicon's viewBox for consistency drops
+  the mark to ~31% of the box — it renders about a third the size of MyCal's inside an
+  identically-sized badge, and **every geometry check still passes**, since the badge box and
+  the glyph box are both untouched.
+- **`Logo.tsx` and `favicon.svg` must stay the same picture.** The only intended differences are
+  that crop and `currentColor` in place of the favicon's `#fff` (the CSS box paints the square,
+  so the inline copy has no background `<rect>`). Change the letterform in one and change it in
+  the other.
+- **The sidebar's `456px` is derived from the badge**, not chosen: it is the historical `420px`
+  plus the 36px the badge costs, which is why the tab strip's clearance is the same as it was
+  before the badge existed. Narrowing it back re-breaks the header.
+
+**The failure mode here is invisible, which is the reason this section is long.**
+`.sidebar-tabs` is `flex: 1; min-width: 0` with no `overflow`, so when the header runs out of
+room the strip silently shrinks *below its content* and the tabs paint **underneath** the action
+buttons. `.sidebar-actions` never moves, `.sidebar-header` never overflows its box, and
+`.sidebar`'s `overflow: hidden` never clips. There is no console error and no layout shift.
+
+So the obvious check does not work: comparing the action buttons' right edge against the
+header's returns **clean zero in every visibly broken case**, at every root font size. The two
+assertions that can see it are `tabs.scrollWidth > tabs.clientWidth` and the last tab's right
+edge against `.sidebar-actions`' left edge. If you add a fit assertion, use one of those.
+
+**A known-open defect in this area, not caused by the logo:** at a 20px root font (Chrome's
+"Large") the tab strip already overflows into the buttons, and at 24px two tab labels are
+unreadable — a WCAG 1.4.4 Resize Text failure that predates the badge and is tracked separately.
+Widening the column to fix it would cost the main pane at every root size, so it was
+deliberately not bought here. **Do not read a header-overflow report at a large root font as a
+regression from the logo work.**
+
+`e2e/tests/logo.spec.ts` holds this half of the contract. Unlike the footer suite it
+was accepted the way `measurement-protocol.md` requires, by being **shown red for the right
+reason** rather than merely green. What each mutation did, because the results are not the ones
+you would predict:
+
+| Mutation | Result |
+|---|---|
+| `Logo.tsx` viewBox back to the favicon's `0 0 32 32` | **2 red** — the extent assertion, `ink 5.844px in a 17px glyph box` (34.4%). Every badge-box and glyph-box assertion **stayed green**, which is the whole reason that assertion exists |
+| Drop `.brand-logo { color: #fff }` | **1 red** — glyph resolves to `--fg`, `rgb(31, 41, 55)` |
+| Drop the pin **and** add `.brand:hover` | **3 red** — the colour test plus both hover tests |
+| Add `.brand:hover` alone, pin intact | **0 red — nothing broke.** The pin out-specifies it |
+| Give `.brand` a `font-size: 1.1rem` | **2 red** — the label guard, *and* the header-fit assertion, because a wider label pushes the tabs into the buttons. That is the "one label change away" case the column's headroom exists for, caught |
+| `padding-left: 4px` on `.brand-logo` | **4 red** on the centring insets (7.5 vs 5.5). The badge stayed 28×28 and the glyph 17×17 throughout — with `box-sizing: border-box`, padding slides the mark off centre without changing either box |
+| Change the mark's `d` in `favicon.svg` alone | **1 red** — `web/ts/logo.test.mjs`, which runs on every `./build.sh` rather than only when somebody runs the e2e suite |
+| Restore `expect(column.width).toBeCloseTo(420, 0)` in the footer suite | **2 red**, `Expected 420 / Received 456` — the assertion removed when the column widened (see there) |
+
+Run the suite with `./build.sh && ./test-e2e.sh` — see the root `AGENTS.md` — and read the
+contract and `measurement-protocol.md` before changing any of these values. As with the footer,
+the suite can only tell you that *this* app still satisfies the contract, never that the three
+still agree.
+
 ## Shared render kit
 
 Native clients (the Android app) do **not** re-implement the Markdown dialect;

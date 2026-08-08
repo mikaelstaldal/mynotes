@@ -6,11 +6,12 @@ are written relative to the repository root, as they are there.
 
 The root `AGENTS.md` § E2E tests has what someone who never opens this directory
 still needs: that the suite exists, that `./build.sh && ./test-e2e.sh` from the
-repository root is how it runs, that it holds this repo's half of the cross-repo
-sidebar-footer contract, and — the part that is easy to get backwards — that CI
-runs it on every push to `main`, so what it gates is **publication**, not the
-commit landing. `../mysuite/spec/sidebar-footer.md` §9.1 is the authority on each
-app's status; do not restate it here. This file is the rest.
+repository root is how it runs, that it holds this repo's half of two cross-repo
+contracts (the sidebar footer and the app logo), and — the part that is easy to
+get backwards — that CI runs it on every push to `main`, so what it gates is
+**publication**, not the commit landing. `../mysuite/spec/sidebar-footer.md` §9.1
+is the authority on each app's status; do not restate it here. This file is the
+rest.
 
 ## Prefer `test-e2e.sh` over starting a server by hand
 

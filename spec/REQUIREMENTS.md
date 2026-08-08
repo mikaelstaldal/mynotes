@@ -561,6 +561,33 @@ existing-note editor (`/notes/{slug}/edit`).
 
 - **Sidebar (always visible):** a three-tab panel — a **Notes** tab (the default),
   a **Tags** tab, and a **Graph** tab — under the brand.
+  - **Brand (all tabs):** the app mark on a coloured badge, followed by the
+    "MyNotes" label; the whole block links to the note list. The badge is
+    decorative — it is `aria-hidden` and the link's accessible name is the label
+    alone.
+
+    The badge implements the **MySuite logo contract**, shared with the sibling
+    MyCal and MyMail apps so the three marks render at the same size and sit in
+    the same place. As with the sidebar footer, that contract is defined in the
+    sibling `mysuite` repository (`../mysuite`, `spec/app-logo.md`) and **that
+    document is the authority** — this section deliberately carries none of its
+    values, so it cannot drift from them. The tidy-ups that break the contract
+    silently in *this* app are covered by "The app logo is governed from outside
+    this repo" in `web/AGENTS.md`, which is where somebody about to edit the
+    stylesheet will actually read them.
+
+    `e2e/tests/logo.spec.ts` holds this repo's half. It necessarily *does* state
+    the mandated numbers — an assertion cannot check a value without naming it —
+    which makes it the one place here that goes stale if the contract is amended,
+    and the place to update first.
+
+    The mark itself is MyNotes' own — what it depicts is deliberately not shared;
+    only the geometry, colour and placement are. It is drawn from the same
+    letterform as `web/static/favicon.svg`, which the two must keep in step.
+
+    The sidebar is **456px** wide rather than its historical 420px because of
+    the badge: the column was widened by exactly what the badge costs, so the
+    rest of the header keeps the room it had before.
   - **Notes tab:** debounced search box, results showing title,
     updated time, excerpt with highlights when searching, and tags. A sort
     dropdown selects the browse order — by updated time, created time, or title,

@@ -212,9 +212,16 @@ itself on a fresh database, checks the server is actually serving the assets on 
 both down afterwards. It takes the same arguments as `playwright test`, so
 `./test-e2e.sh tests/sidebar-footer.spec.ts -g "focus"` works.
 
-The suite is currently one spec: `tests/sidebar-footer.spec.ts`, this repo's half of the
-cross-repo sidebar-footer contract (`../mysuite`, `spec/sidebar-footer.md` — see
-`web/AGENTS.md`).
+The suite is two specs, this repo's half of two cross-repo contracts (`../mysuite`, `spec/` —
+see `web/AGENTS.md`):
+
+- `tests/sidebar-footer.spec.ts` — the sidebar-footer contract (`spec/sidebar-footer.md`).
+- `tests/logo.spec.ts` — the app-logo contract (`spec/app-logo.md`): the brand badge's geometry,
+  colour, glyph extent and placement, plus the guards that are MyNotes-local because our badge
+  sits inside a link.
+
+The CI step needs no change as specs are added — it runs `./test-e2e.sh` with no arguments,
+which picks up everything under `tests/`.
 
 **The CI step runs this suite.** `.github/workflows/main.yml` has it, after `./build.sh` and
 before Pages and the release. `../mysuite/spec/sidebar-footer.md` §9.1 records the three apps'

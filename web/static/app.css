@@ -46,9 +46,41 @@ body {
   border-bottom: 1px solid var(--border);
 }
 
+/* The badge sits INSIDE the anchor (see .brand-logo), so the anchor needs its
+   own flex context to put the mark beside the label text — as a flex item of
+   .sidebar-header it is otherwise blockified and the badge would stack.
+   The 8px gap is the shared logo contract's, not a local spacing choice. */
 .sidebar-brand {
   flex: none;
   align-self: center;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* The app mark (components/Logo.tsx, the favicon glyph) on a --primary square.
+   Box, radius, glyph size and the gap above are the cross-repo logo contract —
+   see "The app logo is governed from outside this repo" in web/AGENTS.md. The
+   glyph carries no width/height of its own, so both are set here.
+
+   The badge is decorative: this element carries aria-hidden (so does the <svg>
+   inside it, which makes Logo decorative wherever it is used), and the anchor's
+   accessible name is carried by the "MyNotes" text node beside it. */
+.brand-logo {
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--primary);
+  color: #fff;
+  border-radius: 6px;
+}
+
+.brand-logo svg {
+  width: 17px;
+  height: 17px;
 }
 
 .app-body {
@@ -60,9 +92,36 @@ body {
 
 /* No horizontal padding of its own — the inset is applied by the header, the
    footer and .sidebar-content instead, so the notes list can cancel it (see
-   .notes-list) and paint the active row's highlight edge to edge. */
+   .notes-list) and paint the active row's highlight edge to edge.
+
+   456px = the historical 420px + the 36px the brand badge costs (28px badge +
+   the contract's 8px gap), so every other element in the header keeps exactly
+   the room it had before the badge existed: the tab strip's clearance to the
+   action buttons measures 15.63px both before and after, unchanged.
+
+   Widening rather than shrinking anything is the human's ruling. The value is
+   app-local — mysuite's sidebar-footer.md §6.4 *records* this width, it does not
+   pin it ("sidebar widths were never unified — 200 / 220 / 420 are deliberately
+   different"). §6.4's "do not fix MyNotes' 420px" prohibits converting the
+   *unit* to rem (26.25rem reaches 630px at a 24px root); it does not prohibit
+   the value moving, so this stays in px deliberately.
+
+   Do not set this to the measured minimum. At a 16px root the tabs stop
+   overlapping the buttons at 441px, and the stricter strip-overflow check clears
+   at 450px — a column sitting on either is one label change or one translated
+   string away from failing again, and §"logo" in web/AGENTS.md explains why that
+   failure is invisible. 456 clears the binding threshold of the two by **6px**;
+   that margin, not the 15.63px above, is what a longer tab label eats into.
+
+   Root font size is the axis this reasoning covers. **Viewport width is
+   deliberately not addressed:** there is no @media anywhere in web/static/*.css,
+   so this column stays 456px at every width and .app-body's overflow:hidden
+   clips the main pane. Below ~460px of viewport the main pane was already at its
+   floor before this change and still is — 36px more of it is now unreachable,
+   which is accepted, not overlooked. Mobile layout is a separate question from
+   the badge. */
 .sidebar {
-  width: 420px;
+  width: 456px;
   flex-shrink: 0;
   border-right: 1px solid var(--border);
   background: var(--surface);
@@ -129,7 +188,7 @@ body {
   margin: 0 -0.75rem;
 }
 
-/* Graph tab: the rendered diagram scrolls on both axes within the 420px sidebar
+/* Graph tab: the rendered diagram scrolls on both axes within the 456px sidebar
    (large graphs pan rather than shrink to fit). */
 .sidebar-graph-wrap {
   flex: 1;
@@ -1601,7 +1660,7 @@ main.note-view-main {
 }
 
 /* The footer's own buttons (theme toggle, Settings). Never wraps, and the budget
-   is generous: the row has 403px of content box here (420px sidebar − 1px border
+   is generous: the row has 439px of content box here (456px sidebar − 1px border
    − 16px of this footer's padding). The pair measured 174px when this was
    written, but that is a Chromium-on-Linux reading of text in whatever
    `system-ui` resolves to — re-measure it rather than trusting it if a label
