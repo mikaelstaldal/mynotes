@@ -158,10 +158,13 @@ sibling's does — **inside an `<a>`**.
   by exactly what is added to the header, so the tab strip's clearance stays 15.63px: `420 → 456`
   for the badge itself, `456 → 464` for the 12px → 16px inset the contract's placement requires.
   Narrowing it back re-breaks the header.
-- **`.sidebar`'s `padding-top: 14px` IS the badge's y**, and `.sidebar-brand`'s
-  `align-self: flex-start` is what makes it so. Centred (as it was) the badge's y was a leftover
-  of `.sidebar-tab`'s typography and moved whenever a tab did. Both declarations are the contract's
-  placement, not spacing.
+- **`.sidebar`'s `padding-top: 14px` IS the badge's y**, and it takes *two* `align-self:
+  flex-start` declarations to keep it that way — one on `.sidebar-brand`, one on `.brand-logo`.
+  Each removes a different remainder, and the second is the one that looks redundant and is not:
+  without it the badge keeps `(brand height − 28) / 2`, which is zero only while the 28px badge
+  out-measures the label's line box — i.e. only up to about an 18.67px root font. A remainder
+  that happens to be zero is not an authored position. Both are contract placement, not spacing.
+  (`.brand-logo`'s own `align-items: center` is unrelated and stays: it centres the *glyph*.)
 - **The 16px inset is one value in five rules** — `.sidebar-header`, `.sidebar-content`,
   `.notes-list`'s cancelling negative margin, `.notes-list-scroll` and `.note-row`. Change one and
   the badge stops lining up with the note list below it; that is why the whole set moved together.
@@ -197,6 +200,9 @@ you would predict:
 | Add `.brand:hover` alone, pin intact | **0 red — nothing broke.** The pin out-specifies it |
 | Give `.brand` a `font-size: 1.1rem` | **2 red** — the label guard, *and* the header-fit assertion, because a wider label pushes the tabs into the buttons. That is the "one label change away" case the column's headroom exists for, caught |
 | `padding-left: 4px` on `.brand-logo` | **4 red** on the centring insets (7.5 vs 5.5). The badge stayed 28×28 and the glyph 17×17 throughout — with `box-sizing: border-box`, padding slides the mark off centre without changing either box |
+| `align-self: flex-start` → `center` on `.sidebar-brand` | **1 red** — y reads 19.30 not 14 |
+| Drop `align-self: flex-start` from `.brand-logo` | **5 red** — the 20/24/32px-root placement tests (y 15 / 18 / 24) and both label-line-height tests. Green at a 16px root throughout, which is exactly why the declaration looks removable |
+| Header inset alone back to 12px | **2 red** — placement (x = 12) and the alignment test |
 | Change the mark's `d` in `favicon.svg` alone | **1 red** — `web/ts/logo.test.mjs`, which runs on every `./build.sh` rather than only when somebody runs the e2e suite |
 | Restore `expect(column.width).toBeCloseTo(420, 0)` in the footer suite | **2 red** — the assertion removed when the column widened (see there); it would now read `Received: 464` |
 

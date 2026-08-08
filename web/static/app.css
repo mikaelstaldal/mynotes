@@ -78,6 +78,15 @@ body {
   width: 28px;
   height: 28px;
   flex-shrink: 0;
+  /* Takes the badge out of .sidebar-brand's own `align-items: center`, so its y
+     is the sidebar's padding-top and nothing else. Without it the badge keeps a
+     term of `(brand height − 28) / 2`, where the brand is as tall as its tallest
+     child — zero only while the 28px badge beats the label's line box, i.e. only
+     up to a ~18.67px root font. That is a remainder that happens to be zero, not
+     an authored position, and it is what made the badge drift to y = 18 at a
+     24px root. `.sidebar-brand` is a row, so this is the vertical axis.
+     The `align-items: center` below stays: it centres the GLYPH inside this box. */
+  align-self: flex-start;
   display: flex;
   align-items: center;
   justify-content: center;

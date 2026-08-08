@@ -180,16 +180,53 @@ test.describe('Brand logo contract', () => {
   // x is `.sidebar-header`'s 16px margin, y is `.sidebar`'s 14px padding-top.
   // That is the property worth protecting — the old y was a leftover of
   // `.sidebar-tab`'s typography, so a tab's font-size moved the badge.
-  test('the badge sits 16px from the left and 14px from the top', async ({ page }) => {
-    const box = await page.locator(BADGE).boundingBox();
-    expect(box, 'badge has no box').not.toBeNull();
-    expect(box!.x, 'distance from the left viewport edge').toBeCloseTo(16, 1);
-    expect(box!.y, 'distance from the top viewport edge').toBeCloseTo(14, 1);
+  for (const root of [16, 20, 24, 32]) {
+    test(`the badge sits 16px from the left and 14px from the top — ${root}px root`, async ({ page }) => {
+      if (root !== 16) {
+        await page.evaluate(r => { document.documentElement.style.fontSize = `${r}px`; }, root);
+      }
+      const box = await page.locator(BADGE).boundingBox();
+      expect(box, 'badge has no box').not.toBeNull();
+      expect(box!.x, 'distance from the left viewport edge').toBeCloseTo(16, 1);
+      expect(box!.y, 'distance from the top viewport edge').toBeCloseTo(14, 1);
 
-    // Not scrolled — "at rest" is part of the claim, and a scrolled page would
-    // give a y that means something else entirely.
-    expect(await page.evaluate(() => window.scrollY)).toBe(0);
-  });
+      // Not scrolled — "at rest" is part of the claim, and a scrolled page would
+      // give a y that means something else entirely.
+      expect(await page.evaluate(() => window.scrollY)).toBe(0);
+    });
+  }
+
+  // **This is what makes the position *authored* rather than merely correct.**
+  // Both offsets used to be remainders: y was `(header height − brand height)/2`,
+  // a function of `.sidebar-tab`'s typography, and after that fix it was still
+  // `(brand height − 28)/2` — zero only while the 28px badge out-measured the
+  // label's line box, i.e. only up to a ~18.67px root.
+  //
+  // A remainder that happens to be zero and a number that is declared are the
+  // same reading and different conformance. This test tells them apart: it grows
+  // the LABEL's line-height, which neither `.sidebar` nor `.sidebar-header`
+  // mentions, and requires the badge not to move. `.brand-logo`'s
+  // `align-self: flex-start` is what makes that true.
+  for (const lh of ['2.2', '4']) {
+    test(`the badge does not move when the label's line-height grows to ${lh}`, async ({ page }) => {
+      const before = (await page.locator(BADGE).boundingBox())!;
+      const brandBefore = (await page.locator(BRAND).boundingBox())!;
+
+      await page.evaluate(v => {
+        (document.querySelector('.sidebar-brand') as HTMLElement).style.lineHeight = v;
+      }, lh);
+
+      const brandAfter = (await page.locator(BRAND).boundingBox())!;
+      // Prove the mutation actually took: if the brand did not grow, the badge
+      // holding still proves nothing at all.
+      expect(brandAfter.height, 'label line-height did not change the brand — vacuous test')
+        .toBeGreaterThan(brandBefore.height + 1);
+
+      const after = (await page.locator(BADGE).boundingBox())!;
+      expect(after.y, 'badge y moved with the label — it is still a remainder').toBeCloseTo(before.y, 1);
+      expect(after.y).toBeCloseTo(14, 1);
+    });
+  }
 
   // The reason the whole 16px inset moved rather than just the header: the badge
   // has to line up with the note list beneath it, or fixing the cross-app
