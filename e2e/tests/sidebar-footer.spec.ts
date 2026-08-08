@@ -12,13 +12,15 @@ import { test, expect, type Page, type APIRequestContext } from '@playwright/tes
 // the only machine-checkable statement of the contract anywhere. This file is
 // MyNotes' half.
 //
-// **It still checks nothing on its own.** The CI step that would run it is
-// committed and has never executed — the workflow triggers on push to `main` and
-// this branch is unpushed — so what this file proves, it proves only when someone
-// runs it. See e2e/AGENTS.md. And even once it runs, it cannot see MyMail or
-// MyCal: it shows MyNotes still satisfies the contract and says nothing about
-// whether the three still agree. Cross-repo drift is detectable only by
-// `mysuite/tools/check-contract.py`, which nobody's CI runs either.
+// CI runs this on every push to `main` (see e2e/AGENTS.md;
+// `mysuite/spec/sidebar-footer.md` §9.1 is the authority on each app's status).
+// The workflow triggers *on* push, so what it gates is publication — a breaking
+// commit is already on `main` by the time this goes red.
+//
+// **And it cannot see MyMail or MyCal.** It shows MyNotes still satisfies the
+// contract and says nothing about whether the three still agree; all three
+// suites can be green through a divergence. Cross-repo drift is detectable only
+// by `mysuite/tools/check-contract.py`, which nobody's CI runs.
 //
 // Ported from MyCal's e2e/tests/sidebar-footer.spec.ts. Where an assertion is
 // kept, its reason is kept with it — these comments record the defect each one

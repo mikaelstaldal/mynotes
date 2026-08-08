@@ -640,15 +640,16 @@ existing-note editor (`/notes/{slug}/edit`).
     on-disk bytes before running a test.
 
     Three limits, stated because a green suite bounds what was checked rather than
-    what is correct. **Nothing runs this suite automatically.** The CI step is
-    committed and has never executed — the workflow triggers on push to `main` and
-    this work is on an unpushed branch — so this is a suite somebody has to
-    remember to run, which is not what catches an edit made for a good reason by
-    someone who did not know the rule existed. **`0.80rem` cannot be verified by
-    anything** — it serialises identically to `0.8rem` — so that convention is held
-    by review. And this suite can only see MyNotes: **cross-repo drift remains
-    undetectable**, so a figure agreeing here says nothing about whether MyCal and
-    MyMail still agree with it.
+    what is correct. **CI runs this suite on every push to `main`** — see the root
+    `AGENTS.md` § E2E tests, with `../mysuite/spec/sidebar-footer.md` §9.1 as the
+    authority on status — but the workflow triggers *on* push, so a breaking commit
+    is already on `main` when the suite goes red: **what it gates is publication**,
+    not the commit landing, and it is still not what stops an edit made for a good
+    reason by someone who did not know the rule existed. That remains the prose in
+    `web/AGENTS.md`. **`0.80rem` cannot be verified by anything** — it serialises
+    identically to `0.8rem` — so that convention is held by review. And this suite
+    can only see MyNotes: **cross-repo drift remains undetectable**, so a figure
+    agreeing here says nothing about whether MyCal and MyMail still agree with it.
 - **Settings:** a modal opened from the sidebar footer, holding the preferences
   that have no control of their own — currently just the **MyMail URL** (see
   **MyMail integration**). The field shows the user's override; leaving it empty

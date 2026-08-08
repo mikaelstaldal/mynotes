@@ -68,11 +68,15 @@ one `grep` find the value in all three repos), folding the rule back into
 adding a `font-weight` to the base `button` rule, or restoring `outline: none` on
 the focus rule.
 
-`e2e/tests/sidebar-footer.spec.ts` catches most of that **when somebody runs it**,
-and today somebody always has to: the CI step for it is committed and has never
-executed, because the workflow triggers on push to `main` and the branch carrying
-it is unpushed. So read the list below as what a run would catch, not as what is
-guarding you while you edit. Nothing is.
+`e2e/tests/sidebar-footer.spec.ts` catches most of that, and CI runs it on every
+push to `main` — see the root `AGENTS.md` § E2E tests, and
+`../mysuite/spec/sidebar-footer.md` §9.1, which is the authority on each app's
+status. So the list below is what the suite catches, not merely what a run would
+catch if somebody remembered.
+
+Two limits on that, both unchanged by CI running: it catches a breakage only
+*after* the commit is on `main` (it gates publication, not the commit), and it
+can only see this app — it never establishes that the three still agree.
 
 It is worth knowing which items and why, because the exceptions are not the ones
 you would guess:

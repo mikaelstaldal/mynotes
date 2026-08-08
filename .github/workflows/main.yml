@@ -90,11 +90,12 @@ jobs:
       # contract (see web/AGENTS.md and ../mysuite/spec/sidebar-footer.md), so a
       # build that breaks it must not reach Pages or the release.
       #
-      # "Placed to", not "does": this step is committed and has never executed. The
-      # workflow triggers on push to main and the work that added it is on an
-      # unpushed branch, so the first push to main is what makes the gate real —
-      # and is also the first time `npm ci` and `playwright install` run here at
-      # all. Do not describe this as protecting anything until it has run once.
+      # This step runs; ../mysuite/spec/sidebar-footer.md §9.1 is the authority on
+      # each app's status. Note what it gates, though: the workflow triggers ON
+      # push to main, so a breaking commit is already on main by the time the
+      # suite is red. It keeps a broken contract out of Pages and the release; it
+      # does not stop the commit landing.
+      #
       # test-e2e.sh
       # starts the server from the binary ./build.sh just produced — one built at
       # a different time would embed different web/static/, and the suite would be

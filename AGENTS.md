@@ -216,26 +216,28 @@ The suite is currently one spec: `tests/sidebar-footer.spec.ts`, this repo's hal
 cross-repo sidebar-footer contract (`../mysuite`, `spec/sidebar-footer.md` — see
 `web/AGENTS.md`).
 
-**Nothing runs it automatically. The CI step is committed and has never executed.**
-`.github/workflows/main.yml` has it, after `./build.sh` and before Pages and the release — but
-the workflow triggers on push to `main`, and this work is on an unpushed branch, so the step,
-`npm ci` and `playwright install` have all never run anywhere but the machine that wrote them.
-**Until that lands, this contract has no automatic guard in this repository at all**, and the
-suite is only what somebody remembers to run. `../mysuite/spec/sidebar-footer.md` §9.1 records
-the three apps' statuses side by side and is the authority on which is which; MyCal's is the
-one that runs.
+**The CI step runs this suite.** `.github/workflows/main.yml` has it, after `./build.sh` and
+before Pages and the release. `../mysuite/spec/sidebar-footer.md` §9.1 records the three apps'
+statuses side by side and **is the authority** — read the status there rather than from a copy
+here. This paragraph deliberately carries no run numbers, hashes or dates: a status table
+restated in an app repo is the next thing to go stale, which is exactly the failure this
+correction is fixing.
 
-And when it does first run, note what that will and will not mean — **the wording below is
-MyCal's**, taken rather than rewritten, because three repos saying this three ways is how the
-next drift starts (MyCal `web/AGENTS.md`, the only one of the three where this is already
-live):
+Note what a run does and does not mean — **the wording below is MyCal's**, taken rather than
+rewritten, because three repos saying this three ways is how the next drift starts:
 
 > the workflow triggers on `push` to `main`, so a breaking commit is already on `main` by the
 > time the suite is red — what the gate prevents is a broken contract reaching Pages or the
 > rolling release, not the commit landing.
 
-So even after the first push, "the suite gates the contract" is an over-claim. It gates
-**publication**.
+So "the suite gates the contract" is an over-claim. It gates **publication**.
+
+**And a green suite is still not a cross-repo check — that half has not changed.** Each app's
+suite can only see its own app: this one shows that *MyNotes* satisfies the contract and says
+nothing about whether MyCal and MyMail still agree with it. All three can run, all three can be
+green, and the three can still have diverged from each other. Cross-repo drift is detectable
+only by `mysuite/tools/check-contract.py`. Do not read "the suite runs now" as closing that gap;
+it was never the gap the suite addressed.
 
 Playwright is installed by the workflow, not by `build.sh` — `build.sh` stays usable without a
 browser toolchain, and it is byte-unchanged by this.
