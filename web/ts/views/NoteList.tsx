@@ -40,7 +40,14 @@ export function NoteList({ activeSlug, activeTags, listKey, sortField, sortOrder
   // somehow hold text.
   const [textInput, setTextInput] = useState('');
   const [titleInput, setTitleInput] = useState('');
-  const [debounced, setDebounced] = useState<{ q: string; titlePrefix: boolean }>({ q: '', titlePrefix: false });
+  // Two scalars rather than one `{q, titlePrefix}` object, deliberately: they
+  // are dependencies of the load effect below, which clears `rows` before
+  // refetching, so anything that changes identity without changing meaning
+  // empties the list and sends its scrollport back to the top. Scalars get that
+  // comparison from `useState` and the dependency array for free; an object
+  // needs a hand-written equality that the next added field silently escapes.
+  const [debouncedQ, setDebouncedQ] = useState('');
+  const [debouncedTitlePrefix, setDebouncedTitlePrefix] = useState(false);
   const titleMode = titleInput.trim() !== '';
   // Sort only applies to the browse list; the backend ignores it for both
   // full-text (relevance-ordered) and title-prefix (title-ordered) searches.
@@ -57,14 +64,26 @@ export function NoteList({ activeSlug, activeTags, listKey, sortField, sortOrder
   const shownRef = useRef(new Set<string>());
   const genRef = useRef(0);
 
-  // Commit the active input → debounced {query, mode} after 300 ms of no input.
+  // Commit the active input → debounced query + mode after 300 ms of no input.
   // The title filter wins when it holds text; otherwise the full-text query
   // applies (empty means "browse all").
+  //
+  // Committed **trimmed**, so that surrounding whitespace cannot look like a new
+  // query: the server normalises it away either way (`strings.TrimSpace` for the
+  // title prefix, `strings.Fields` for full text, both in
+  // internal/repository/note_repo.go), so an untrimmed commit reloads the list
+  // and drops the reader's scroll position to fetch a byte-identical result.
+  // Typing a trailing space after a settled filter was enough to do it.
+  //
+  // The timer also runs once on mount, where the committed values always equal
+  // the initial ones. That is why the no-op path has to stay a no-op all the way
+  // through to the load effect: before this, every list mount cleared itself
+  // 300 ms later, discarding wherever the user had scrolled to.
   useEffect(() => {
     const id = setTimeout(() => {
-      setDebounced(titleInput.trim()
-        ? { q: titleInput, titlePrefix: true }
-        : { q: textInput, titlePrefix: false });
+      const title = titleInput.trim();
+      setDebouncedQ(title || textInput.trim());
+      setDebouncedTitlePrefix(title !== '');
     }, 300);
     return () => clearTimeout(id);
   }, [textInput, titleInput]);
@@ -131,9 +150,9 @@ export function NoteList({ activeSlug, activeTags, listKey, sortField, sortOrder
     setOffset(0);
     setTotal(null);
     setExhausted(false);
-    void loadPage(debounced.q, activeTags, debounced.titlePrefix, 0, gen);
+    void loadPage(debouncedQ, activeTags, debouncedTitlePrefix, 0, gen);
     // activeTags is keyed via tagKey.
-  }, [debounced, tagKey, loadPage, listKey]);
+  }, [debouncedQ, debouncedTitlePrefix, tagKey, loadPage, listKey]);
 
   // Navigate to the note list filtered by the given tag set (AND). An empty set
   // clears the filter (back to "All notes").
@@ -252,7 +271,7 @@ export function NoteList({ activeSlug, activeTags, listKey, sortField, sortOrder
         {slowLoading && rows.length === 0 ? (
           <p class="muted">Loading…</p>
         ) : !loading && rows.length === 0 ? (
-          <p class="muted">{debounced.q ? 'No matching notes.' : 'No notes yet.'}</p>
+          <p class="muted">{debouncedQ ? 'No matching notes.' : 'No notes yet.'}</p>
         ) : (
           <NoteRows rows={rows} activeSlug={activeSlug} />
         )}
@@ -261,7 +280,7 @@ export function NoteList({ activeSlug, activeTags, listKey, sortField, sortOrder
 
         {showLoadMore && (
           <div class="load-more">
-            <button onClick={() => void loadPage(debounced.q, activeTags, debounced.titlePrefix, offset, genRef.current)}>
+            <button onClick={() => void loadPage(debouncedQ, activeTags, debouncedTitlePrefix, offset, genRef.current)}>
               Load more
             </button>
           </div>

@@ -212,13 +212,19 @@ itself on a fresh database, checks the server is actually serving the assets on 
 both down afterwards. It takes the same arguments as `playwright test`, so
 `./test-e2e.sh tests/sidebar-footer.spec.ts -g "focus"` works.
 
-The suite is two specs, this repo's half of two cross-repo contracts (`../mysuite`, `spec/` —
-see `web/AGENTS.md`):
+Two of the three specs are this repo's half of two cross-repo contracts (`../mysuite`, `spec/` —
+see `web/AGENTS.md`); the third is MyNotes' own, and the distinction matters, because changing
+what the first two assert is a change in three repositories and changing the third is not:
 
 - `tests/sidebar-footer.spec.ts` — the sidebar-footer contract (`spec/sidebar-footer.md`).
 - `tests/logo.spec.ts` — the app-logo contract (`spec/app-logo.md`): the brand badge's geometry,
   colour, glyph extent and placement, plus the guards that are MyNotes-local because our badge
   sits inside a link.
+- `tests/note-list-refetch.spec.ts` — **contract-free, and local to this app**: the sidebar note
+  list must not reload itself, and so must not discard the reader's scroll position, unless the
+  query actually changed. It exists because the sidebar-footer suite caught that defect only by
+  landing inside a 300 ms debounce window by chance — green here for weeks, red in CI once.
+  Both tests in it measure from *past* that window rather than trying to land in it.
 
 The CI step needs no change as specs are added — it runs `./test-e2e.sh` with no arguments,
 which picks up everything under `tests/`.
