@@ -42,17 +42,25 @@ body {
   align-items: stretch;
   gap: 0.6rem;
   flex: none;
-  margin: 0 0.75rem 0.75rem;
+  margin: 0 16px 0.75rem;
   border-bottom: 1px solid var(--border);
 }
 
 /* The badge sits INSIDE the anchor (see .brand-logo), so the anchor needs its
    own flex context to put the mark beside the label text — as a flex item of
    .sidebar-header it is otherwise blockified and the badge would stack.
-   The 8px gap is the shared logo contract's, not a local spacing choice. */
+   The 8px gap is the shared logo contract's, not a local spacing choice.
+
+   `align-self: flex-start`, NOT `center`, and that is the whole vertical fix:
+   centred, the brand's top was `(header content height − brand height) / 2`
+   below the header — a leftover of `.sidebar-tab`'s typography (its font-size,
+   its 0.5rem padding, its 2px border), so the badge moved whenever a tab did,
+   with nothing to catch it. Top-aligned, the badge's y is `.sidebar`'s
+   padding-top and nothing else: a chosen number, which is what the shared logo
+   contract's position requires and how both sibling apps author theirs. */
 .sidebar-brand {
   flex: none;
-  align-self: center;
+  align-self: flex-start;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -94,10 +102,18 @@ body {
    footer and .sidebar-content instead, so the notes list can cancel it (see
    .notes-list) and paint the active row's highlight edge to edge.
 
-   456px = the historical 420px + the 36px the brand badge costs (28px badge +
-   the contract's 8px gap), so every other element in the header keeps exactly
-   the room it had before the badge existed: the tab strip's clearance to the
-   action buttons measures 15.63px both before and after, unchanged.
+   464px, reached in two steps and by the same rule both times — the column
+   grows by exactly what was added to the header, so the tab strip's clearance to
+   the action buttons is unchanged at 15.63px throughout:
+
+     420 → 456   the brand badge (28px badge + the contract's 8px gap)
+     456 → 464   the inset going 12px → 16px on both sides
+
+   The second step is the shared logo contract's placement: the badge must sit
+   16px from the sidebar's left edge, matching MyMail (and MyCal, which aimed at
+   the same number deliberately — see its app.css comment). Moving only the
+   header there would have put the badge 4px out of line with the note list
+   below it, so the whole inset moved and the column paid for it.
 
    Widening rather than shrinking anything is the human's ruling. The value is
    app-local — mysuite's sidebar-footer.md §6.4 *records* this width, it does not
@@ -106,31 +122,35 @@ body {
    *unit* to rem (26.25rem reaches 630px at a 24px root); it does not prohibit
    the value moving, so this stays in px deliberately.
 
-   Do not set this to the measured minimum. At a 16px root the tabs stop
-   overlapping the buttons at 441px, and the stricter strip-overflow check clears
-   at 450px — a column sitting on either is one label change or one translated
-   string away from failing again, and §"logo" in web/AGENTS.md explains why that
-   failure is invisible. 456 clears the binding threshold of the two by **6px**;
-   that margin, not the 15.63px above, is what a longer tab label eats into.
+   Do not set this to the measured minimum. A column sitting on the threshold is
+   one label change or one translated string away from failing again, and
+   §"logo" in web/AGENTS.md explains why that failure is invisible — the tab
+   strip shrinks below its content and paints under the buttons, moving nothing
+   and clipping nothing. Preserving the 15.63px is what keeps the margin.
 
    Root font size is the axis this reasoning covers. **Viewport width is
    deliberately not addressed:** there is no @media anywhere in web/static/*.css,
-   so this column stays 456px at every width and .app-body's overflow:hidden
-   clips the main pane. Below ~460px of viewport the main pane was already at its
-   floor before this change and still is — 36px more of it is now unreachable,
+   so this column stays 464px at every width and .app-body's overflow:hidden
+   clips the main pane. Below ~470px of viewport the main pane was already at its
+   floor before any of this and still is — 44px more of it is now unreachable,
    which is accepted, not overlooked. Mobile layout is a separate question from
    the badge. */
 .sidebar {
-  width: 456px;
+  width: 464px;
   flex-shrink: 0;
   border-right: 1px solid var(--border);
   background: var(--surface);
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  /* No bottom padding: .sidebar-footer is full-bleed and owns the 8px inset
+  /* Top padding IS the badge's distance from the top of the viewport — 14px,
+     the shared logo contract's placement, matching MyMail's own padding-top and
+     the number MyCal's min-height was chosen to land on. It reads as ordinary
+     spacing and is not: .sidebar-brand is top-aligned against it (see there), so
+     changing this moves the badge out of contract.
+     No bottom padding: .sidebar-footer is full-bleed and owns the 8px inset
      below its buttons (see there). */
-  padding: 0.75rem 0 0;
+  padding: 14px 0 0;
 }
 
 /* The header row stays put; this wrapper holds each tab's content below it. It
@@ -143,7 +163,7 @@ body {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  padding: 0 0.75rem;
+  padding: 0 16px;
 }
 
 /* Tags tab: the whole list is the scroll region within the sidebar content. */
@@ -166,12 +186,12 @@ body {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  margin: 0 -0.75rem;
+  margin: 0 -16px;
 }
 
 .notes-list-controls {
   flex: none;
-  padding: 0 0.75rem;
+  padding: 0 16px;
 }
 
 /* Padded so the loading/empty messages and the "Load more" button keep the
@@ -181,14 +201,14 @@ body {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 0 0.75rem;
+  padding: 0 16px;
 }
 
 .notes-list-scroll > ul {
-  margin: 0 -0.75rem;
+  margin: 0 -16px;
 }
 
-/* Graph tab: the rendered diagram scrolls on both axes within the 456px sidebar
+/* Graph tab: the rendered diagram scrolls on both axes within the 464px sidebar
    (large graphs pan rather than shrink to fit). */
 .sidebar-graph-wrap {
   flex: 1;
@@ -452,8 +472,8 @@ ul { list-style: none; padding: 0; margin: 0; }
    row's background and the dividers between rows span the panel's full width
    while the text stays aligned with the controls above. */
 .notes-list-scroll .note-row {
-  padding-left: 0.75rem;
-  padding-right: 0.75rem;
+  padding-left: 16px;
+  padding-right: 16px;
 }
 
 .note-row .link { grid-area: title; font-size: 1rem; }
@@ -1660,7 +1680,7 @@ main.note-view-main {
 }
 
 /* The footer's own buttons (theme toggle, Settings). Never wraps, and the budget
-   is generous: the row has 439px of content box here (456px sidebar − 1px border
+   is generous: the row has 447px of content box here (464px sidebar − 1px border
    − 16px of this footer's padding). The pair measured 174px when this was
    written, but that is a Chromium-on-Linux reading of text in whatever
    `system-ui` resolves to — re-measure it rather than trusting it if a label

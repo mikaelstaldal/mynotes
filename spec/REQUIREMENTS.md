@@ -585,9 +585,10 @@ existing-note editor (`/notes/{slug}/edit`).
     only the geometry, colour and placement are. It is drawn from the same
     letterform as `web/static/favicon.svg`, which the two must keep in step.
 
-    The sidebar is **456px** wide rather than its historical 420px because of
-    the badge: the column was widened by exactly what the badge costs, so the
-    rest of the header keeps the room it had before.
+    The sidebar is **464px** wide rather than its historical 420px because of
+    the badge, in two steps by the same rule: the column grows by exactly what is
+    added to the header, so the rest of it keeps the room it had before — first
+    for the badge, then for the wider inset the contract's placement requires.
   - **Notes tab:** debounced search box, results showing title,
     updated time, excerpt with highlights when searching, and tags. A sort
     dropdown selects the browse order — by updated time, created time, or title,

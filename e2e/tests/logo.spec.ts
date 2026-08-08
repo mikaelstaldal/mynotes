@@ -168,6 +168,51 @@ test.describe('Brand logo contract', () => {
   }
 
   // ---------------------------------------------------------------------------
+  // Placement — distance from the viewport's top and left edges
+  // ---------------------------------------------------------------------------
+
+  // (16, 14) is the shared position: MyMail measures there, and MyCal's
+  // `min-height: 40px` was chosen so its badge would land on the same number
+  // (its app.css says so). MyNotes was the outlier at (12, 17.30) until the
+  // sidebar inset went to 16px and `.sidebar-brand` was top-aligned.
+  //
+  // Both coordinates are now single declarations rather than remainders:
+  // x is `.sidebar-header`'s 16px margin, y is `.sidebar`'s 14px padding-top.
+  // That is the property worth protecting — the old y was a leftover of
+  // `.sidebar-tab`'s typography, so a tab's font-size moved the badge.
+  test('the badge sits 16px from the left and 14px from the top', async ({ page }) => {
+    const box = await page.locator(BADGE).boundingBox();
+    expect(box, 'badge has no box').not.toBeNull();
+    expect(box!.x, 'distance from the left viewport edge').toBeCloseTo(16, 1);
+    expect(box!.y, 'distance from the top viewport edge').toBeCloseTo(14, 1);
+
+    // Not scrolled — "at rest" is part of the claim, and a scrolled page would
+    // give a y that means something else entirely.
+    expect(await page.evaluate(() => window.scrollY)).toBe(0);
+  });
+
+  // The reason the whole 16px inset moved rather than just the header: the badge
+  // has to line up with the note list beneath it, or fixing the cross-app
+  // misalignment would introduce a within-app one. MyMail's header and folder
+  // list share their inset too.
+  test('the badge lines up with the note list below it', async ({ page, request }) => {
+    const made = await request.post('/api/v1/notes', {
+      data: { title: 'Alignment probe note', content: 'body\n' },
+    });
+    expect(made.ok(), `seeding: ${made.status()}`).toBe(true);
+    await page.reload();
+
+    const link = page.locator('.notes-list-scroll .note-row .link').first();
+    await expect(link, 'no note row rendered — nothing was compared').toBeVisible();
+
+    const badge = (await page.locator(BADGE).boundingBox())!;
+    const text = (await link.boundingBox())!;
+    expect(text.x, 'note text must share the badge left edge').toBeCloseTo(badge.x, 1);
+
+    await request.delete(`/api/v1/notes/${(await made.json()).slug}`);
+  });
+
+  // ---------------------------------------------------------------------------
   // Colour
   // ---------------------------------------------------------------------------
 

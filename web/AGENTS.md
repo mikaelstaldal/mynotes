@@ -154,9 +154,17 @@ sibling's does — **inside an `<a>`**.
   that crop and `currentColor` in place of the favicon's `#fff` (the CSS box paints the square,
   so the inline copy has no background `<rect>`). Change the letterform in one and change it in
   the other.
-- **The sidebar's `456px` is derived from the badge**, not chosen: it is the historical `420px`
-  plus the 36px the badge costs, which is why the tab strip's clearance is the same as it was
-  before the badge existed. Narrowing it back re-breaks the header.
+- **The sidebar's `464px` is derived, not chosen**, in two steps by one rule — the column grows
+  by exactly what is added to the header, so the tab strip's clearance stays 15.63px: `420 → 456`
+  for the badge itself, `456 → 464` for the 12px → 16px inset the contract's placement requires.
+  Narrowing it back re-breaks the header.
+- **`.sidebar`'s `padding-top: 14px` IS the badge's y**, and `.sidebar-brand`'s
+  `align-self: flex-start` is what makes it so. Centred (as it was) the badge's y was a leftover
+  of `.sidebar-tab`'s typography and moved whenever a tab did. Both declarations are the contract's
+  placement, not spacing.
+- **The 16px inset is one value in five rules** — `.sidebar-header`, `.sidebar-content`,
+  `.notes-list`'s cancelling negative margin, `.notes-list-scroll` and `.note-row`. Change one and
+  the badge stops lining up with the note list below it; that is why the whole set moved together.
 
 **The failure mode here is invisible, which is the reason this section is long.**
 `.sidebar-tabs` is `flex: 1; min-width: 0` with no `overflow`, so when the header runs out of
@@ -190,7 +198,7 @@ you would predict:
 | Give `.brand` a `font-size: 1.1rem` | **2 red** — the label guard, *and* the header-fit assertion, because a wider label pushes the tabs into the buttons. That is the "one label change away" case the column's headroom exists for, caught |
 | `padding-left: 4px` on `.brand-logo` | **4 red** on the centring insets (7.5 vs 5.5). The badge stayed 28×28 and the glyph 17×17 throughout — with `box-sizing: border-box`, padding slides the mark off centre without changing either box |
 | Change the mark's `d` in `favicon.svg` alone | **1 red** — `web/ts/logo.test.mjs`, which runs on every `./build.sh` rather than only when somebody runs the e2e suite |
-| Restore `expect(column.width).toBeCloseTo(420, 0)` in the footer suite | **2 red**, `Expected 420 / Received 456` — the assertion removed when the column widened (see there) |
+| Restore `expect(column.width).toBeCloseTo(420, 0)` in the footer suite | **2 red** — the assertion removed when the column widened (see there); it would now read `Received: 464` |
 
 Run the suite with `./build.sh && ./test-e2e.sh` — see the root `AGENTS.md` — and read the
 contract and `measurement-protocol.md` before changing any of these values. As with the footer,
