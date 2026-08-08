@@ -207,17 +207,38 @@ go test ./internal/handler/ -run TestCreateAndGetNote
 ## E2E tests
 
 Playwright end-to-end tests live in `e2e/`. **Run them with `./build.sh && ./test-e2e.sh`**
-from the repository root — that script is what CI runs, and it starts the server itself on a
-fresh database, checks the server is actually serving the assets on disk, and tears both down
-afterwards. It takes the same arguments as `playwright test`, so
+from the repository root — that script is the one the CI step invokes, and it starts the server
+itself on a fresh database, checks the server is actually serving the assets on disk, and tears
+both down afterwards. It takes the same arguments as `playwright test`, so
 `./test-e2e.sh tests/sidebar-footer.spec.ts -g "focus"` works.
 
 The suite is currently one spec: `tests/sidebar-footer.spec.ts`, this repo's half of the
 cross-repo sidebar-footer contract (`../mysuite`, `spec/sidebar-footer.md` — see
-`web/AGENTS.md`). It runs in CI after `./build.sh` and **gates publication**: a commit that
-breaks the contract does not reach Pages or the rolling release. Playwright is installed by
-the workflow, not by `build.sh` — `build.sh` stays usable without a browser toolchain, and it
-is byte-unchanged by this.
+`web/AGENTS.md`).
+
+**Nothing runs it automatically. The CI step is committed and has never executed.**
+`.github/workflows/main.yml` has it, after `./build.sh` and before Pages and the release — but
+the workflow triggers on push to `main`, and this work is on an unpushed branch, so the step,
+`npm ci` and `playwright install` have all never run anywhere but the machine that wrote them.
+**Until that lands, this contract has no automatic guard in this repository at all**, and the
+suite is only what somebody remembers to run. `../mysuite/spec/sidebar-footer.md` §9.1 records
+the three apps' statuses side by side and is the authority on which is which; MyCal's is the
+one that runs.
+
+And when it does first run, note what that will and will not mean — **the wording below is
+MyCal's**, taken rather than rewritten, because three repos saying this three ways is how the
+next drift starts (MyCal `web/AGENTS.md`, the only one of the three where this is already
+live):
+
+> the workflow triggers on `push` to `main`, so a breaking commit is already on `main` by the
+> time the suite is red — what the gate prevents is a broken contract reaching Pages or the
+> rolling release, not the commit landing.
+
+So even after the first push, "the suite gates the contract" is an over-claim. It gates
+**publication**.
+
+Playwright is installed by the workflow, not by `build.sh` — `build.sh` stays usable without a
+browser toolchain, and it is byte-unchanged by this.
 
 Everything past running it is in **`e2e/AGENTS.md`**: why to prefer `test-e2e.sh` over a
 hand-started server (stale assets, a stale database, a squatter on the port), the

@@ -6,8 +6,11 @@ are written relative to the repository root, as they are there.
 
 The root `AGENTS.md` § E2E tests has what someone who never opens this directory
 still needs: that the suite exists, that `./build.sh && ./test-e2e.sh` from the
-repository root is how it runs, that it gates publication in CI, and that it holds
-this repo's half of the cross-repo sidebar-footer contract. This file is the rest.
+repository root is how it runs, that it holds this repo's half of the cross-repo
+sidebar-footer contract, and — the part that is easy to get backwards — that its
+CI step is **committed and has never executed**, because the workflow triggers on
+push to `main` and this work is on an unpushed branch. Nothing runs this suite but
+a person. This file is the rest.
 
 ## Prefer `test-e2e.sh` over starting a server by hand
 

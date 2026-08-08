@@ -20,9 +20,11 @@ export default defineConfig({
     // `on-first-retry` captures nothing while retries are 0 — the pairing MyCal's
     // config shipped with for a while, so its CI failures left only the list
     // reporter's text behind. These assertions are geometry ("expected 8,
-    // received 9.5"), which is near-undebuggable without a trace, and the suite
-    // gates publishing. Retries stay at 0: a flaky gate trains people to re-run
-    // red builds, and the first real failure gets re-run with them.
+    // received 9.5"), which is near-undebuggable without a trace, and the suite is
+    // meant to gate publishing — meant to, because the CI step is committed and has
+    // never executed (see e2e/AGENTS.md); it goes live on the first push to `main`.
+    // Retries stay at 0: a flaky gate trains people to re-run red builds, and the
+    // first real failure gets re-run with them.
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
   },

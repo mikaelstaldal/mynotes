@@ -85,10 +85,17 @@ jobs:
           npm ci --ignore-scripts
           npx playwright install --with-deps chromium
 
-      # Gates publishing rather than running alongside it: these assertions are
-      # this repository's only automated check of the cross-repo sidebar-footer
+      # Placed to gate publishing rather than to run alongside it: these assertions
+      # are this repository's only automated check of the cross-repo sidebar-footer
       # contract (see web/AGENTS.md and ../mysuite/spec/sidebar-footer.md), so a
-      # build that breaks it must not reach Pages or the release. test-e2e.sh
+      # build that breaks it must not reach Pages or the release.
+      #
+      # "Placed to", not "does": this step is committed and has never executed. The
+      # workflow triggers on push to main and the work that added it is on an
+      # unpushed branch, so the first push to main is what makes the gate real —
+      # and is also the first time `npm ci` and `playwright install` run here at
+      # all. Do not describe this as protecting anything until it has run once.
+      # test-e2e.sh
       # starts the server from the binary ./build.sh just produced — one built at
       # a different time would embed different web/static/, and the suite would be
       # measuring something other than this commit. It fails the job on that

@@ -68,8 +68,14 @@ one `grep` find the value in all three repos), folding the rule back into
 adding a `font-weight` to the base `button` rule, or restoring `outline: none` on
 the focus rule.
 
-`e2e/tests/sidebar-footer.spec.ts` catches most of that, and it is worth knowing
-which items and why, because the exceptions are not the ones you would guess:
+`e2e/tests/sidebar-footer.spec.ts` catches most of that **when somebody runs it**,
+and today somebody always has to: the CI step for it is committed and has never
+executed, because the workflow triggers on push to `main` and the branch carrying
+it is unpushed. So read the list below as what a run would catch, not as what is
+guarding you while you edit. Nothing is.
+
+It is worth knowing which items and why, because the exceptions are not the ones
+you would guess:
 
 - **Caught by reading the CSSOM**, not the rendering: folding the rule away, and
   dropping `flex-shrink: 0`, `text-align: center`, `font-weight: 400`,

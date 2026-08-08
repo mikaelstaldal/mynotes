@@ -10,10 +10,15 @@ import { test, expect, type Page, type APIRequestContext } from '@playwright/tes
 // Until this file existed, nothing in this repository checked any of it — the
 // contract's own §10 item 7 called that "the largest gap", with MyCal's suite
 // the only machine-checkable statement of the contract anywhere. This file is
-// MyNotes' half. It cannot see MyMail or MyCal, so it proves MyNotes still
-// satisfies the contract and says nothing about whether the three still agree;
-// cross-repo drift is still detectable only by `mysuite/tools/check-contract.py`,
-// which nobody's CI runs.
+// MyNotes' half.
+//
+// **It still checks nothing on its own.** The CI step that would run it is
+// committed and has never executed — the workflow triggers on push to `main` and
+// this branch is unpushed — so what this file proves, it proves only when someone
+// runs it. See e2e/AGENTS.md. And even once it runs, it cannot see MyMail or
+// MyCal: it shows MyNotes still satisfies the contract and says nothing about
+// whether the three still agree. Cross-repo drift is detectable only by
+// `mysuite/tools/check-contract.py`, which nobody's CI runs either.
 //
 // Ported from MyCal's e2e/tests/sidebar-footer.spec.ts. Where an assertion is
 // kept, its reason is kept with it — these comments record the defect each one

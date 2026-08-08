@@ -629,9 +629,8 @@ existing-note editor (`/notes/{slug}/edit`).
     them — sit slightly left of the note list; that is the price of the shared
     contract, not an oversight.
 
-    **This is now verified in CI**, by `e2e/tests/sidebar-footer.spec.ts` — run
-    by `./test-e2e.sh` after `./build.sh`, gating the Pages deploy and the rolling
-    release. It measures the rendered page in Chromium: both viewport
+    **There is now a suite for this**, `e2e/tests/sidebar-footer.spec.ts`, run by
+    `./test-e2e.sh` after `./build.sh`. It measures the rendered page in Chromium: both viewport
     coordinates across every route and at a content volume that makes the
     sidebar's inner scrollport scroll, the acceptance height, the pinned computed
     values *and* their presence as declarations, contrast for the resting label,
@@ -640,11 +639,16 @@ existing-note editor (`/notes/{slug}/edit`).
     embeds `web/static/`, which is why `test-e2e.sh` compares served bytes against
     on-disk bytes before running a test.
 
-    Two limits, stated because a green suite bounds what was checked rather than
-    what is correct. **`0.80rem` cannot be verified by anything** — it serialises
-    identically to `0.8rem` — so that convention is held by review. And this suite
-    can only see MyNotes: **cross-repo drift remains undetectable**, so a figure
-    agreeing here says nothing about whether MyCal and MyMail still agree with it.
+    Three limits, stated because a green suite bounds what was checked rather than
+    what is correct. **Nothing runs this suite automatically.** The CI step is
+    committed and has never executed — the workflow triggers on push to `main` and
+    this work is on an unpushed branch — so this is a suite somebody has to
+    remember to run, which is not what catches an edit made for a good reason by
+    someone who did not know the rule existed. **`0.80rem` cannot be verified by
+    anything** — it serialises identically to `0.8rem` — so that convention is held
+    by review. And this suite can only see MyNotes: **cross-repo drift remains
+    undetectable**, so a figure agreeing here says nothing about whether MyCal and
+    MyMail still agree with it.
 - **Settings:** a modal opened from the sidebar footer, holding the preferences
   that have no control of their own — currently just the **MyMail URL** (see
   **MyMail integration**). The field shows the user's override; leaving it empty
