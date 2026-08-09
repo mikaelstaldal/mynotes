@@ -322,13 +322,21 @@ test.describe('Brand logo contract', () => {
   //     assertion while freezing the label at every other root — the edit is
   //     invisible at exactly the root a single-root test uses.
   //
-  // KNOWN LIMIT: `1.1rem` → `1.1em` renders identically at EVERY root, since
-  // the anchor's parent inherits 1rem. No rendered assertion can see it, here
-  // or in either sibling. `mysuite/tools/check-contract.py` does — it compares
-  // this declaration's text across the three repos and pins it STRONG
-  // (app-name-label.md §7.1); mutating this app to `1.1em` makes it report
-  // "found `font-size: 1.1em`, expected `1.1rem`". Nobody's CI runs it, so the
-  // gap is real but it is a "somebody must run it" gap, not an absence.
+  // KNOWN LIMIT: `1.1rem` → `1.1em` is invisible to this suite at ANY root, so
+  // adding a third one would not help. Measured here, not reasoned: with the
+  // declaration mutated to `1.1em` the label still renders 17.6 / 22 / 26.4 /
+  // 35.2px at 16 / 20 / 24 / 32px roots — identical to `1.1rem` — because every
+  // ancestor between the label and <html> computes to exactly the root size, so
+  // the two units coincide everywhere. (mycal-dev reports the same mechanism in
+  // MyCal, in their words: "no number of root sizes separates them." Whether
+  // MyMail's cascade also has that property is NOT verified from here — do not
+  // read this as a claim about all three.)
+  //
+  // `mysuite/tools/check-contract.py` does catch it: it compares this
+  // declaration's text across the three repos and pins it STRONG
+  // (app-name-label.md §7.1). Mutating this app to `1.1em` makes it report
+  // "found `font-size: 1.1em`, expected `1.1rem`" — run, not assumed. Nobody's
+  // CI runs that script, so the gap is "somebody must run it", not an absence.
   // The stack is asserted, not the face that renders it. `system-ui` resolves
   // per machine — on this one it is a MONOSPACE font — and no API reports the
   // resolved face portably, so the rendered face is unguardable and

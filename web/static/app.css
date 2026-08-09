@@ -42,8 +42,11 @@ body {
    16px root, frozen at every other) or to `1.1em` (identical at EVERY root
    today, divergent the moment an ancestor sets a size). The two are caught by
    different things, and only one of them by anything here: logo.spec.ts asserts
-   a 16px and a 32px root, which catches the `px` freeze; nothing rendered can
-   ever see the `em` form. mysuite's tools/check-contract.py catches both — it
+   a 16px and a 32px root, which catches the `px` freeze; no rendered assertion
+   in THIS app can see the `em` form at any root, because every ancestor between
+   the label and <html> computes to exactly the root size, so `em` and `rem`
+   coincide everywhere (measured: `1.1em` still gives 17.6 / 22 / 26.4 / 35.2px
+   at 16 / 20 / 24 / 32px roots). mysuite's tools/check-contract.py catches both — it
    compares this declaration's TEXT across the three repos (app-name-label.md
    §7.1, pinned STRONG). Verified by mutation, not assumed: `1.1em` here reports
    "found `font-size: 1.1em`, expected `1.1rem`". Nobody's CI runs that script,
