@@ -6,8 +6,9 @@ are written relative to the repository root, as they are there.
 
 The root `AGENTS.md` § E2E tests has what someone who never opens this directory
 still needs: that the suite exists, that `./build.sh && ./test-e2e.sh` from the
-repository root is how it runs, that it holds this repo's half of two cross-repo
-contracts (the sidebar footer and the app logo) plus one app-local spec that
+repository root is how it runs, that it holds this repo's half of three cross-repo
+contracts (the sidebar footer, the app logo, and the app-name label beside it —
+the last two share `logo.spec.ts`) plus one app-local spec that
 answers to nothing outside this repository (the note list's refetching), and —
 the part that is easy to get backwards — that CI runs it on every push to
 `main`, so what it gates is

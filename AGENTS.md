@@ -212,14 +212,19 @@ itself on a fresh database, checks the server is actually serving the assets on 
 both down afterwards. It takes the same arguments as `playwright test`, so
 `./test-e2e.sh tests/sidebar-footer.spec.ts -g "focus"` works.
 
-Two of the three specs are this repo's half of two cross-repo contracts (`../mysuite`, `spec/` —
-see `web/AGENTS.md`); the third is MyNotes' own, and the distinction matters, because changing
-what the first two assert is a change in three repositories and changing the third is not:
+Two of the three spec files are this repo's half of **three** cross-repo contracts (`../mysuite`,
+`spec/` — see `web/AGENTS.md`); the third file is MyNotes' own, and the distinction matters,
+because changing what the first two assert is a change in three repositories and changing the
+third is not. Note the counts differ on purpose: `logo.spec.ts` carries two contracts, because
+the badge and the name beside it are governed separately:
 
 - `tests/sidebar-footer.spec.ts` — the sidebar-footer contract (`spec/sidebar-footer.md`).
-- `tests/logo.spec.ts` — the app-logo contract (`spec/app-logo.md`): the brand badge's geometry,
-  colour, glyph extent and placement, plus the guards that are MyNotes-local because our badge
-  sits inside a link.
+- `tests/logo.spec.ts` — **two** contracts. The app-logo contract (`spec/app-logo.md`): the brand
+  badge's geometry, colour, glyph extent and placement, plus the guards that are MyNotes-local
+  because our badge sits inside a link. And the app-name-label contract
+  (`spec/app-name-label.md`): the font, font size and placement of the "MyNotes" text beside the
+  badge, which `app-logo.md` §2 held out of scope until the column was widened and the owner
+  reopened it (`app-name-label.md` §2.1).
 - `tests/note-list-refetch.spec.ts` — **contract-free, and local to this app**: the sidebar note
   list must not reload itself, and so must not discard the reader's scroll position, unless the
   query actually changed. It exists because the sidebar-footer suite caught that defect only by

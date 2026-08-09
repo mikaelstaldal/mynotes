@@ -28,14 +28,38 @@ body {
   min-height: 0;
 }
 
-/* 1.1rem/600 is MyCal's `.brand` and MyMail's `.sidebar-header` verbatim, and
-   all three inherit the same `system-ui, -apple-system, 'Segoe UI', Roboto,
-   sans-serif` stack from `body`, so the three app names are now set identically.
-   This label used to be 1rem — smaller than both siblings, ruled that way
-   because this corner was crowded. The column was widened to carry the larger
-   label instead (see .sidebar), so the ruling that made it small is spent; the
-   guard in e2e/tests/logo.spec.ts moved with it. It is still not a contract
-   value — no sibling repo cares what size this is. */
+/* 1.1rem/600 is MyCal's `.brand` and MyMail's `.sidebar-header` verbatim. The
+   font and the font size are a cross-repo contract — ../mysuite,
+   spec/app-name-label.md §3.1 and §3.2 — so changing either is a change in all
+   three repositories, or in none. Read the values there, not here.
+
+   This label used to be 1rem, ruled smaller because this corner was crowded.
+   The column was widened to carry the larger label instead (see .sidebar), so
+   the ruling that made it small is spent; app-name-label.md §2.1 records the
+   supersession, and the guard in e2e/tests/logo.spec.ts moved with it.
+
+   What breaks it silently: normalising `1.1rem` to `17.6px` (identical at a
+   16px root, frozen at every other) or to `1.1em` (identical at EVERY root
+   today, divergent the moment an ancestor sets a size). The two are caught by
+   different things, and only one of them by anything here: logo.spec.ts asserts
+   a 16px and a 32px root, which catches the `px` freeze; nothing rendered can
+   ever see the `em` form. mysuite's tools/check-contract.py catches both — it
+   compares this declaration's TEXT across the three repos (app-name-label.md
+   §7.1, pinned STRONG). Verified by mutation, not assumed: `1.1em` here reports
+   "found `font-size: 1.1em`, expected `1.1rem`". Nobody's CI runs that script,
+   so it catches these only when somebody runs it.
+
+   `font-family` and `line-height` are NOT authored here: the label inherits
+   both from `body`. The contract pins the declared stack (app-name-label.md
+   §3.1) and that declaration lives in body{} — editing it there restyles this
+   label, and will not look like a contract change while you are doing it.
+   logo.spec.ts asserts the resolved stack on the label for that reason, so the
+   red arrives here rather than in the rule you edited.
+
+   `color` is not a contract value, but this declaration is load-bearing anyway:
+   `a { color: var(--link) }` also matches this anchor and takes over the moment
+   it is deleted as redundant. No sibling repo can catch that; neither of their
+   labels is inside a link (app-name-label.md §8.3). */
 .brand {
   font-size: 1.1rem;
   font-weight: 600;
@@ -91,9 +115,11 @@ body {
      is the sidebar's padding-top and nothing else. Without it the badge keeps a
      term of `(brand height − 28) / 2`, where the brand is as tall as its tallest
      child — zero only while the 28px badge beats the label's line box, i.e. only
-     up to a ~18.67px root font. That is a remainder that happens to be zero, not
-     an authored position, and it is what made the badge drift to y = 18 at a
-     24px root. `.sidebar-brand` is a row, so this is the vertical axis.
+     up to a ~16.97px root font (28 ÷ 1.65, the label's 1.1rem × the inherited
+     line-height 1.5; it was ~18.67 while the label was 1rem). That is a
+     remainder that happens to be zero, not an authored position, and it is what
+     made the badge drift to y = 19.797 at a 24px root — measured with this
+     declaration removed. `.sidebar-brand` is a row, so this is the vertical axis.
      The `align-items: center` below stays: it centres the GLYPH inside this box. */
   align-self: flex-start;
   display: flex;
@@ -166,11 +192,15 @@ body {
    below it, so the whole inset moved and the column paid for it.
 
    Widening rather than shrinking anything is the human's ruling. The value is
-   app-local — mysuite's sidebar-footer.md §6.4 *records* this width, it does not
-   pin it ("sidebar widths were never unified — 200 / 220 / 420 are deliberately
-   different"). §6.4's "do not fix MyNotes' 420px" prohibits converting the
-   *unit* to rem (26.25rem reaches 630px at a 24px root); it does not prohibit
-   the value moving, so this stays in px deliberately.
+   app-local: mysuite's sidebar-footer.md §6.4 *records* this width, it does not
+   pin it — only the **unit** is constrained, and the prohibition there is on
+   converting px to rem (26.25rem reached 630px at a 24px root), never on the
+   number moving. That is the durable form of the claim and it is what to rely
+   on. §6.4 states it as "sidebar widths were never unified — 200 / 220 / 540
+   are deliberately different"; the quotation is kept because it makes the claim
+   checkable by grep, and it is expected to perish — it read 420 until MyNotes'
+   own widening landed and mysuite updated §6.4 to match. If it no longer
+   matches, the sentence above it is still true.
 
    Do not set this to the measured minimum. A column sitting on the threshold is
    one label change or one translated string away from failing again, and

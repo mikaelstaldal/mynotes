@@ -40,6 +40,29 @@ test.describe('Brand logo contract', () => {
     // about, and the two differ by however much padding the viewBox carries.
     const ink = path.getBoundingClientRect();
     const bCS = getComputedStyle(badge);
+
+    // The label text, found ANYWHERE under the anchor — one search, shared by
+    // every label reading below.
+    //
+    // Deep, not `brand.childNodes`, and that is the whole point. With a
+    // direct-child search `labelParentIsAnchor` cannot be false: a node found
+    // that way has the anchor as its parent by construction, and a node not
+    // found falls back to the anchor anyway. It read as a guard and was a
+    // tautology — the shape spec/measurement-protocol.md calls a guard that
+    // lies toward a pass. Searching deeply separates the two states it was
+    // meant to distinguish: "there is no label" (labelFound) from "the label
+    // moved into a wrapper" (labelParentIsAnchor).
+    //
+    // The badge contributes no text — its <svg> holds none — so the first
+    // non-blank text node under the anchor is the label.
+    const labelNode = (() => {
+      const walk = document.createTreeWalker(brand, NodeFilter.SHOW_TEXT);
+      while (walk.nextNode()) {
+        if ((walk.currentNode.textContent ?? '').trim().length > 0) return walk.currentNode;
+      }
+      return null;
+    })();
+
     return {
       badge: { w: +b.width.toFixed(3), h: +b.height.toFixed(3) },
       glyph: { w: +g.width.toFixed(3), h: +g.height.toFixed(3) },
@@ -66,33 +89,34 @@ test.describe('Brand logo contract', () => {
       // item and its surrounding whitespace is stripped, so the rect starts at
       // the "M".
       gapToLabel: (() => {
-        const textNode = Array.from(brand.childNodes).find(
-          n => n.nodeType === Node.TEXT_NODE && n.textContent!.trim().length > 0,
-        );
-        if (!textNode) return null;   // null, never 0 — "could not measure" is not "no gap"
+        if (!labelNode) return null;  // null, never 0 — "could not measure" is not "no gap"
         const r = document.createRange();
-        r.selectNodeContents(textNode);
+        r.selectNodeContents(labelNode);
         return +(r.getBoundingClientRect().left - b.right).toFixed(3);
       })(),
       cssGap: getComputedStyle(brand).columnGap,
       // Read from the element the label text actually inherits from, resolved at
       // runtime, rather than from the anchor on the assumption that they are the
-      // same element. They are today — the label is a bare text node whose
+      // same element. Now genuinely so: the search above is deep, so a wrapper
+      // becomes the host and its own font-size is what gets measured.
+      // They are the same element today — the label is a bare text node whose
       // parent IS the anchor — but wrapping it in a <span> with its own
       // font-size would leave an anchor-based assertion green while the rendered
       // label changed. `labelParentIsAnchor` records which case was measured, so
       // the assumption fails loudly instead of silently.
       ...(() => {
-        const textNode = Array.from(brand.childNodes).find(
-          n => n.nodeType === Node.TEXT_NODE && n.textContent!.trim().length > 0,
-        );
-        const host = (textNode?.parentElement ?? brand) as HTMLElement;
+        const host = (labelNode?.parentElement ?? brand) as HTMLElement;
         const cs = getComputedStyle(host);
         return {
-          labelFound: !!textNode,
+          labelFound: !!labelNode,
           labelParentIsAnchor: host === brand,
           labelFontSize: cs.fontSize,
           labelFontWeight: cs.fontWeight,
+          // The DECLARED stack, not the face that renders. getComputedStyle
+          // returns the list verbatim, so this reads identically on a machine
+          // whose `system-ui` is a monospace font and on CI's, which is what
+          // makes it assertable at all — see the label test.
+          labelFontFamily: cs.fontFamily,
         };
       })(),
       badgeInsideAnchor: brand.contains(badge) && brand.tagName === 'A',
@@ -272,27 +296,76 @@ test.describe('Brand logo contract', () => {
   // Structure and accessibility
   // ---------------------------------------------------------------------------
 
-  // The app-name label is deliberately NOT part of the logo contract, and this
-  // is still a local guard rather than a contract assertion — nothing upstream
-  // cares what size this is.
+  // The app-name label IS a cross-repo contract as of ../mysuite,
+  // spec/app-name-label.md — the same declared font stack, the same 1.1rem and
+  // the same placement in all three apps. This is MyNotes' half of
+  // app-name-label.md §7.2; like the rest of this file it can only see this app
+  // and never establishes that the three still agree.
   //
-  // **The ruling it guards has changed, and these numbers changed with it.** It
-  // used to be 16px: MyNotes' label was smaller than MyCal's and MyMail's
-  // because this corner was crowded. The human has since ruled the other way —
-  // match the siblings (1.1rem/600, which is MyCal's `.brand` and MyMail's
-  // `.sidebar-header` verbatim) and widen the column to carry it, 464 → 540.
-  // So the crowding that justified 16px was bought out rather than lived with.
+  // It was NOT a contract value when this test was written: app-logo.md §2 put
+  // the label out of scope while this corner was crowded, and that ruling was
+  // conditional on the crowding. Widening the column spent the condition and
+  // the owner reopened it — app-name-label.md §2.1 records the supersession.
   //
-  // 17.6px is 1.1rem at this suite's 16px root. Asserted in px because that is
-  // what getComputedStyle returns; it is a rem value in the CSS, deliberately.
-  test('the app-name label matches the siblings, at the size the ruling fixed', async ({ page }) => {
-    const m = await geometry(page);
-    // A missing text node would fall back to the anchor and quietly measure
-    // something else, so establish what was measured before believing it.
-    expect(m.labelFound, 'no label text node — nothing was measured').toBe(true);
-    expect(m.labelFontSize).toBe('17.6px');
-    expect(m.labelFontWeight).toBe('600');
-  });
+  // TWO roots, and neither replaces the other:
+  //
+  //   * 16px is the load-bearing case and must stay. The label's own vertical
+  //     position is a remainder, and it is nonzero ONLY at the default root:
+  //     measured here, the label's flex-item box sits 0.796875px below the
+  //     badge's top at a 16px root and exactly 0 at 17, 18, 20, 24 and 32,
+  //     because the 28px badge stops out-measuring the label's 1.65 × root line
+  //     box just under 17px (app-name-label.md §4.1). A sweep that omitted 16
+  //     would be measuring the one case where the defect is absent.
+  //
+  //   * 32px is what makes the *unit* observable. 17.6px is 1.1rem at a 16px
+  //     root, so a `1.1rem` → `17.6px` normalisation passes a 16px-only
+  //     assertion while freezing the label at every other root — the edit is
+  //     invisible at exactly the root a single-root test uses.
+  //
+  // KNOWN LIMIT: `1.1rem` → `1.1em` renders identically at EVERY root, since
+  // the anchor's parent inherits 1rem. No rendered assertion can see it, here
+  // or in either sibling. `mysuite/tools/check-contract.py` does — it compares
+  // this declaration's text across the three repos and pins it STRONG
+  // (app-name-label.md §7.1); mutating this app to `1.1em` makes it report
+  // "found `font-size: 1.1em`, expected `1.1rem`". Nobody's CI runs it, so the
+  // gap is real but it is a "somebody must run it" gap, not an absence.
+  // The stack is asserted, not the face that renders it. `system-ui` resolves
+  // per machine — on this one it is a MONOSPACE font — and no API reports the
+  // resolved face portably, so the rendered face is unguardable and
+  // app-name-label.md §7.3 says so. getComputedStyle returns the declared list
+  // verbatim, which is what §3.1 mandates and what reads the same everywhere.
+  const LABEL_STACK = 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
+
+  // Pairs, not `root * 1.1`: 16 * 1.1 serialises as 17.600000000000001 in IEEE
+  // 754 (32 * 1.1 happens to be exact), so computing the expectation would fail
+  // on the default root for a reason that has nothing to do with the app. Pairs
+  // also stop a third root silently inheriting 32's number.
+  for (const [root, expected] of [[16, '17.6px'], [32, '35.2px']] as const) {
+    test(`the app-name label matches the siblings — ${root}px root`, async ({ page }) => {
+      if (root !== 16) {
+        await page.evaluate(r => { document.documentElement.style.fontSize = `${r}px`; }, root);
+      }
+      const m = await geometry(page);
+      // A missing text node would fall back to the anchor and quietly measure
+      // something else, so establish what was measured before believing it.
+      expect(m.labelFound, 'no label text node — nothing was measured').toBe(true);
+      // And establish that the anchor IS still what the label inherits from.
+      // Wrapping the text in a <span> is geometrically free (measured: Δ = 0 on
+      // all four axes), so without this every assertion below stays green while
+      // measuring a different element. Not a demand for an element — §8.4
+      // declines to require one; this asserts that there is not one yet.
+      expect(m.labelParentIsAnchor,
+        'label is wrapped — assertions keyed to the anchor no longer measure it')
+        .toBe(true);
+      expect(m.labelFontFamily).toBe(LABEL_STACK);   // §3.1
+      expect(m.labelFontSize).toBe(expected);        // §3.2
+      // NOT a contract value — app-name-label.md §5 records `font-weight` and
+      // deliberately does not mandate it. Kept because the three do agree on it
+      // and a silent drift is worth knowing about, but a red here is a MyNotes
+      // question, not a three-repo one.
+      expect(m.labelFontWeight).toBe('600');
+    });
+  }
 
   test('badge sits inside the brand anchor, ahead of the label, and is decorative', async ({ page }) => {
     const m = await geometry(page);

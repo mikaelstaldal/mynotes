@@ -585,6 +585,18 @@ existing-note editor (`/notes/{slug}/edit`).
     only the geometry, colour and placement are. It is drawn from the same
     letterform as `web/static/favicon.svg`, which the two must keep in step.
 
+    The **"MyNotes" label beside the badge** is governed by a *second* MySuite
+    contract, `../mysuite`, `spec/app-name-label.md`, and **that document is the
+    authority** — again, no values are repeated here. It mandates the label's
+    font, font size and placement across the three apps and deliberately leaves
+    the neighbouring properties recorded but unmandated. Two things about it are
+    worth knowing from this distance: it is **newer than the badge contract**,
+    which had explicitly held the label out of scope while this corner was too
+    crowded to carry a larger one, so an older comment or commit message here
+    may still say the label answers to nobody; and widening the column (below)
+    is what spent that condition. `e2e/tests/logo.spec.ts` holds this repo's
+    half of both contracts.
+
     The sidebar is **540px** wide rather than its historical 420px, in three
     steps. The first two grew the column by exactly what was added to the header,
     so the rest of it kept the room it had before: first for the badge, then for

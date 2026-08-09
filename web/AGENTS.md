@@ -171,8 +171,12 @@ sibling's does — **inside an `<a>`**.
   flex-start` declarations to keep it that way — one on `.sidebar-brand`, one on `.brand-logo`.
   Each removes a different remainder, and the second is the one that looks redundant and is not:
   without it the badge keeps `(brand height − 28) / 2`, which is zero only while the 28px badge
-  out-measures the label's line box — i.e. only up to about an 18.67px root font. A remainder
-  that happens to be zero is not an authored position. Both are contract placement, not spacing.
+  out-measures the label's line box — i.e. only up to a **~16.97px** root font (28 ÷ 1.65, the
+  label's 1.1rem × the inherited `line-height: 1.5`). **That threshold moved when the label grew**:
+  it was ~18.67 while the label was 1rem, and the label's size is now a cross-repo contract value
+  (see the app-name-label section below), so it can move again without this file being touched. A
+  remainder that happens to be zero is not an authored position. Both are contract placement, not
+  spacing.
   (`.brand-logo`'s own `align-items: center` is unrelated and stays: it centres the *glyph*.)
 - **The 16px inset is one value in five rules** — `.sidebar-header`, `.sidebar-content`,
   `.notes-list`'s cancelling negative margin, `.notes-list-scroll` and `.note-row`. Change one and
@@ -214,7 +218,7 @@ you would predict:
 | ~~Give `.brand` a `font-size: 1.1rem`~~ — **this is now the shipped state**, not a mutation. It went **2 red** exactly as this row recorded (the label guard, *and* the header-fit assertion, a wider label pushing the tabs into the buttons), which is why taking the siblings' label size required the column to grow with it. Kept here because it is the clearest demonstration on the table that the header-fit assertion earns its place |
 | `padding-left: 4px` on `.brand-logo` | **4 red** on the centring insets (7.5 vs 5.5). The badge stayed 28×28 and the glyph 17×17 throughout — with `box-sizing: border-box`, padding slides the mark off centre without changing either box |
 | `align-self: flex-start` → `center` on `.sidebar-brand` | **1 red** — y reads 19.30 not 14 |
-| Drop `align-self: flex-start` from `.brand-logo` | **5 red** — the 20/24/32px-root placement tests (y 15 / 18 / 24) and both label-line-height tests. Green at a 16px root throughout, which is exactly why the declaration looks removable |
+| Drop `align-self: flex-start` from `.brand-logo` | **5 red** — the 20/24/32px-root placement tests (y **16.5 / 19.797 / 26.391**) and both label-line-height tests. Green at a 16px root throughout, which is exactly why the declaration looks removable. **Re-measured after the label went 1rem → 1.1rem**; the y values were 15 / 18 / 24 while the label was 1rem, which is the same coupling the `~16.97px` note above is about |
 | Header inset alone back to 12px | **2 red** — placement (x = 12) and the alignment test |
 | Change the mark's `d` in `favicon.svg` alone | **1 red** — `web/ts/logo.test.mjs`, which runs on every `./build.sh` rather than only when somebody runs the e2e suite |
 | Restore `expect(column.width).toBeCloseTo(420, 0)` in the footer suite | **2 red** — the assertion removed when the column widened (see there); it would now read `Received: 540` |
@@ -224,6 +228,106 @@ Run the suite with `./build.sh && ./test-e2e.sh` — see the root `AGENTS.md` �
 contract and `measurement-protocol.md` before changing any of these values. As with the footer,
 the suite can only tell you that *this* app still satisfies the contract, never that the three
 still agree.
+
+## The app-name label is governed from outside this repo
+
+The **"MyNotes" text beside the badge** — the bare text node inside
+`<a class="brand sidebar-brand">` in `web/ts/app.tsx`, styled by `.brand` in
+`web/static/app.css` — implements a **third** cross-repo contract, so the three apps' names are
+set in the same font at the same size and sit in the same place. It is defined in the sibling
+`mysuite` repository — `../mysuite`, `spec/app-name-label.md` — and **not here**. Read the
+values there rather than from any prose in this repo.
+
+Cite it by name, never by a bare section number: this repo's `AGENTS.md`, and `app-logo.md`,
+`sidebar-footer.md` and `app-name-label.md` in `mysuite`, all have a §2 and a §3, so
+`§3.2` alone is ambiguous in four directions. Write `app-name-label.md §3.2`.
+
+**It was out of scope until recently, and an old comment will tell you so.** `app-logo.md` §2
+ruled the label out of the badge contract *while this corner was crowded*; widening the column
+to 540px spent that condition and the owner reopened it. `../mysuite/spec/app-name-label.md` §2.1 records the
+supersession. **Do not restore a "not a contract value" claim from an older comment or commit
+message** — that is exactly the re-derivation `mysuite`'s `spec/README.md` warns about.
+
+What is mandated is **font, font size and placement** — those three, because those three are
+what the owner asked for. `font-weight`, `color` and the rest are *recorded* in
+`../mysuite/spec/app-name-label.md` §5 and deliberately **not** mandated; do not read the record as a rule.
+
+Same rule as the other two contracts: changing any of it is a change in three repositories.
+What differs is *which* routine edits break it here, and the first two are ours alone:
+
+- **`a { color: var(--link) }` also matches the brand anchor**, and `.brand`'s
+  `color: var(--fg)` is the only thing outranking it. Delete that declaration as redundant —
+  "the label is already the foreground colour" — and the label silently becomes link-coloured.
+  Colour is not a mandated value, so this is not a contract violation; it is a divergence in a
+  property the contract records. **MyCal's and MyMail's labels are not inside links, so no
+  sibling repo can ever catch this** (`../mysuite/spec/app-name-label.md` §8.3). Same shape as `.brand-logo`'s
+  `color: #fff` pin above, and for the same reason.
+- **`body`'s `font-family` and `line-height: 1.5` are the label's own.** Nothing nearer
+  declares either: `.brand` sets only `font-size`, `font-weight`, `color` and
+  `text-decoration`. So a font change made for note body copy is a change to a cross-repo
+  contract, made in a rule with nothing named "brand" anywhere near it. The stack is
+  `../mysuite/spec/app-name-label.md` §3.1; `line-height` is an operand of the placement rule (§4.1) because
+  the label's line box is `1.65 × root`.
+- **Normalising `1.1rem`.** To `17.6px` it renders identically at a 16px root and freezes the
+  label at every other; to `1.1em` it renders identically *everywhere* today and diverges the
+  moment an ancestor sets a size. `e2e/tests/logo.spec.ts` asserts 16px **and** 32px roots
+  precisely so the `px` form goes red — it did not, while the test had one root, and the root
+  it had was the one where the edit is invisible. **The `em` form is still invisible to
+  anything rendered**; `../mysuite/spec/app-name-label.md` §7.1 assigns it to `mysuite`'s cross-repo checker.
+- **The two roots are not interchangeable, and 16 is the one to keep.** The label's vertical
+  position is a flex remainder, and it is nonzero *only* at the default root: measured here,
+  the label's flex-item box sits **0.796875px** below the badge's top at a 16px root and
+  exactly **0** at 17, 18, 20, 24 and 32, because the 28px badge stops out-measuring the
+  label's line box just under a 17px root. A multi-root sweep that dropped 16 would be
+  measuring the one case where the defect is absent (`../mysuite/spec/app-name-label.md` §4.1).
+- **Folding `.brand` and `.sidebar-brand` together.** They are two rules on the same element
+  and it is inviting. `.brand` carries the contract's typography and is written to be usable
+  where there is no badge; `.sidebar-brand` carries the flex context, the 8px badge gap and the
+  `align-self` that authors the block's top. Keep them apart.
+- **Wrapping the label in a `<span>` to give it a selector — and this one is not defensive
+  bookkeeping, it is the only thing standing between us and a silent three-way divergence.**
+  Wrapping is geometrically free (measured: Δ = 0.000000 on all four axes), so nothing visible
+  changes and no geometry assertion moves.
+
+  The reason it matters is what happens *upstream*. `mysuite`'s cross-repo checker pins the
+  label's `font-size` by reading the **brand row's** declaration — so a `font-size` declared
+  **nearer** the label out-specifies the pin and the check passes anyway. MyCal closed that hole
+  by asserting its `.brand-name` element declares no typography. **We have no element to
+  assert about**, so a `<span>` wrapped round our label carrying its own `font-size` passes
+  every line the cross-repo check has.
+
+  What catches it here is `logo.spec.ts`'s `geometry()`, and only because its label search is a
+  **descendant** search (`../mysuite/spec/app-name-label.md` §6.1 requires this). Two assertions
+  fire, both mutation-verified: `labelParentIsAnchor` goes red with *"label is wrapped"*, and —
+  because the deep search makes the wrapper the host — `labelFontSize` reads the wrapper's own
+  size and goes red too (measured **22.4px** for a `1.4rem` wrapper). **With a direct-children
+  search the second one is blind**: the host falls back to the anchor and reads a correct
+  17.6px. That is the difference the descendant search buys, and it is worth more than the
+  better error message.
+
+  Keep both the field and the deep search. The contract does not ask for an element, and
+  `../mysuite/spec/app-name-label.md` §8.4 explains why requiring one would make things worse.
+
+**Measuring it needs a method, because the label has no box.** It is an anonymous flex item, so
+there is nothing to `querySelector`. `../mysuite/spec/app-name-label.md` §6.1 is the method and
+carries the numbers; three shapes are worth knowing before you open it:
+
+- **There are *two* boxes, and a figure is useless unless it says which** — the **ink box**
+  (a `Range` over the text node) and the **flex-item box** (wrap the text in a span, which must
+  be *asserted* layout-neutral rather than assumed). They do not differ by a constant.
+- **The leading between them is asymmetric**, so do not derive either box from the other.
+- **Do not pin the placement as a formula.** The obvious closed form disagrees with every
+  shipped page by 1/128px — a `LayoutUnit` snapping artefact — so an exact-equality assertion
+  against the arithmetic fails on a correct page. Pin the measured value or a tolerance
+  (`app-name-label.md` §4.1.1).
+
+The figures for all three are in the contract and deliberately **not** copied here; a value
+restated in an app repo is the next thing to go stale.
+
+Run the suite with `./build.sh && ./test-e2e.sh` — see the root `AGENTS.md` — and read
+`app-name-label.md` and `measurement-protocol.md` before changing any of these values. As with
+the other two, the suite can only tell you that *this* app still satisfies the contract, never
+that the three still agree.
 
 ## Shared render kit
 
