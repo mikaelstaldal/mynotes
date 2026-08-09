@@ -585,10 +585,15 @@ existing-note editor (`/notes/{slug}/edit`).
     only the geometry, colour and placement are. It is drawn from the same
     letterform as `web/static/favicon.svg`, which the two must keep in step.
 
-    The sidebar is **464px** wide rather than its historical 420px because of
-    the badge, in two steps by the same rule: the column grows by exactly what is
-    added to the header, so the rest of it keeps the room it had before — first
-    for the badge, then for the wider inset the contract's placement requires.
+    The sidebar is **540px** wide rather than its historical 420px, in three
+    steps. The first two grew the column by exactly what was added to the header,
+    so the rest of it kept the room it had before: first for the badge, then for
+    the wider inset the contract's placement requires (420 → 456 → 464). The
+    third, 464 → 540, is different in kind — it carries the app-name label at
+    the siblings' 1.1rem instead of MyNotes' former 1rem, **and** a deliberate
+    tolerance for a `system-ui` wider than the authoring machine's, since sizing
+    the column to what fits locally is what let the header overflow on other
+    systems. The main pane is 76px narrower for it, which is the accepted cost.
   - **Notes tab:** debounced search box, results showing title,
     updated time, excerpt with highlights when searching, and tags. A sort
     dropdown selects the browse order — by updated time, created time, or title,

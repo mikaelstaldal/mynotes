@@ -272,19 +272,25 @@ test.describe('Brand logo contract', () => {
   // Structure and accessibility
   // ---------------------------------------------------------------------------
 
-  // The app-name label is deliberately NOT part of the logo contract — MyNotes'
-  // is smaller than MyCal's and MyMail's and the human ruled that it stays that
-  // way, because this corner is crowded. Adding the badge required giving the
-  // anchor its own flex context, which touches the label's rule; this asserts
-  // that it did not touch the label's *typography*, which is the part under the
-  // ruling. It is a local guard, not a contract assertion — if the ruling
-  // changes, this changes with it and nothing upstream cares.
-  test('the app-name label keeps the size the ruling fixed it at', async ({ page }) => {
+  // The app-name label is deliberately NOT part of the logo contract, and this
+  // is still a local guard rather than a contract assertion — nothing upstream
+  // cares what size this is.
+  //
+  // **The ruling it guards has changed, and these numbers changed with it.** It
+  // used to be 16px: MyNotes' label was smaller than MyCal's and MyMail's
+  // because this corner was crowded. The human has since ruled the other way —
+  // match the siblings (1.1rem/600, which is MyCal's `.brand` and MyMail's
+  // `.sidebar-header` verbatim) and widen the column to carry it, 464 → 540.
+  // So the crowding that justified 16px was bought out rather than lived with.
+  //
+  // 17.6px is 1.1rem at this suite's 16px root. Asserted in px because that is
+  // what getComputedStyle returns; it is a rem value in the CSS, deliberately.
+  test('the app-name label matches the siblings, at the size the ruling fixed', async ({ page }) => {
     const m = await geometry(page);
     // A missing text node would fall back to the anchor and quietly measure
     // something else, so establish what was measured before believing it.
     expect(m.labelFound, 'no label text node — nothing was measured').toBe(true);
-    expect(m.labelFontSize).toBe('16px');
+    expect(m.labelFontSize).toBe('17.6px');
     expect(m.labelFontWeight).toBe('600');
   });
 
@@ -340,12 +346,19 @@ test.describe('Brand logo contract', () => {
   // returns clean zero in every visibly broken case, at every root size. These
   // are the two assertions that can actually see it.
   //
-  // **Not asserted at 20px or 24px, and that is deliberate.** The header already
-  // overflows at those roots WITHOUT the badge — a pre-existing WCAG 1.4.4
-  // Resize Text defect that predates this work and was explicitly not bought
-  // here, because fixing it by widening would cost the main pane at every root
-  // size. Asserting it would make this suite red for a defect it is not about.
-  // If that defect is fixed, extend this loop to [16, 20, 24] and it should pass.
+  // **Not asserted at 20px or 24px, and that is deliberate** — still, but for a
+  // changed reason, so the old note is not merely repeated here. The pre-existing
+  // WCAG 1.4.4 Resize Text defect predates this work and was not bought here.
+  // Widening the column to 540px (see .sidebar in app.css) moved the numbers
+  // without settling the question: measured on this machine, a 20px root needs
+  // 535px and so now fits — by 5px, a 1.02× margin — while a 24px root needs
+  // 612px and still overflows.
+  //
+  // A 1.02× margin is exactly the state this suite has just been through: it
+  // fits the font in front of you and not CI's, which is ~1.25× wider. So
+  // asserting the fit at 20px would pin a threshold rather than a margin, and
+  // buy back the failure mode. Extend this loop only when a 20px root has real
+  // headroom — the test below is where that is measured.
   test('the header row still fits at a 16px root, with the badge', async ({ page }) => {
     const fit = await page.evaluate(() => {
       const tabs = document.querySelector('.sidebar-tabs') as HTMLElement;
@@ -366,5 +379,114 @@ test.describe('Brand logo contract', () => {
     expect(fit.stripOverflowing, 'the tab strip is overflowing its box').toBe(false);
     expect(fit.clearanceToButtons, 'the last tab is overlapping the action buttons')
       .toBeGreaterThan(0);
+  });
+
+  // The test above says the row fits **on the machine running it**, and that is
+  // the whole reason this one exists: it passed locally for weeks with ~6px of
+  // slack and went red in CI, where `system-ui` resolves ~1.25× wider. A binary
+  // fits/does-not-fit assertion cannot tell a comfortable row from one a single
+  // font substitution away from breaking, and the breakage is invisible (see the
+  // comment above) — so what is asserted here is the *margin*: the px of room the
+  // row has left over.
+  //
+  // **In px, and not as "absorbs N× wider text", which is the trap.** That ratio
+  // is (available − fixed) / text, and `text` is whatever the machine running the
+  // test renders. Its numerator is font-independent, so a wider font shrinks the
+  // ratio without the row being any worse off: this column reads 1.41× here and
+  // about 1.13× on CI's ~25%-wider system-ui, on 30-odd px of perfectly good
+  // slack. A fixed floor under a machine-relative ratio would fail exactly where
+  // the fonts are widest — reproducing, in the guard, the bug the guard is for.
+  //
+  // So the weight is put on the half of the row that no font can move — the px
+  // of space available *for* text — and only a low backstop on the half that
+  // varies. See the two assertions at the bottom, which say which is which.
+  //
+  // Deriving the fixed part by subtraction rather than listing it (badge, tab
+  // padding, buttons, gaps) keeps this from going stale every time one of those
+  // changes: whatever they are, the row's own numbers still decompose into "text"
+  // and "not text".
+  test('the header keeps room to spare at a 16px root', async ({ page }) => {
+    const m = await page.evaluate(() => {
+      const px = (el: Element, prop: string) => parseFloat(getComputedStyle(el).getPropertyValue(prop)) || 0;
+      const textWidth = (node: ChildNode | null | undefined) => {
+        if (!node) return 0;
+        const r = document.createRange();
+        r.selectNodeContents(node);
+        return r.getBoundingClientRect().width;
+      };
+
+      const header = document.querySelector('.sidebar-header') as HTMLElement;
+      const brand = document.querySelector('.sidebar-brand') as HTMLElement;
+      const tabs = document.querySelector('.sidebar-tabs') as HTMLElement;
+      const actions = document.querySelector('.sidebar-actions') as HTMLElement;
+      const tabEls = Array.from(tabs.querySelectorAll('.sidebar-tab')) as HTMLElement[];
+
+      // The label is a bare text node beside the badge, so it has no box of its
+      // own to measure — a Range is the only way to get its width.
+      const label = Array.from(brand.childNodes)
+        .find(n => n.nodeType === Node.TEXT_NODE && n.textContent?.trim());
+      const labelText = textWidth(label);
+      const tabTexts = tabEls.map(t => textWidth(t.firstChild));
+      const textTotal = labelText + tabTexts.reduce((s, w) => s + w, 0);
+
+      const tabsContent = tabEls.reduce((s, t) => s + t.getBoundingClientRect().width, 0)
+        + px(tabs, 'column-gap') * (tabEls.length - 1);
+      const rowContent = brand.getBoundingClientRect().width
+        + tabsContent
+        + actions.getBoundingClientRect().width
+        + px(header, 'column-gap') * 2;
+
+      return {
+        labelText,
+        tabTexts,
+        tabCount: tabEls.length,
+        textTotal,
+        available: header.clientWidth,
+        fixed: rowContent - textTotal,
+        // `.sidebar-tab` is `0 1 auto`, so in an already-overflowing row the tabs
+        // are compressed below their content and both totals above would be read
+        // from a squeezed row — a smaller `fixed` making the slack look better
+        // than it is. The numbers mean what they say only while the row fits.
+        stripFits: tabs.scrollWidth <= tabs.clientWidth,
+      };
+    });
+
+    // Guards on the measurement itself: a Range over a missing node returns 0,
+    // which would make the slack below look larger and the test vacuous.
+    expect(m.labelText, 'no brand label measured').toBeGreaterThan(0);
+    expect(m.tabTexts.filter(w => w > 0).length, 'not every tab label was measured')
+      .toBe(m.tabCount);
+    expect(m.stripFits, 'the row is already overflowing — the totals below are compressed')
+      .toBe(true);
+
+    // Two assertions, because the row has two kinds of margin and only the first
+    // is a property of the design rather than of the machine.
+    //
+    // 1. Room for text. Both terms are px/rem geometry — column, border, insets,
+    //    badge, tab padding, gaps, icon buttons — so this reads the SAME on every
+    //    machine no matter what system-ui resolves to, and can carry a real
+    //    threshold without punishing wide fonts. 257px today; the floor is
+    //    1.35 × the 182px of text this repo's authoring machine renders at a 16px
+    //    root, which is the reference the column was sized against (see .sidebar
+    //    in app.css). A narrower column, a fourth tab or a wider button trips it.
+    const room = m.available - m.fixed;
+    expect(room,
+      `the header has room for only ${room.toFixed(1)}px of text `
+      + `(${m.available}px available − ${m.fixed.toFixed(1)}px of fixed parts)`)
+      .toBeGreaterThan(246);
+
+    // 2. What is actually left over here and now. This one IS machine-dependent —
+    //    a wider font eats it legitimately (~33px on CI's, against 75px here) — so
+    //    the floor is deliberately near the bottom: it catches a row that has all
+    //    but closed on the machine in front of you, and leaves the guarding to the
+    //    assertion above. Do not raise it to something that looks respectable;
+    //    that is precisely how this suite went red on a row that fit.
+    const slack = m.available - m.fixed - m.textTotal;
+    const factor = room / m.textTotal;
+    expect(slack,
+      `only ${slack.toFixed(1)}px of room left in the header row — `
+      + `${m.textTotal.toFixed(1)}px of text, ${m.fixed.toFixed(1)}px fixed, `
+      + `${m.available}px available (absorbs ${factor.toFixed(2)}× this machine's text)`)
+      .toBeGreaterThan(8);
   });
 });

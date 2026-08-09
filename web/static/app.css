@@ -28,7 +28,16 @@ body {
   min-height: 0;
 }
 
+/* 1.1rem/600 is MyCal's `.brand` and MyMail's `.sidebar-header` verbatim, and
+   all three inherit the same `system-ui, -apple-system, 'Segoe UI', Roboto,
+   sans-serif` stack from `body`, so the three app names are now set identically.
+   This label used to be 1rem — smaller than both siblings, ruled that way
+   because this corner was crowded. The column was widened to carry the larger
+   label instead (see .sidebar), so the ruling that made it small is spent; the
+   guard in e2e/tests/logo.spec.ts moved with it. It is still not a contract
+   value — no sibling repo cares what size this is. */
 .brand {
+  font-size: 1.1rem;
   font-weight: 600;
   color: var(--fg);
   text-decoration: none;
@@ -111,12 +120,44 @@ body {
    footer and .sidebar-content instead, so the notes list can cancel it (see
    .notes-list) and paint the active row's highlight edge to edge.
 
-   464px, reached in two steps and by the same rule both times — the column
-   grows by exactly what was added to the header, so the tab strip's clearance to
-   the action buttons is unchanged at 15.63px throughout:
+   540px, reached in three steps. The first two grew the column by exactly what
+   was added to the header, keeping the tab strip's clearance at 15.63px:
 
      420 → 456   the brand badge (28px badge + the contract's 8px gap)
      456 → 464   the inset going 12px → 16px on both sides
+     464 → 540   the label going 1rem → 1.1rem, plus tolerance (below)
+
+   The third step is sized differently, and on purpose, because "grows by what
+   was added" produced a column that fit **this machine's** font and nothing
+   else. GitHub's runner resolves `system-ui` about 1.25× wider than this one,
+   which was enough to overflow the strip in CI while every local run was green:
+   the header had ~6px of slack, and the wider font wanted ~46px more.
+
+   So the budget is stated rather than inferred. The header's content box is this
+   column less its 1px border and 32px of side insets, and at a 16px root with
+   the 1.1rem label the row inside it splits into 250px that does NOT scale with
+   the font's width (badge, tab padding, action buttons, gaps) and 182px of text
+   (the label and the three tab labels). A column of W therefore absorbs text up
+   to (W − 33 − 250) / 182 times this machine's metrics:
+
+     464px → 0.99×   overflows here too, once the label grew
+     540px → 1.41×   this value
+
+   1.41 is deliberately well past the 1.25 that was actually observed, because
+   the next label, the next tab, or a translated string spends the same budget.
+   MyCal sizes its own row the same way and says so ("26px spare, which absorbs a
+   system-ui about a quarter wider than this machine's").
+
+   That ratio is how to *think* about the column, but it is deliberately not what
+   the suite asserts, and the difference matters if you go to change either. Its
+   numerator is font-independent while its denominator is whatever the running
+   machine renders, so the same healthy row reads 1.41 here and ~1.15 on CI — a
+   floor under it would fail where the fonts are widest, which is the bug rather
+   than the guard. e2e/tests/logo.spec.ts therefore pins the numerator directly:
+   the px available *for* text, 257 here and 257 everywhere, against a floor of
+   246 (1.35 × the 182px this machine renders). The leftover px are checked too,
+   but only with a floor of 8, because a wider font is entitled to eat them —
+   33px remain on CI's, 75px here.
 
    The second step is the shared logo contract's placement: the badge must sit
    16px from the sidebar's left edge, matching MyMail (and MyCal, which aimed at
@@ -135,17 +176,32 @@ body {
    one label change or one translated string away from failing again, and
    §"logo" in web/AGENTS.md explains why that failure is invisible — the tab
    strip shrinks below its content and paints under the buttons, moving nothing
-   and clipping nothing. Preserving the 15.63px is what keeps the margin.
+   and clipping nothing. That is what the tolerance above buys.
 
-   Root font size is the axis this reasoning covers. **Viewport width is
-   deliberately not addressed:** there is no @media anywhere in web/static/*.css,
-   so this column stays 464px at every width and .app-body's overflow:hidden
-   clips the main pane. Below ~470px of viewport the main pane was already at its
-   floor before any of this and still is — 44px more of it is now unreachable,
-   which is accepted, not overlooked. Mobile layout is a separate question from
-   the badge. */
+   The main pane pays for it: 76px narrower at every viewport width. That is the
+   human's ruling, taken with the alternative (a smaller label than the siblings')
+   on the table.
+
+   **The font-width axis is the one this covers**, and the root-font axis is only
+   incidentally improved — do not read it as fixed. Measured needs, this machine:
+
+     20px root → 535px   fits in 540, but at 1.02× — no margin at all
+     24px root → 612px   still overflows, unchanged
+
+   So the pre-existing WCAG 1.4.4 defect at Chrome's "Large" is *not* bought
+   here. The 20px row happens to fit this machine's font and would overflow on
+   CI's 1.25×-wider one, which is precisely the state this whole change exists to
+   get out of. e2e/tests/logo.spec.ts therefore still asserts the fit at a 16px
+   root only; extending it to 20px would pin a threshold, not a margin.
+
+   **Viewport width is deliberately not addressed:** there is no @media anywhere
+   in web/static/*.css, so this column stays 540px at every width and
+   .app-body's overflow:hidden clips the main pane. Below ~546px of viewport the
+   main pane was already at its floor before any of this and still is — 76px more
+   of it is now unreachable, which is accepted, not overlooked. Mobile layout is
+   a separate question from the badge. */
 .sidebar {
-  width: 464px;
+  width: 540px;
   flex-shrink: 0;
   border-right: 1px solid var(--border);
   background: var(--surface);
@@ -217,7 +273,7 @@ body {
   margin: 0 -16px;
 }
 
-/* Graph tab: the rendered diagram scrolls on both axes within the 464px sidebar
+/* Graph tab: the rendered diagram scrolls on both axes within the 540px sidebar
    (large graphs pan rather than shrink to fit). */
 .sidebar-graph-wrap {
   flex: 1;
@@ -1689,7 +1745,7 @@ main.note-view-main {
 }
 
 /* The footer's own buttons (theme toggle, Settings). Never wraps, and the budget
-   is generous: the row has 447px of content box here (464px sidebar − 1px border
+   is generous: the row has 523px of content box here (540px sidebar − 1px border
    − 16px of this footer's padding). The pair measured 174px when this was
    written, but that is a Chromium-on-Linux reading of text in whatever
    `system-ui` resolves to — re-measure it rather than trusting it if a label

@@ -244,7 +244,7 @@ test.describe('Sidebar footer contract', () => {
         padding: cs.padding,
         borderTopWidth: cs.borderTopWidth,
         borderTopStyle: cs.borderTopStyle,
-        // The sidebar's content box: the 464px panel less its own 1px border-right.
+        // The sidebar's content box: the 540px panel less its own 1px border-right.
         // Not the border box — the footer cannot span the border.
         sidebarContentWidth: sidebar.clientWidth,
       };
@@ -761,8 +761,8 @@ test.describe('Sidebar footer contract', () => {
   // assertion sitting near the boundary would be pinning exactly the number that
   // warning says not to trust.
   //
-  // **Weak evidence in this app, and worth saying so.** §2.4: MyNotes has 447px
-  // of content box for a 174px row — ~273px of slack, against MyCal's 26px and
+  // **Weak evidence in this app, and worth saying so.** §2.4: MyNotes has 523px
+  // of content box for a 174px row — ~349px of slack, against MyCal's 26px and
   // MyMail's 29px. This passes here by a factor the other two do not have, so a
   // green result is close to guaranteed and is not evidence that the row is
   // tight enough to be worth watching. It is here for parity and to catch a
@@ -800,7 +800,7 @@ test.describe('Sidebar footer contract', () => {
   //
   // **MyNotes' column is `px` and that is a sanctioned exemption, not drift**
   // (§6.4). MyCal and MyMail converted theirs to rem because they have ~26px and
-  // ~29px of slack and a px column would push Settings out. MyNotes has ~273px,
+  // ~29px of slack and a px column would push Settings out. MyNotes has ~349px,
   // so the resize case never binds — and converting would be a *regression*: the
   // column in rem grows with the root font and at a 24px root would eat the note
   // list for no benefit. So do not read a failure here as "convert the column";
@@ -808,15 +808,18 @@ test.describe('Sidebar footer contract', () => {
   //
   // **The column's width is deliberately not asserted here.** It used to be
   // (`toBeCloseTo(420, 0)`) and that was removed when the sidebar widened to
-  // 464px for the brand badge and its placement: §6.4 *records* each app's width and explicitly
+  // 464px for the brand badge and its placement — and then to 540px for the
+  // sibling-sized app-name label and a font-width tolerance, which is the second
+  // time the number moved and the reason this stays unpinned. §6.4 *records* each
+  // app's width and explicitly
   // does not pin it ("sidebar widths were never unified"), so pinning it made
-  // this suite fail on a change the contract permits. Re-pinning it at 464 would
+  // this suite fail on a change the contract permits. Re-pinning it at 540 would
   // re-arm the same trap at a new number — the relational checks below (the
   // controls fit inside the column, the footer does not overflow) are what the
   // contract actually requires, and they hold at any width.
   //
   // Same caveat as the 1.1x test: at a 24px root the row reaches 217px against
-  // 447px available. Comfortable margins are a weak result here, not a strong one.
+  // 523px available. Comfortable margins are a weak result here, not a strong one.
   for (const root of [20, 24]) {
     test(`controls stay inside the column at a ${root}px root font`, async ({ page }) => {
       // Set through the CSSOM rather than addStyleTag — the app's CSP has no
@@ -847,7 +850,7 @@ test.describe('Sidebar footer contract', () => {
   //
   // **MyNotes has no breakpoint at all** — `grep '@media' web/static/*.css` finds
   // nothing — so there is nothing hidden to assert and no narrow layout to
-  // survive. The 464px sidebar simply stays 464px and `.app-body`'s
+  // survive. The 540px sidebar simply stays 540px and `.app-body`'s
   // `overflow: hidden` clips whatever does not fit. The consequence for this
   // contract is a *stronger* result than MyCal's: both coordinates hold at
   // (8, 8) at a phone width, where MyCal manages only L = 8 with B = 4 (§10.8).

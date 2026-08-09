@@ -154,10 +154,19 @@ sibling's does — **inside an `<a>`**.
   that crop and `currentColor` in place of the favicon's `#fff` (the CSS box paints the square,
   so the inline copy has no background `<rect>`). Change the letterform in one and change it in
   the other.
-- **The sidebar's `464px` is derived, not chosen**, in two steps by one rule — the column grows
-  by exactly what is added to the header, so the tab strip's clearance stays 15.63px: `420 → 456`
-  for the badge itself, `456 → 464` for the 12px → 16px inset the contract's placement requires.
-  Narrowing it back re-breaks the header.
+- **The sidebar's `540px` is derived, not chosen**, and the last step is derived differently
+  from the first two — read `.sidebar`'s comment in `app.css` before touching it. `420 → 456`
+  for the badge itself and `456 → 464` for the 12px → 16px inset both grew the column by exactly
+  what was added to the header, holding the tab strip's clearance at 15.63px. `464 → 540` did
+  not: it carries the label going 1rem → 1.1rem **and** a stated tolerance for a wider
+  `system-ui` than this machine's. Sizing to what fits locally is what put CI red — the runner's
+  font is ~1.25× wider, and 464px absorbed 0.99×. 540px absorbs 1.41×. **That ratio is not what
+  the suite asserts**, and the reason is worth carrying: its denominator is the running
+  machine's own text, so a perfectly healthy row reads ~1.15 on CI, and a floor under it fails
+  where fonts are widest — the bug wearing the guard's clothes. `e2e/tests/logo.spec.ts` pins
+  the font-independent half instead (px available *for* text: 257, floor 246) plus a low
+  backstop on the leftover px (floor 8, where CI has ~33 and this machine 75). Narrowing the
+  column re-breaks the header.
 - **`.sidebar`'s `padding-top: 14px` IS the badge's y**, and it takes *two* `align-self:
   flex-start` declarations to keep it that way — one on `.sidebar-brand`, one on `.brand-logo`.
   Each removes a different remainder, and the second is the one that looks redundant and is not:
@@ -180,12 +189,16 @@ header's returns **clean zero in every visibly broken case**, at every root font
 assertions that can see it are `tabs.scrollWidth > tabs.clientWidth` and the last tab's right
 edge against `.sidebar-actions`' left edge. If you add a fit assertion, use one of those.
 
-**A known-open defect in this area, not caused by the logo:** at a 20px root font (Chrome's
-"Large") the tab strip already overflows into the buttons, and at 24px two tab labels are
-unreadable — a WCAG 1.4.4 Resize Text failure that predates the badge and is tracked separately.
-Widening the column to fix it would cost the main pane at every root size, so it was
-deliberately not bought here. **Do not read a header-overflow report at a large root font as a
+**A known-open defect in this area, not caused by the logo:** at large root font sizes the tab
+strip overflows into the buttons — a WCAG 1.4.4 Resize Text failure that predates the badge and
+is tracked separately. **Do not read a header-overflow report at a large root font as a
 regression from the logo work.**
+
+The 464 → 540 widening moved this without settling it, so the numbers are worth having exactly.
+Measured on one machine, at the 1.1rem label: a 20px root needs a 535px column and therefore now
+fits, by 5px; a 24px root needs 612px and still overflows. **Do not treat the 20px case as
+fixed.** A 5px margin is 1.02× this machine's text, and CI's `system-ui` is ~1.25× wider — the
+same gap that produced the failure this widening was for. It fits the font in front of you.
 
 `e2e/tests/logo.spec.ts` holds this half of the contract. Unlike the footer suite it
 was accepted the way `measurement-protocol.md` requires, by being **shown red for the right
@@ -198,13 +211,14 @@ you would predict:
 | Drop `.brand-logo { color: #fff }` | **1 red** — glyph resolves to `--fg`, `rgb(31, 41, 55)` |
 | Drop the pin **and** add `.brand:hover` | **3 red** — the colour test plus both hover tests |
 | Add `.brand:hover` alone, pin intact | **0 red — nothing broke.** The pin out-specifies it |
-| Give `.brand` a `font-size: 1.1rem` | **2 red** — the label guard, *and* the header-fit assertion, because a wider label pushes the tabs into the buttons. That is the "one label change away" case the column's headroom exists for, caught |
+| ~~Give `.brand` a `font-size: 1.1rem`~~ — **this is now the shipped state**, not a mutation. It went **2 red** exactly as this row recorded (the label guard, *and* the header-fit assertion, a wider label pushing the tabs into the buttons), which is why taking the siblings' label size required the column to grow with it. Kept here because it is the clearest demonstration on the table that the header-fit assertion earns its place |
 | `padding-left: 4px` on `.brand-logo` | **4 red** on the centring insets (7.5 vs 5.5). The badge stayed 28×28 and the glyph 17×17 throughout — with `box-sizing: border-box`, padding slides the mark off centre without changing either box |
 | `align-self: flex-start` → `center` on `.sidebar-brand` | **1 red** — y reads 19.30 not 14 |
 | Drop `align-self: flex-start` from `.brand-logo` | **5 red** — the 20/24/32px-root placement tests (y 15 / 18 / 24) and both label-line-height tests. Green at a 16px root throughout, which is exactly why the declaration looks removable |
 | Header inset alone back to 12px | **2 red** — placement (x = 12) and the alignment test |
 | Change the mark's `d` in `favicon.svg` alone | **1 red** — `web/ts/logo.test.mjs`, which runs on every `./build.sh` rather than only when somebody runs the e2e suite |
-| Restore `expect(column.width).toBeCloseTo(420, 0)` in the footer suite | **2 red** — the assertion removed when the column widened (see there); it would now read `Received: 464` |
+| Restore `expect(column.width).toBeCloseTo(420, 0)` in the footer suite | **2 red** — the assertion removed when the column widened (see there); it would now read `Received: 540` |
+| Narrow `.sidebar` back to 464px, label left at 1.1rem | **2 red** — the header-fit test (which carries both fit assertions) and the room-to-spare test, the second reporting the cause rather than the symptom: `the header has room for only 181.0px of text (431px available − 250.0px of fixed parts)` |
 
 Run the suite with `./build.sh && ./test-e2e.sh` — see the root `AGENTS.md` — and read the
 contract and `measurement-protocol.md` before changing any of these values. As with the footer,
