@@ -12,8 +12,10 @@ interface Props {
   // Called after a tag is deleted so the note list and tag filters elsewhere
   // refresh (a deleted tag detaches from every note it was on).
   onMutate?: () => void;
-  // Open the note list filtered by a single tag. The app also switches the
-  // sidebar back to the notes tab so the filtered result is visible.
+  // Open the note list filtered by a single tag: the main panel shows that
+  // tag's notes and this tab stays put, so the tag list is still there to pick
+  // another from. (It switched to the notes tab until eb01072; the filter is the
+  // sidebar's rather than the notes tab's, so it is waiting there either way.)
   onOpenTag?: (slug: string) => void;
 }
 

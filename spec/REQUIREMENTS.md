@@ -634,7 +634,12 @@ existing-note editor (`/notes/{slug}/edit`).
     unfiltered.
   - **Tags tab:** lists every tag sorted by slug, each with the number of notes
     carrying it and a delete button. Clicking a tag's name filters the note list
-    by it and switches back to the Notes tab. A "New tag" action asks for a name
+    by it — the main panel shows that tag's notes (the overview, headed by the
+    slug) and **the sidebar stays on the Tags tab**, so the tag list remains
+    available for picking another. It is a navigation to `/tags/{slug}` like any
+    other, so the filter is waiting on the Notes tab when that tab is next
+    selected: the filter belongs to the sidebar, not to either tab.
+    A "New tag" action asks for a name
     in a prompt dialog and creates the tag (empty) from its slugified form.
     Deleting a tag that is still
     attached to one or more notes asks for confirmation first (the notes
