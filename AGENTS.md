@@ -220,8 +220,8 @@ against the demo, everything else against the real server. **A demo spec named a
 runs against 8091 and fails on its first assertion about the demo**, which is loud but not
 obvious, so name it accordingly.
 
-Two of the four spec files are this repo's half of **three** cross-repo contracts (`../mysuite`,
-`spec/` — see `web/AGENTS.md`); the other two are MyNotes' own, and the distinction matters,
+Two of the five spec files are this repo's half of **three** cross-repo contracts (`../mysuite`,
+`spec/` — see `web/AGENTS.md`); the other three are MyNotes' own, and the distinction matters,
 because changing what the first two assert is a change in three repositories and changing the
 others is not. Note the counts differ on purpose: `logo.spec.ts` carries two contracts, because
 the badge and the name beside it are governed separately:
@@ -238,6 +238,15 @@ the badge and the name beside it are governed separately:
   query actually changed. It exists because the sidebar-footer suite caught that defect only by
   landing inside a 300 ms debounce window by chance — green here for weeks, red in CI once.
   Both tests in it measure from *past* that window rather than trying to land in it.
+- `tests/tag-filter-persistence.spec.ts` — **also contract-free and local**: the sidebar's tag
+  filter must survive opening one of the tag's notes (and the editors, and a round trip through
+  the Graph tab), and must still be *written* by the list routes that own it — `/tags/…` sets
+  it, `/` clears it, and a second `/tags/…` replaces it. Both halves are tested because they
+  are two halves of one rule: an implementation that merely stopped clearing passes the
+  persistence half alone, and the mutation confirms the split — reverting the filter to the
+  route reddens the persistence tests only. The "still filtered" assertions are paired with a
+  count of sidebar list requests, because a retrying count matcher can otherwise poll before
+  the reverting refetch lands and go green on broken code.
 - `tests/demo-settings.spec.ts` — **also contract-free and local**, and the only spec that runs
   against a demo build: the sidebar footer offers the same *pair of controls* there, and
   Settings opens a dialog that holds no MyMail field. It asserts no coordinate, colour or

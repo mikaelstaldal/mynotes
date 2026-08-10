@@ -31,13 +31,32 @@ function App() {
   const [sidebarTab, setSidebarTab] = useState<SidebarTab>(
     () => currentRoute().type === 'graph' ? 'graph' : 'notes',
   );
+  // The sidebar note list's tag filter. It follows the list routes — /tags/<a,b>
+  // sets it, / clears it — but *survives* the routes that say nothing about tags
+  // (/notes/<slug>, /notes/<slug>/edit, /new, /graph). Reading it straight off
+  // the route instead reset the sidebar to every note the moment the reader
+  // opened one of the tag's notes, which is the opposite of what opening a note
+  // from a filtered list means: the list is what they are reading through.
+  const [sidebarTags, setSidebarTags] = useState<string[]>(
+    () => { const r = currentRoute(); return r.type === 'list' ? r.tags : []; },
+  );
   const [theme, setThemeState] = useState<Theme>(() => getTheme());
   // The one-time "this is a demo" notice, shown before anything is typed.
   const [showDemoNotice, setShowDemoNotice] = useState(() => isDemo() && !demoNoticeSeen());
   const [showSettings, setShowSettings] = useState(false);
   const uploadRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => onRouteChange(setRoute), []);
+  // The filter is taken here, where routes arrive, rather than in an effect
+  // watching `route`: both updates then land in one render, so the sidebar never
+  // shows the old filter beside a main panel already showing the new route.
+  // Keeping `prev` when nothing changed is what stops a note→note or
+  // /tags/a→/tags/a navigation handing NoteList a fresh array identity, which it
+  // would load again for a byte-identical result (see note-list-refetch.spec.ts).
+  useEffect(() => onRouteChange(r => {
+    setRoute(r);
+    if (r.type !== 'list') return;
+    setSidebarTags(prev => prev.join(',') === r.tags.join(',') ? prev : r.tags);
+  }), []);
 
   // Landing on the /graph route (Graph tab, a deep link, or the back button)
   // selects the Graph sidebar tab so the small graph accompanies the large one.
@@ -162,14 +181,17 @@ function App() {
 
   // Selecting the Notes or Tags tab while the large graph fills the main panel
   // returns the main panel to the note list, so the sidebar and main panel agree.
+  // To the list *as filtered*: '/' is the route that means "no tag filter", so
+  // sending the reader there would drop a filter they had before they looked at
+  // the graph — the same loss that opening a note used to cause.
   const selectTab = useCallback((tab: SidebarTab) => {
     setSidebarTab(tab);
     if (tab === 'graph') {
       navigate('/graph');
     } else if (route.type === 'graph') {
-      navigate('/');
+      navigate(tagsPath(sidebarTags));
     }
-  }, [route.type]);
+  }, [route.type, sidebarTags]);
 
   const activeSlug = (route.type === 'view' || route.type === 'edit') ? route.slug : undefined;
 
@@ -251,7 +273,7 @@ function App() {
             {sidebarTab === 'notes' && (
               <NoteList
                 activeSlug={activeSlug}
-                activeTags={route.type === 'list' ? route.tags : []}
+                activeTags={sidebarTags}
                 listKey={listKey}
                 sortField={sortField}
                 sortOrder={sortOrder}

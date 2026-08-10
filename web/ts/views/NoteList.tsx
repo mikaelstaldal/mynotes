@@ -155,7 +155,10 @@ export function NoteList({ activeSlug, activeTags, listKey, sortField, sortOrder
   }, [debouncedQ, debouncedTitlePrefix, tagKey, loadPage, listKey]);
 
   // Navigate to the note list filtered by the given tag set (AND). An empty set
-  // clears the filter (back to "All notes").
+  // clears the filter (back to "All notes"). The filter is a permalink, so this
+  // is a navigation even when a note is open: the sidebar keeps its filter while
+  // a note is being read (app.tsx), but *changing* the filter is asking for the
+  // filtered list, and takes the main panel there.
   const setTagFilter = (tags: string[]) => navigate(tagsPath(tags));
 
   // Tags offered by the "add tag" picker: every known tag not already in the

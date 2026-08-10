@@ -8,10 +8,10 @@ The root `AGENTS.md` § E2E tests has what someone who never opens this director
 still needs: that the suite exists, that `./build.sh && ./test-e2e.sh` from the
 repository root is how it runs, that it holds this repo's half of three cross-repo
 contracts (the sidebar footer, the app logo, and the app-name label beside it —
-the last two share `logo.spec.ts`) plus two app-local specs that
-answer to nothing outside this repository (the note list's refetching, and the
-demo build's footer), that the run starts **two** servers and has a project per
-server, and —
+the last two share `logo.spec.ts`) plus three app-local specs that
+answer to nothing outside this repository (the note list's refetching, the
+sidebar tag filter's persistence, and the demo build's footer), that the run
+starts **two** servers and has a project per server, and —
 the part that is easy to get backwards — that CI runs it on every push to
 `main`, so what it gates is
 **publication**, not the commit landing. `../mysuite/spec/sidebar-footer.md` §9.1

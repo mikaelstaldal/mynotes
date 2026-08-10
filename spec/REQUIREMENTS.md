@@ -621,6 +621,17 @@ existing-note editor (`/notes/{slug}/edit`).
     de-duplicating rows by slug); resets on query or tag-filter change. Shows
     the total count. "New note" and "Upload note" actions. The currently open
     note is highlighted in the list.
+
+    The tag filter **survives opening a note**. It is written only by the list
+    routes — `/tags/…` sets it, `/` clears it — and left alone by every route
+    that names no tags (a note, either editor, the graph), so reading through a
+    tag's notes keeps that tag's list in the sidebar instead of resetting it to
+    every note. Leaving the Graph tab therefore returns the main panel to the
+    filtered list rather than to `/`. Changing the filter is still a navigation,
+    so a *filtered list* is a permalink: adding or removing a chip while a note
+    is open takes the main panel to that filtered list. A note's own URL carries
+    no tags, so reloading (or sharing) while a note is open starts again
+    unfiltered.
   - **Tags tab:** lists every tag sorted by slug, each with the number of notes
     carrying it and a delete button. Clicking a tag's name filters the note list
     by it and switches back to the Notes tab. A "New tag" action asks for a name
