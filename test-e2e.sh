@@ -18,18 +18,26 @@ cd "$(dirname "${BASH_SOURCE[0]}")"
 
 BINARY=./mynotes
 PORT=8091
+# The same binary in -demo-server mode, for the demo-only project in
+# e2e/playwright.config.ts. A demo has no database and no REST API, so it cannot
+# be a route on the server above — it is a different process with a different
+# baseURL. 8092 continues the block this suite owns (MyCal 8089, MyMail 8090).
+DEMO_PORT=8092
 # A fresh database per run, in a directory this script owns and removes.
 # Reusing one is how an "empty" run silently becomes a run against whatever the
 # last one left behind.
 DATA_DIR=$(mktemp -d)
 
 SERVER_PID=
+DEMO_PID=
 
 cleanup() {
-    if [ -n "$SERVER_PID" ]; then
-        kill "$SERVER_PID" 2>/dev/null || true
-        wait "$SERVER_PID" 2>/dev/null || true
-    fi
+    for pid in "$SERVER_PID" "$DEMO_PID"; do
+        if [ -n "$pid" ]; then
+            kill "$pid" 2>/dev/null || true
+            wait "$pid" 2>/dev/null || true
+        fi
+    done
     rm -rf "$DATA_DIR"
 }
 
@@ -67,12 +75,14 @@ fi
 # process that has exited is a zombie until reaped, and `kill -0` succeeds on a
 # zombie — so the obvious liveness check silently passes in exactly this case.
 # (It was tried there, against a real squatter, and reported 48/48 green.)
-if (exec 3<>"/dev/tcp/127.0.0.1/${PORT}") 2>/dev/null; then
-    exec 3<&- 3>&-
-    echo "Something is already listening on port ${PORT}." >&2
-    echo "Stop it first — otherwise these tests would run against it, not against this build." >&2
-    exit 1
-fi
+for p in "$PORT" "$DEMO_PORT"; do
+    if (exec 3<>"/dev/tcp/127.0.0.1/${p}") 2>/dev/null; then
+        exec 3<&- 3>&-
+        echo "Something is already listening on port ${p}." >&2
+        echo "Stop it first — otherwise these tests would run against it, not against this build." >&2
+        exit 1
+    fi
+done
 
 # -public-url must match the baseURL origin in e2e/playwright.config.ts, or CSRF
 # rejects any write driven through the PAGE with 403.
@@ -204,6 +214,35 @@ if [ "$stale" -gt 0 ]; then
     echo "The binary embeds web/static/ — rebuild with ./build.sh and try again." >&2
     exit 1
 fi
+
+# The demo server, for the `chromium-demo` project. Started after the freshness
+# check rather than before it: it is the same binary serving the same embedded
+# web/static/, so the comparison above establishes both processes are fresh —
+# and running the check twice would only prove the same thing twice.
+#
+# -public-url is what main.go derives the demo bundle's <base href> from, so it
+# must match the demo project's baseURL for the same reason the real server's
+# does. No -data: -demo-server opens no database at all.
+"$BINARY" -demo-server -port "$DEMO_PORT" -public-url "http://localhost:${DEMO_PORT}" &
+DEMO_PID=$!
+
+# There is no /api/v1 here to probe — a demo answers that from a service worker
+# inside the browser — so this probes the SPA shell, and specifically the
+# injected window.__serverConfig that puts the frontend in demo mode. That makes
+# it a correctness check as well as a readiness one: a shell served without the
+# injection would come up as a normal build with no backend, and every test in
+# the demo project would then fail for a reason that has nothing to do with what
+# it asserts.
+for i in $(seq 1 40); do
+    if curl -sf "http://localhost:${DEMO_PORT}/" 2>/dev/null | grep -q '__serverConfig'; then
+        break
+    fi
+    if [ "$i" -eq 40 ]; then
+        echo "Demo server failed to start on port ${DEMO_PORT}, or served a shell with no __serverConfig" >&2
+        exit 1
+    fi
+    sleep 0.5
+done
 
 cd e2e
 # `playwright-test` is a local wrapper for exactly this command and is the

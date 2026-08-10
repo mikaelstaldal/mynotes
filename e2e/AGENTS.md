@@ -8,8 +8,10 @@ The root `AGENTS.md` § E2E tests has what someone who never opens this director
 still needs: that the suite exists, that `./build.sh && ./test-e2e.sh` from the
 repository root is how it runs, that it holds this repo's half of three cross-repo
 contracts (the sidebar footer, the app logo, and the app-name label beside it —
-the last two share `logo.spec.ts`) plus one app-local spec that
-answers to nothing outside this repository (the note list's refetching), and —
+the last two share `logo.spec.ts`) plus two app-local specs that
+answer to nothing outside this repository (the note list's refetching, and the
+demo build's footer), that the run starts **two** servers and has a project per
+server, and —
 the part that is easy to get backwards — that CI runs it on every push to
 `main`, so what it gates is
 **publication**, not the commit landing. `../mysuite/spec/sidebar-footer.md` §9.1
@@ -39,6 +41,16 @@ Not every write: `csrf.Middleware` allows a request carrying neither `Origin` no
 (the native-client path), and Playwright's `request` fixture sends neither — so an API-level
 write succeeds against a mismatched `-public-url` and the flag only bites once a test clicks
 Save. Measured, not assumed: 201 without an `Origin` header, 403 with a page-style one.
+
+**And a hand-started server is only half the run.** `demo-*.spec.ts` runs in the
+`chromium-demo` project against `http://localhost:8092`, which `test-e2e.sh` serves with a
+second process — `./mynotes -demo-server -port 8092 -public-url http://localhost:8092`. Start
+that too, or scope your run to the other project (`--project chromium`); without it the demo
+spec fails at `page.goto` with `ERR_CONNECTION_REFUSED`, which reads as a broken test rather
+than a missing server. The script's readiness probe for it greps the served shell for
+`__serverConfig` rather than merely waiting for a 200: a demo has no `/api/v1` to probe, and a
+shell served *without* the injection comes up as a normal build with no backend, failing every
+demo test for a reason unrelated to what it asserts.
 
 *Important:* interactively, use the `playwright-test` command from `e2e/` and nothing else —
 do not invent variants. `test-e2e.sh` falls back to `./node_modules/.bin/playwright test` when

@@ -1444,7 +1444,8 @@ main.note-view-main {
 
 .split-body,
 .email-body,
-.publish-body {
+.publish-body,
+.settings-body {
   margin: 0 0 1rem;
   color: var(--muted);
 }

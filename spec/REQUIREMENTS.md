@@ -662,10 +662,11 @@ existing-note editor (`/notes/{slug}/edit`).
     **Changing any of this is a change in all three repositories** — there is no
     such thing as fixing it here alone.
 
-    What is particular to MyNotes: **Settings is absent from demo builds** — a
-    demo has no server to hold the MyMail URL — so a demo shows the theme toggle
-    alone, and the contract's geometry then applies to a single control rather
-    than a pair. The palette its colours resolve through lives in
+    What is particular to MyNotes: **demo builds show the same pair**, so the
+    contract's geometry applies to two controls everywhere. Settings was absent
+    from a demo until it was made to open there as well — a demo has no server to
+    hold the MyMail URL, so the dialog says so rather than offering a field that
+    could not take effect (§Demo Mode). The palette its colours resolve through lives in
     `web/static/render/note.css` rather than `app.css`, since that file owns the
     theme selectors and `app.css` has no `:root` block of its own; two of those
     variables are used only by app chrome and are inert everywhere else that
@@ -683,6 +684,13 @@ existing-note editor (`/notes/{slug}/edit`).
     separator. `./build.sh` alone still says nothing about any of it — the binary
     embeds `web/static/`, which is why `test-e2e.sh` compares served bytes against
     on-disk bytes before running a test.
+
+    That suite runs against the real binary only. `e2e/tests/demo-settings.spec.ts`
+    covers the demo build, in a second Playwright project against a `-demo-server`
+    process — and covers one thing: that the footer offers the same pair of
+    controls there and that Settings opens. It asserts none of the coordinates
+    above, deliberately, since restating a contract value in a second file in this
+    repo is how the two drift apart.
 
     Three limits, stated because a green suite bounds what was checked rather than
     what is correct. **CI runs this suite on every push to `main`** — see the root
@@ -704,8 +712,9 @@ existing-note editor (`/notes/{slug}/edit`).
   origin; the last because the Content-Security-Policy would block the request.
   The choice takes effect at once: the note toolbars' "Send as email" action
   appears or disappears without a reload. Cancel, Escape, or a click outside
-  discards the edit. The action is not offered in demo mode, where MyMail is the
-  only setting and is unavailable anyway.
+  discards the edit. In demo mode the modal opens all the same, and holds no
+  field: MyMail is the only setting and is unavailable there, so it says so and
+  offers Close alone (§Demo Mode). Escape and a click outside still dismiss it.
 - **Upload Markdown or HTML:** pick a single `.md`/`.markdown`/text or
   `.html`/`.htm` file. For Markdown files, the title is derived client-side (first
   heading, else filename without extension, else "Untitled") and the note is created
@@ -1151,9 +1160,11 @@ localhost.
   installed to take control, and reloads once if that does not happen — so the
   app comes up as usual rather than reporting that the backend did not start.
 - The MyMail integration is never offered in demo mode: there is no server to
-  relay a message. Neither is the Settings action, MyMail being all it holds; a
-  MyMail URL left in localStorage by a non-demo deployment on the same origin is
-  ignored rather than acted on.
+  relay a message. A MyMail URL left in localStorage by a non-demo deployment on
+  the same origin is ignored rather than acted on. The **Settings** action is
+  offered, so the sidebar footer carries the same pair of controls a real
+  deployment does; its modal opens on an explanation that a demo has nothing to
+  configure, rather than on a MyMail field that could not take effect.
 - Publishing is never offered either (§Publishing): a published page is served
   by a server to readers who are not running the demo, and the demo has no server
   and no readers but the one browser it lives in. `/public/…` answers with a

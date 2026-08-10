@@ -207,15 +207,23 @@ go test ./internal/handler/ -run TestCreateAndGetNote
 ## E2E tests
 
 Playwright end-to-end tests live in `e2e/`. **Run them with `./build.sh && ./test-e2e.sh`**
-from the repository root — that script is the one the CI step invokes, and it starts the server
+from the repository root — that script is the one the CI step invokes, and it starts the servers
 itself on a fresh database, checks the server is actually serving the assets on disk, and tears
-both down afterwards. It takes the same arguments as `playwright test`, so
+them down afterwards. It takes the same arguments as `playwright test`, so
 `./test-e2e.sh tests/sidebar-footer.spec.ts -g "focus"` works.
 
-Two of the three spec files are this repo's half of **three** cross-repo contracts (`../mysuite`,
-`spec/` — see `web/AGENTS.md`); the third file is MyNotes' own, and the distinction matters,
+**It starts two processes, not one**, and the config has a project per process: the real binary
+on 8091 (`chromium`), and the same binary in `-demo-server` mode on 8092 (`chromium-demo`). A
+demo opens no database and mounts no REST API, so it cannot be a route on the first server — it
+is a second origin with its own `baseURL`. The split is by filename: `demo-*.spec.ts` runs
+against the demo, everything else against the real server. **A demo spec named anything else
+runs against 8091 and fails on its first assertion about the demo**, which is loud but not
+obvious, so name it accordingly.
+
+Two of the four spec files are this repo's half of **three** cross-repo contracts (`../mysuite`,
+`spec/` — see `web/AGENTS.md`); the other two are MyNotes' own, and the distinction matters,
 because changing what the first two assert is a change in three repositories and changing the
-third is not. Note the counts differ on purpose: `logo.spec.ts` carries two contracts, because
+others is not. Note the counts differ on purpose: `logo.spec.ts` carries two contracts, because
 the badge and the name beside it are governed separately:
 
 - `tests/sidebar-footer.spec.ts` — the sidebar-footer contract (`spec/sidebar-footer.md`).
@@ -230,6 +238,12 @@ the badge and the name beside it are governed separately:
   query actually changed. It exists because the sidebar-footer suite caught that defect only by
   landing inside a 300 ms debounce window by chance — green here for weeks, red in CI once.
   Both tests in it measure from *past* that window rather than trying to land in it.
+- `tests/demo-settings.spec.ts` — **also contract-free and local**, and the only spec that runs
+  against a demo build: the sidebar footer offers the same *pair of controls* there, and
+  Settings opens a dialog that holds no MyMail field. It asserts no coordinate, colour or
+  computed value — those belong to `sidebar-footer.spec.ts` alone, and restating one here would
+  put the contract in two files in this repo. `../mysuite`, `spec/sidebar-footer.md` §10.9 has
+  the history: Settings used to be absent from demo builds.
 
 The CI step needs no change as specs are added — it runs `./test-e2e.sh` with no arguments,
 which picks up everything under `tests/`.

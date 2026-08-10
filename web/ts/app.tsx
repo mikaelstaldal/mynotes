@@ -294,20 +294,20 @@ function App() {
                   <span class={theme === 'dark' ? '' : 'is-shown'}>Dark</span>
                 </span>
               </button>
-              {/* Settings holds the MyMail URL and nothing else, and a demo has
-                  no server to relay a message — so it is offered only outside
-                  demo mode, where it would be an empty dialog. */}
-              {!isDemo() && (
-                <button
-                  class="settings-open"
-                  title="Settings"
-                  aria-label="Settings"
-                  onClick={() => setShowSettings(true)}
-                >
-                  <Icon name="settings" size={16} />
-                  <span>Settings</span>
-                </button>
-              )}
+              {/* Offered in demo builds too, so the footer is the same pair of
+                  controls everywhere (mysuite, spec/sidebar-footer.md). Settings
+                  holds the MyMail URL and nothing else, and a demo has no server
+                  to relay a message — so the dialog says so there rather than
+                  offering a field that could not take effect. */}
+              <button
+                class="settings-open"
+                title="Settings"
+                aria-label="Settings"
+                onClick={() => setShowSettings(true)}
+              >
+                <Icon name="settings" size={16} />
+                <span>Settings</span>
+              </button>
             </div>
           </div>
         </aside>

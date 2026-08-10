@@ -42,11 +42,15 @@ test.describe('Sidebar footer contract', () => {
   const SETTINGS = '.sidebar-footer-actions .settings-open';
   const BOTH = [THEME, SETTINGS];
 
-  // Both controls exist here because the test server is a real server. In a
-  // demo build (`-demo-server` / `-demo-bundle`) Settings is not rendered at all
-  // — a demo has no server to hold the MyMail URL — so the pair does not exist
-  // and only the toggle is under contract. That is recorded upstream as §10.9,
-  // and it is why this suite runs against the real binary rather than the demo.
+  // Both controls exist in a demo build too (`-demo-server` / `-demo-bundle`),
+  // so the pair this suite measures is the pair a demo shows — Settings is
+  // rendered there and opens, and only its *contents* differ, a demo having no
+  // server to hold the MyMail URL. Settings' absence from demo builds used to be
+  // recorded upstream as §10.9, which now records the reverse. This file still
+  // runs against the real binary, for the REST API it seeds content through
+  // (`NOTES_API` below); a demo answers that from a service worker instead. That
+  // the pair is present in a demo at all is asserted by `demo-settings.spec.ts`,
+  // which asserts no geometry — every coordinate in this contract lives here.
   const NOTES_API = '/api/v1/notes';
 
   // ---------------------------------------------------------------------------
