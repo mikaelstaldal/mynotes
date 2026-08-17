@@ -1,6 +1,6 @@
 module github.com/mikaelstaldal/mynotes
 
-go 1.26.4
+go 1.26.6
 
 require (
 	github.com/go-faster/errors v0.7.1
@@ -12,7 +12,7 @@ require (
 	github.com/yuin/goldmark v1.8.2
 	golang.org/x/net v0.56.0
 	golang.org/x/oauth2 v0.36.0
-	golang.org/x/text v0.38.0
+	golang.org/x/text v0.39.0
 	gopkg.in/yaml.v3 v3.0.1
 	modernc.org/sqlite v1.52.0
 )
