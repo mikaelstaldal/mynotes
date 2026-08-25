@@ -117,7 +117,8 @@ export function NoteView({ slug, onDelete }: Props) {
     return () => main?.classList.remove('note-view-main');
   }, [showNote]);
 
-  // The task-list checkbox is the one interactive thing in the read view:
+  // The task-list checkbox is the one thing in the read view that does something
+  // more specific than handleEditClick's open-the-editor below:
   // clicking it opens the note in the editor with that item flipped — and
   // nothing saved, so the choice between keeping and discarding the change stays
   // with the user. The checkbox here is left as it is (preventDefault): the copy
@@ -134,6 +135,37 @@ export function NoteView({ slug, onDelete }: Props) {
     navigate(`/notes/${slug}/edit`, {
       returnTo: currentPath(), toggleTaskLine: line, toggleTaskChecked: checked,
     });
+  }
+
+  // Anywhere else in the read view, a plain click opens the editor: reading and
+  // editing are one click apart, in both directions (the editor's Cancel comes
+  // back here). The exceptions are everything that already does something on
+  // click — links (wikilinks, backlinks, tag chips), the task checkboxes above,
+  // a foldable callout's summary, and any form control — plus the action
+  // toolbar, which is not wired to this handler at all so its buttons and the
+  // dialogs they open are untouched. A modified click is left to the browser.
+  //
+  // The selection guard covers *drag*-selection specifically: a drag ends with a
+  // click on the paragraph it started in, and without the guard, selecting a
+  // passage to copy would throw the reader into the editor and lose the
+  // selection on the way.
+  //
+  // It cannot cover double- or triple-click selection, and that is a deliberate
+  // trade-off rather than an oversight: `click` fires after the *first* release
+  // of a multi-click, while the browser only selects the word on the second
+  // press, so by then this view is already unmounted. Preserving it would mean
+  // deferring every open by the multi-click window (~350 ms), and opening the
+  // editor is the gesture this view is built around — so word- and
+  // paragraph-select give way to it here, and drag-select and Ctrl+A remain.
+  // `click-to-edit.spec.ts` pins the consequence so re-deciding it is deliberate.
+  function handleEditClick(e: MouseEvent) {
+    if (e.defaultPrevented || e.button !== 0) return;
+    if (e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
+    const target = e.target as Element | null;
+    if (target?.closest?.('a, button, input, select, textarea, label, summary, [role="button"]')) return;
+    const selection = window.getSelection();
+    if (selection && !selection.isCollapsed) return;
+    navigate(`/notes/${slug}/edit`, { returnTo: currentPath() });
   }
 
   // Quick loads stay blank rather than flash the indicator; it appears only if
@@ -158,7 +190,7 @@ export function NoteView({ slug, onDelete }: Props) {
   return (
     <div class="note-view">
       <div class="note-header">
-        <div class="note-header-left">
+        <div class="note-header-left" onClick={handleEditClick}>
           <h1 class="note-title">{note.title}</h1>
           <span class="muted note-view-date" title={`Version ${note.version}`}>
             <time dateTime={note.created_at}>created {formatDateTime(note.created_at)}</time>
@@ -182,7 +214,7 @@ export function NoteView({ slug, onDelete }: Props) {
           onPublishChange={refreshNote}
         />
       </div>
-      <div class="note-view-scroll">
+      <div class="note-view-scroll" onClick={handleEditClick}>
         <div class="note-content" ref={contentRef} onClick={handleContentClick}
           dangerouslySetInnerHTML={{ __html: renderedContent }} />
         {note.incoming_links.length > 0 && (

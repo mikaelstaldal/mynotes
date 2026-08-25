@@ -760,8 +760,21 @@ existing-note editor (`/notes/{slug}/edit`).
   choose or create a single tag, then splits the note by its top-level headings
   and navigates to the tag's note list (when a tag was chosen) or the first new
   note. A 404 (or a malformed-slug deep link) shows a not-found message.
-- **Clickable task items:** a task-list checkbox in the read view is the one
-  interactive part of it. Clicking one opens the note in the editor with that
+- **Click to edit:** a plain click anywhere on the read view — the note body, the
+  empty space below it, the backlinks section, the title, the timestamps — opens
+  the note in the editor, as the "Edit" action does. The exceptions are the parts
+  that already answer a click: the action toolbar (and any dialog it opens), the
+  tag chips and every link in the rendered note, a task checkbox (which has its
+  own meaning, below), a foldable callout's summary, and any form control. A
+  click carrying a modifier key is left to the browser, and a click that ends a
+  *drag*-selection selects rather than edits, so a passage can still be
+  drag-selected and copied from the read view. Double- and triple-click
+  selection is knowingly given up in exchange: the click that opens the editor
+  is the first one, before the browser has selected the word, and preserving it
+  would mean delaying every open by the multi-click window. Drag-selection and
+  Ctrl+A remain, and the editor itself selects freely.
+- **Clickable task items:** a task-list checkbox in the read view does something
+  more specific than the click-to-edit above. Clicking one opens the note in the editor with that
   item toggled (`[ ]` ⇄ `[x]`) — and **nothing saved**: the flip is an ordinary
   unsaved edit, so the user decides between saving and discarding it, and the
   usual unsaved-changes guard applies. Clicking one in the editor's own preview
