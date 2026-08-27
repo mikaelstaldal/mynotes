@@ -556,7 +556,12 @@ func run(addr string, port int, dataDir, publicURL, basicAuthFile, basicAuthReal
 		HSTS:           hsts,
 	})(httpHandler)
 	if basicAuthFile != "" {
-		htpasswd, err := auth.LoadHtpasswd(basicAuthFile)
+		// Strict: MyNotes reads a file it owns, so a line that is not a
+		// username:bcrypt-hash pair is an operator mistake worth failing at
+		// boot, not a login to skip silently. No username validator — MyNotes
+		// gives usernames no vocabulary of their own; they name nothing in the
+		// database, the filesystem or a URL.
+		htpasswd, err := auth.LoadHtpasswdStrict(basicAuthFile, nil)
 		if err != nil {
 			return fmt.Errorf("load htpasswd: %w", err)
 		}

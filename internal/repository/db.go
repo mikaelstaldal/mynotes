@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 
 	"github.com/mikaelstaldal/go-server-common/sqlite"
@@ -31,6 +32,12 @@ const linksSchemaVersion = 6
 // requested PRAGMAs, and runs any outstanding schema migrations. extraPragmas
 // are passed verbatim as `_pragma=` query values (e.g. "synchronous=NORMAL").
 //
+// Migration is strict (sqlite.MigrateStrict): each batch runs under the write
+// lock so two processes starting against the same stale database cannot both
+// apply it, and a database written by a newer build — one whose user_version
+// exceeds the migrations this binary carries — is refused rather than operated
+// on with a schema this binary does not know.
+//
 // When the database predates linksSchemaVersion, OpenDB additionally runs a
 // one-time backfill of the note_links index (see backfillNoteLinks): the
 // note_links schema is created by an SQL migration, but populating it requires
@@ -45,13 +52,20 @@ func OpenDB(path string, busyTimeout int, extraPragmas ...string) (*sql.DB, erro
 	if err != nil {
 		return nil, err
 	}
-	var prevVersion int
-	if err := db.QueryRow("PRAGMA user_version").Scan(&prevVersion); err != nil {
+	prevVersion, err := sqlite.UserVersion(db)
+	if err != nil {
 		_ = db.Close()
-		return nil, fmt.Errorf("read user_version: %w", err)
+		return nil, err
 	}
-	if err := sqlite.Migrate(db, migrations); err != nil {
+	// context.Background(): the write-lock wait from BEGIN IMMEDIATE onward is
+	// bounded by the busy_timeout the caller passes — 5s from every call site in
+	// main.go — not by this ctx, and MyNotes has no cancellable context at
+	// startup: main() builds one only for shutdown.
+	if err := sqlite.MigrateStrict(context.Background(), db, migrations); err != nil {
 		_ = db.Close()
+		if errors.Is(err, sqlite.ErrSchemaTooNew) {
+			return nil, fmt.Errorf("%s was written by a newer version of MyNotes; upgrade the binary: %w", path, err)
+		}
 		return nil, err
 	}
 	if prevVersion < linksSchemaVersion {
@@ -65,9 +79,10 @@ func OpenDB(path string, busyTimeout int, extraPragmas ...string) (*sql.DB, erro
 
 // InitSchema brings the database up to the latest schema version, applying any
 // migrations the database has not yet seen. It is idempotent and safe to run on
-// every startup.
+// every startup, and refuses a database newer than this binary understands
+// (sqlite.ErrSchemaTooNew), as OpenDB does.
 func InitSchema(db *sql.DB) error {
-	return sqlite.Migrate(db, migrations)
+	return sqlite.MigrateStrict(context.Background(), db, migrations)
 }
 
 // CreateDataDir ensures the directory holding the database file exists.

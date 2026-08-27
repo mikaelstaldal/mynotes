@@ -223,7 +223,13 @@ func setNoteTags(ctx context.Context, tx *sql.Tx, noteID int64, tagIDs []int64) 
 // note write it belongs to, so the index stays consistent with content. targets
 // is the extractNoteLinks output for the note's current content; an empty slice
 // clears the note's links.
-func setNoteLinks(ctx context.Context, tx *sql.Tx, noteID int64, targets []string) error {
+// execer is what setNoteLinks needs of its caller: *sql.Tx for the ordinary
+// write paths, *sql.Conn for the backfill, which drives its own BEGIN IMMEDIATE.
+type execer interface {
+	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+}
+
+func setNoteLinks(ctx context.Context, tx execer, noteID int64, targets []string) error {
 	if _, err := tx.ExecContext(ctx, `DELETE FROM note_links WHERE source_note_id = ?`, noteID); err != nil {
 		return err
 	}
@@ -238,17 +244,55 @@ func setNoteLinks(ctx context.Context, tx *sql.Tx, noteID int64, targets []strin
 
 // backfillNoteLinks indexes the wikilinks of every existing note in one pass.
 // It is the one-time migration companion for schemaV6 (see OpenDB): the table is
-// created by SQL, but populating it needs content parsing SQL cannot do. It is
-// idempotent — setNoteLinks replaces each note's rows — so re-running it is
-// safe. Runs each note's write in its own transaction to keep memory flat over a
-// large database.
+// created by SQL, but populating it needs content parsing SQL cannot do.
+//
+// The whole pass runs in one BEGIN IMMEDIATE transaction and claims the work by
+// finding note_links still empty once the write lock is held. Both matter now
+// that migrations are strict (sqlite.MigrateStrict): two processes opening the
+// same pre-v6 database each read the pre-migration user_version before either
+// takes the migration lock, so both reach this function even though only one
+// applied the migration. Without the claim the loser would rewrite the index
+// from a snapshot taken before the winner began serving, silently undoing an
+// edit made in between; reading the notes inside the same transaction is what
+// stops that snapshot going stale in the first place.
+//
+// "note_links is empty" is a sound claim only because it is consulted on the
+// upgrade that creates the table and nowhere else. A corpus with no wikilinks
+// leaves the table empty and so fails to claim, which costs a second pass that
+// writes nothing — the harmless direction.
+//
+// One transaction also means a crash partway leaves no half-built index: the
+// database stays at the pre-backfill state the next start will redo.
 func backfillNoteLinks(ctx context.Context, db *sql.DB) error {
-	rows, err := db.QueryContext(ctx, `SELECT id, slug, content FROM notes`)
+	conn, err := db.Conn(ctx)
 	if err != nil {
 		return err
 	}
-	defer rows.Close()
+	defer conn.Close() //nolint:errcheck // returned to the pool
 
+	if _, err := conn.ExecContext(ctx, "BEGIN IMMEDIATE"); err != nil {
+		return err
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_, _ = conn.ExecContext(ctx, "ROLLBACK")
+		}
+	}()
+
+	var unclaimed bool
+	if err := conn.QueryRowContext(ctx,
+		`SELECT NOT EXISTS (SELECT 1 FROM note_links)`).Scan(&unclaimed); err != nil {
+		return err
+	}
+	if !unclaimed {
+		return nil
+	}
+
+	rows, err := conn.QueryContext(ctx, `SELECT id, slug, content FROM notes`)
+	if err != nil {
+		return err
+	}
 	type noteContent struct {
 		id      int64
 		slug    string
@@ -258,27 +302,29 @@ func backfillNoteLinks(ctx context.Context, db *sql.DB) error {
 	for rows.Next() {
 		var n noteContent
 		if err := rows.Scan(&n.id, &n.slug, &n.content); err != nil {
+			_ = rows.Close()
 			return err
 		}
 		notes = append(notes, n)
 	}
 	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return err
+	}
+	if err := rows.Close(); err != nil {
 		return err
 	}
 
 	for _, n := range notes {
-		tx, err := db.BeginTx(ctx, nil)
-		if err != nil {
-			return err
-		}
-		if err := setNoteLinks(ctx, tx, n.id, extractNoteLinks(n.content, n.slug)); err != nil {
-			_ = tx.Rollback()
-			return err
-		}
-		if err := tx.Commit(); err != nil {
+		if err := setNoteLinks(ctx, conn, n.id, extractNoteLinks(n.content, n.slug)); err != nil {
 			return err
 		}
 	}
+
+	if _, err := conn.ExecContext(ctx, "COMMIT"); err != nil {
+		return err
+	}
+	committed = true
 	return nil
 }
 

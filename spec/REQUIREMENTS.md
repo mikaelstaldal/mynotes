@@ -1233,10 +1233,16 @@ DOMPurify pass on the page, exactly as in the real app.
   sources are permitted; unsafe HTML/schemes cause a write to be rejected.
 - The whole app may be gated behind optional HTTP Basic Auth, **except the
   published-note surface** (§Publishing), which exists to be readable without
-  credentials. That exemption covers exactly `/public/…`: a published page, an
-  artifact some published note references, and the stylesheet those pages need.
-  Nothing else under that path is served, so an unauthenticated request cannot
-  fall through to any other part of the app.
+  credentials. The htpasswd file is parsed strictly, rather than leaving the
+  operator with a login they believe in that silently does not exist: a line
+  that is not a `username:bcrypt-hash` pair, or a duplicate username, fails
+  startup naming the file and the line; a file with no entries at all fails
+  naming the file, there being no line to point at.
+
+  That exemption covers exactly `/public/…`: a published page, an artifact some
+  published note references, and the stylesheet those pages need. Nothing else
+  under that path is served, so an unauthenticated request cannot fall through
+  to any other part of the app.
 - A published page is static: it is served with a policy that allows it no
   script, no frames, and no form submission, and can be framed by nobody. That
   holds whatever reaches it, which is why author CSS may be published verbatim.

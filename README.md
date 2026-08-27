@@ -59,7 +59,7 @@ The SQLite database is created automatically at `data/mynotes.sqlite` on first r
 | `-port`            | `8080`      | HTTP listen port                                                                                               |
 | `-data`            | `data`      | data directory (holds the SQLite file)                                                                         |
 | `-public-url`      | —           | public base URL for CSRF validation behind a proxy; an `https://` URL also enables `Strict-Transport-Security` |
-| `-basic-auth-file` | —           | htpasswd file (bcrypt) to enable HTTP basic auth                                                               |
+| `-basic-auth-file` | —           | htpasswd file (bcrypt) to enable HTTP basic auth; a malformed, duplicate or non-bcrypt entry fails startup      |
 | `-demo-server`     | —           | run the browser-only demo (no database, no REST API); see [Demo mode](#demo-mode)                              |
 | `-demo-bundle`     | —           | write a static demo site to this new directory and exit                                                        |
 
