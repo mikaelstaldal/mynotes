@@ -4,7 +4,9 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 
@@ -12,6 +14,55 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// TestSchemaSnapshot keeps the human-readable schema reference in spec/ tied
+// to the result of applying every migration to a fresh database. Set
+// UPDATE_SCHEMA_SNAPSHOT=1 to rewrite the snapshot after appending a migration.
+func TestSchemaSnapshot(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "schema.sqlite")
+	db, err := OpenDB(path, 0)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = db.Close() })
+
+	rows, err := db.Query(`SELECT sql
+		FROM sqlite_schema
+		WHERE sql IS NOT NULL
+		  AND name NOT LIKE 'sqlite_%'
+		  AND (type != 'table' OR NOT EXISTS (
+		    SELECT 1
+		    FROM sqlite_schema AS virtual_table
+		    WHERE virtual_table.type = 'table'
+		      AND virtual_table.sql LIKE 'CREATE VIRTUAL TABLE%'
+		      AND sqlite_schema.name GLOB virtual_table.name || '_*'
+		  ))
+		ORDER BY CASE type WHEN 'table' THEN 1 WHEN 'index' THEN 2 WHEN 'trigger' THEN 3 ELSE 4 END,
+		         name`)
+	require.NoError(t, err)
+	defer rows.Close()
+
+	var statements []string
+	for rows.Next() {
+		var statement string
+		require.NoError(t, rows.Scan(&statement))
+		statements = append(statements, strings.TrimSpace(statement)+";")
+	}
+	require.NoError(t, rows.Err())
+
+	version, err := sqlite.UserVersion(db)
+	require.NoError(t, err)
+	actual := fmt.Sprintf("-- Generated from a freshly migrated database. See AGENTS.md.\nPRAGMA user_version = %d;\n\n%s\n", version, strings.Join(statements, "\n\n"))
+	snapshotPath := filepath.Join("..", "..", "spec", "schema.sql")
+	if os.Getenv("UPDATE_SCHEMA_SNAPSHOT") == "1" {
+		require.NoError(t, os.WriteFile(snapshotPath, []byte(actual), 0o644))
+		t.Log("schema snapshot rewritten")
+	}
+
+	expected, err := os.ReadFile(snapshotPath)
+	require.NoError(t, err,
+		"schema snapshot is missing; run UPDATE_SCHEMA_SNAPSHOT=1 go test ./internal/repository -run TestSchemaSnapshot")
+	assert.Equal(t, string(expected), actual,
+		"schema snapshot is stale; run UPDATE_SCHEMA_SNAPSHOT=1 go test ./internal/repository -run TestSchemaSnapshot")
+}
 
 // A database written by a newer build must be refused rather than operated on
 // with a schema this binary does not know, and the refusal must name the file

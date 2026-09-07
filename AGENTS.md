@@ -190,7 +190,12 @@ implementation and the frontend client.
   service/repository means "leave unchanged".
 - **Migrations:** append a new `[]string` to `migrations` in
   `internal/repository/db.go`; never edit an applied migration. Versioning is via
-  `PRAGMA user_version`.
+  `PRAGMA user_version`. `spec/schema.sql` is the readable snapshot of the
+  current schema produced by applying all migrations to a fresh database. After
+  appending a migration, refresh it with
+  `UPDATE_SCHEMA_SNAPSHOT=1 go test ./internal/repository -run TestSchemaSnapshot`
+  and commit the result; the ordinary Go test run in `build.sh` verifies that
+  the snapshot still matches a freshly migrated database.
 
 ## Tests
 

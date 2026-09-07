@@ -48,6 +48,10 @@ There is no `content_html` field and no server render endpoint.
 
 ## Data model & persistence (SQLite)
 
+The complete current DDL is recorded in `schema.sql`; the build verifies that
+snapshot against a database produced by applying every migration from scratch.
+The excerpts below explain the design of the initial schema and its indexes.
+
 Fresh schema `schemaV1` replaces the template's `items` schema (the `items`
 migration history is discarded; `migrations[0]` becomes MyNotes `schemaV1`,
 `PRAGMA user_version` driven from 1). Targets a fresh data directory; pointing at
