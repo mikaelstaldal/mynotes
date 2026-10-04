@@ -4,7 +4,7 @@
 # checkout.
 #
 # Why this exists: the runtime code is vendored as pre-built bundles in
-# web/static/vendor/, but their *type* declarations are not part of those
+# web/static/third_party/, but their *type* declarations are not part of those
 # bundles. tsconfig.json maps 'markdown-it' and 'dompurify' into this
 # directory's node_modules, and codemirror.d.ts re-exports from it, so without
 # these files the build fails with TS2307. They are vendored as ONE
@@ -17,7 +17,7 @@
 #
 # Idempotent, and a no-op on a maintainer machine where rebuild.sh has already
 # installed the full tree. Uses only tar/gzip (no package manager), so build.sh
-# stays free of npm. Regenerate via web/ts/vendor/rebuild.sh (maintainer-only).
+# stays free of npm. Regenerate via web/ts/third_party/rebuild.sh (maintainer-only).
 set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")"

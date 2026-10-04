@@ -6,7 +6,7 @@
 // cover the wiring that has no other way to fail loudly:
 //
 //   * The import maps in web/static/index.html and web/static/render/index.html
-//     are hand-maintained (web/ts/vendor/rebuild.sh only prints a reminder), so
+//     are hand-maintained (web/ts/third_party/rebuild.sh only prints a reminder), so
 //     a version bump can leave either pointing at a file that no longer exists,
 //     or leave the two pages on different versions of the same library.
 //   * The render page's CSP hash covers the exact bytes of its import map. A
@@ -50,7 +50,7 @@ function importMap(rel) {
   return JSON.parse(importMapText(readPage(rel), rel)).imports;
 }
 
-// "../vendor/markdown-it-14.2.0.js" -> "markdown-it-14.2.0.js"
+// "../third_party/markdown-it-14.2.0.js" -> "markdown-it-14.2.0.js"
 function bundleName(target) {
   return path.basename(target);
 }
@@ -73,7 +73,7 @@ for (const page of [APP_PAGE, RENDER_PAGE]) {
       assert.ok(
         fs.existsSync(resolved),
         `${page}: "${specifier}" -> ${target} does not exist (${resolved}). ` +
-          'Update the import map after a vendor version bump — see web/ts/vendor/rebuild.sh.',
+          'Update the import map after a vendor version bump — see web/ts/third_party/rebuild.sh.',
       );
     }
   });
@@ -147,13 +147,13 @@ test('tools/dist-renderer.sh copies files that exist', () => {
   const prefixes = /^VENDOR_PREFIXES=\(([^)]*)\)$/m.exec(script);
   assert.ok(prefixes, 'dist-renderer.sh: could not find VENDOR_PREFIXES');
   const listedPrefixes = prefixes[1].trim().split(/\s+/);
-  const vendorDir = path.join(STATIC, 'vendor');
+  const vendorDir = path.join(STATIC, 'third_party');
   for (const prefix of listedPrefixes) {
     const matches = fs.readdirSync(vendorDir).filter((f) => f.startsWith(prefix) && f.endsWith('.js'));
     assert.equal(
       matches.length,
       1,
-      `dist-renderer.sh: expected exactly one ${prefix}*.js in web/static/vendor, found ${matches.length}`,
+      `dist-renderer.sh: expected exactly one ${prefix}*.js in web/static/third_party, found ${matches.length}`,
     );
   }
 

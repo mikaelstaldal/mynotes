@@ -22,7 +22,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // jsdom must be installed in globalThis BEFORE markdown.js is evaluated:
 // DOMPurify detects its own environment (reads `window`) at module-load time,
 // and basepath.js reads the <base href> below at its own load time.
-const { JSDOM } = await import(path.resolve(__dirname, 'vendor/test/jsdom.js'));
+const { JSDOM } = await import(path.resolve(__dirname, 'third_party/test/jsdom.js'));
 const { window } = new JSDOM('<!doctype html><html><head><base href="/mynotes/"></head><body></body></html>');
 globalThis.window = window;
 globalThis.document = window.document;

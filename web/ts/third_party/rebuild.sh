@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Maintainer-only script. Fetches the pinned upstream sources for the vendored
 # browser libraries (CodeMirror, markdown-it, DOMPurify, …) via npm and bundles
-# each into a single self-contained ESM file under web/static/vendor/, copies
+# each into a single self-contained ESM file under web/static/third_party/, copies
 # Preact's prebuilt ESM modules + type stubs, and builds a test-only jsdom bundle
-# under web/ts/vendor/test/ used by the node --test XSS-gate tests.
+# under web/ts/third_party/test/ used by the node --test XSS-gate tests.
 #
 # Every browser bundle filename is version-stamped (e.g. dompurify-3.4.11.js,
 # preact-10.29.7.module.js) from the installed package version, so a file's name
@@ -27,7 +27,7 @@ set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
 VENDOR_DIR="$(pwd)"
-BROWSER_OUT="$VENDOR_DIR/../../static/vendor"
+BROWSER_OUT="$VENDOR_DIR/../../static/third_party"
 TEST_DIR="$VENDOR_DIR/test"
 PREACT_OUT="$BROWSER_OUT/preact"    # runtime ESM modules served to the browser
 PREACT_TYPES="$VENDOR_DIR/preact"   # .d.ts type stubs (compile-time only)
@@ -162,8 +162,8 @@ echo "  codemirror-$CODEMIRROR_VER.js markdown-it-$MARKDOWNIT_VER.js dompurify-$
 #
 # Preact ships prebuilt self-contained ESM (dist/*.module.js) plus its own .d.ts,
 # so no esbuild step is needed — copy them verbatim. The runtime modules go to
-# web/static/vendor/preact/ (served, version-stamped, loaded via the import map);
-# the .d.ts go to web/ts/vendor/preact/ (compile-time only, resolved via the
+# web/static/third_party/preact/ (served, version-stamped, loaded via the import map);
+# the .d.ts go to web/ts/third_party/preact/ (compile-time only, resolved via the
 # tsconfig `paths` entries, so they are NOT version-stamped).
 
 mkdir -p "$PREACT_OUT" "$PREACT_TYPES/src" "$PREACT_TYPES/hooks/src" "$PREACT_TYPES/jsx-runtime/src"
@@ -260,7 +260,7 @@ node "$VENDOR_DIR/gen-lucide.mjs" \
 # against. Vendor just the declarations — package.json for module resolution,
 # *.d.ts/*.d.mts/*.d.cts, and LICENSE — as ONE deterministic tarball, the same
 # treatment jsdom gets below. No JavaScript goes in, and nothing from it
-# reaches the browser; web/ts/vendor/unpack.sh (tar only, no npm) restores it
+# reaches the browser; web/ts/third_party/unpack.sh (tar only, no npm) restores it
 # at build time.
 #
 # The package list is the closure tsc actually needs: the two mapped in
@@ -389,14 +389,14 @@ cat <<EOF
 Reminder: update the import maps in web/static/index.html and
 web/static/render/index.html (render pipeline subset only: markdown-it,
 dompurify, emoji-data, lucide-icons, asciimath, mermaid) to reference:
-  preact         -> ./vendor/preact/preact-$PREACT_VER.module.js
-  preact/hooks   -> ./vendor/preact/hooks-$PREACT_VER.module.js
-  preact/jsx-runtime -> ./vendor/preact/jsx-runtime-$PREACT_VER.module.js
-  codemirror     -> ./vendor/codemirror-$CODEMIRROR_VER.js
-  markdown-it    -> ./vendor/markdown-it-$MARKDOWNIT_VER.js
-  dompurify      -> ./vendor/dompurify-$DOMPURIFY_VER.js
-  emoji-data     -> ./vendor/emoji-$EMOJI_VER.js
-  lucide-icons   -> ./vendor/lucide-$LUCIDE_VER.js
-  asciimath      -> ./vendor/asciimath-$ASCIIMATH_VER.js
-  mermaid        -> ./vendor/mermaid-$MERMAID_VER.js
+  preact         -> ./third_party/preact/preact-$PREACT_VER.module.js
+  preact/hooks   -> ./third_party/preact/hooks-$PREACT_VER.module.js
+  preact/jsx-runtime -> ./third_party/preact/jsx-runtime-$PREACT_VER.module.js
+  codemirror     -> ./third_party/codemirror-$CODEMIRROR_VER.js
+  markdown-it    -> ./third_party/markdown-it-$MARKDOWNIT_VER.js
+  dompurify      -> ./third_party/dompurify-$DOMPURIFY_VER.js
+  emoji-data     -> ./third_party/emoji-$EMOJI_VER.js
+  lucide-icons   -> ./third_party/lucide-$LUCIDE_VER.js
+  asciimath      -> ./third_party/asciimath-$ASCIIMATH_VER.js
+  mermaid        -> ./third_party/mermaid-$MERMAID_VER.js
 EOF

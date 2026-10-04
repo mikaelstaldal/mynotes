@@ -65,7 +65,7 @@ func TestBuildSeed(t *testing.T) {
 
 	// The worker rebuilds icon SVGs from this bundle (mirroring internal/icons),
 	// and resolves it relative to the deployment root.
-	assert.True(t, strings.HasPrefix(seed.LucideBundle, "vendor/lucide-"), seed.LucideBundle)
+	assert.True(t, strings.HasPrefix(seed.LucideBundle, "third_party/lucide-"), seed.LucideBundle)
 	assert.True(t, strings.HasSuffix(seed.LucideBundle, ".js"), seed.LucideBundle)
 }
 

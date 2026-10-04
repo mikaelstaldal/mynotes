@@ -134,7 +134,7 @@ done
 #
 # Three exclusions, all deliberate, because an undocumented one reads as an
 # oversight and quietly narrows what "fresh" means here:
-#   * vendor/ is committed rather than emitted (see AGENTS.md — no package
+#   * third_party/ is committed rather than emitted (see AGENTS.md — no package
 #     manager runs in this build), so it cannot go stale relative to a build.
 #   * public/ is not served as a static file at all. web/static/public/page.css
 #     is only ever delivered concatenated onto render/note.css, at
@@ -164,7 +164,7 @@ while IFS= read -r path; do
     fi
     checked=$((checked + 1))
 done < <(find web/static \( -name '*.js' -o -name '*.css' \) \
-    -not -path '*/vendor/*' -not -path 'web/static/public/*' | sort)
+    -not -path '*/third_party/*' -not -path 'web/static/public/*' | sort)
 
 # The published-page stylesheet, which is the one asset with no 1:1 URL. main.go
 # concatenates render/note.css + '\n' + public/page.css at startup and serves the

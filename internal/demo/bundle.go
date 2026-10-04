@@ -28,7 +28,7 @@ const SeedFileName = "demo-data.json"
 // result.
 type Seed struct {
 	// LucideBundle is the static path of the vendored Lucide bundle, relative to
-	// the deployment root (e.g. "vendor/lucide-1.25.0.js"). The service worker
+	// the deployment root (e.g. "third_party/lucide-1.25.0.js"). The service worker
 	// reconstructs icon SVGs from it to answer GET /api/v1/icons/lucide/{name},
 	// mirroring internal/icons. Resolved here because the filename carries a
 	// version the worker must not have to guess.
@@ -138,12 +138,12 @@ func openSeedDB() (*sql.DB, error) {
 // assets and returns its path relative to the deployment root. Mirrors the glob
 // in internal/icons so a version bump needs no edit in either place.
 func lucideBundlePath() (string, error) {
-	matches, err := fs.Glob(web.Static, "static/vendor/lucide-*.js")
+	matches, err := fs.Glob(web.Static, "static/third_party/lucide-*.js")
 	if err != nil {
 		return "", fmt.Errorf("glob lucide bundle: %w", err)
 	}
 	if len(matches) != 1 {
-		return "", fmt.Errorf("expected exactly one static/vendor/lucide-*.js, found %d", len(matches))
+		return "", fmt.Errorf("expected exactly one static/third_party/lucide-*.js, found %d", len(matches))
 	}
 	return matches[0][len("static/"):], nil
 }

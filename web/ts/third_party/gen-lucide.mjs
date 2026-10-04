@@ -1,5 +1,5 @@
 // Maintainer-only generator. Transforms lucide-static's icon-nodes.json +
-// tags.json into the compact `web/static/vendor/lucide-<version>.js` bundle consumed by
+// tags.json into the compact `web/static/third_party/lucide-<version>.js` bundle consumed by
 // the editor's icon picker and the reusable <Icon> component.
 //
 // Pure fs — no network. Invoked by rebuild.sh with the source files from the
@@ -96,7 +96,7 @@ for (const file of readdirSync(categoriesMetaDir).sort()) {
 categories.sort((a, b) => a.name.localeCompare(b.name));
 
 const header =
-  '// AUTO-GENERATED — do not edit. Regenerate via web/ts/vendor/rebuild.sh.\n' +
+  '// AUTO-GENERATED — do not edit. Regenerate via web/ts/third_party/rebuild.sh.\n' +
   '// Source: lucide-static (ISC License). ' + names.length + ' icons, ' +
   categories.length + ' categories.\n';
 

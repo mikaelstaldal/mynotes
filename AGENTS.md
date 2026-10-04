@@ -39,19 +39,19 @@ implying**: the workflow uses `npm install -g` to put `tsc` and
 the build, with `--ignore-scripts`, from pinned versions — `build.sh` itself
 installs nothing and works on a machine with no package manager at all, which is
 the property the constraint is protecting.
-`esbuild` and `npm` are required only by `web/ts/vendor/rebuild.sh`, a
+`esbuild` and `npm` are required only by `web/ts/third_party/rebuild.sh`, a
 separate, manually-run maintainer script that pre-builds the vendored
 CodeMirror/markdown-it/DOMPurify bundles, the emoji dataset
-(`web/static/vendor/emoji-<version>.js`, generated from `emojibase-data` by the committed
+(`web/static/third_party/emoji-<version>.js`, generated from `emojibase-data` by the committed
 `gen-emoji.mjs`), the TypeScript declarations those bundles do not carry
-(`web/ts/vendor/types-node_modules.tar.gz`), and the test-only jsdom bundle, and
+(`web/ts/third_party/types-node_modules.tar.gz`), and the test-only jsdom bundle, and
 commits the result; it is out-of-band, not invoked by `build.sh` or CI.
 
-`web/ts/vendor/node_modules/` is throwaway and gitignored, so the two things
+`web/ts/third_party/node_modules/` is throwaway and gitignored, so the two things
 `tsc` and the tests need from it are vendored as committed tarballs that
-`build.sh` restores with `tar` alone: `web/ts/vendor/unpack.sh` (declarations —
+`build.sh` restores with `tar` alone: `web/ts/third_party/unpack.sh` (declarations —
 `package.json`, `*.d.ts`, LICENSE; no JavaScript, nothing reaching the browser)
-and `web/ts/vendor/test/unpack.sh` (jsdom). Both are no-ops on a machine where
+and `web/ts/third_party/test/unpack.sh` (jsdom). Both are no-ops on a machine where
 `rebuild.sh` has installed the real tree. A clean checkout must build with
 `./build.sh` and nothing else — if a new tsconfig `paths` entry or `.d.ts` stub
 reaches into a package the declarations tarball lacks, that breaks, so add the
@@ -89,7 +89,7 @@ web/
     demo/                # the demo backend (see below) — worker code, built separately
     demo-sw.ts           # its service-worker entry point
     demo-client.ts       # the page half of demo mode
-    vendor/rebuild.sh    # maintainer-only: rebuilds the vendored bundles below
+    third_party/rebuild.sh    # maintainer-only: rebuilds the vendored bundles below
   static/                # embedded assets: index.html, app.css, vendored
                           # preact/CodeMirror/markdown-it/DOMPurify/emoji, compiled JS
     render/              # the shared render kit (see web/AGENTS.md), served at /render/

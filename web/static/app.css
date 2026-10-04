@@ -998,7 +998,7 @@ main.note-view-main {
    black }` — a specificity a plain `.cm-content` rule here cannot beat, so on the
    dark theme the caret is black on a near-black background, i.e. invisible. (We
    never enable CM's own dark theme: styling lives in this file, not in JS themes
-   — see web/ts/vendor/rebuild.sh, which deliberately omits EditorView.theme.) */
+   — see web/ts/third_party/rebuild.sh, which deliberately omits EditorView.theme.) */
 :root[data-theme="dark"] .cm-editor .cm-content {
   caret-color: var(--fg);
 }

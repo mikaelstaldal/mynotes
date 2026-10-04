@@ -456,7 +456,7 @@ export function NoteEditor({ slug, initialSlug, initialTitle, onSave }: Props) {
         EditorView.lineWrapping,
         // classHighlighter, not defaultHighlightStyle: it marks up tokens with
         // stable `tok-*` classes and no colours of its own, so the palette lives
-        // in app.css and follows the light/dark theme (see vendor/rebuild.sh).
+        // in app.css and follows the light/dark theme (see third_party/rebuild.sh).
         syntaxHighlighting(classHighlighter),
         syntaxHighlighting(extraHighlighter),
         markdownDialect,

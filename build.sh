@@ -37,7 +37,7 @@ run openapi-typescript openapi.yaml -o web/ts/api/types.ts
 # 3. Unpack the committed TypeScript declarations for the vendored runtime
 #    (idempotent — no-op if already present). tsc needs these to resolve
 #    'markdown-it', 'dompurify' and the CodeMirror re-exports.
-run web/ts/vendor/unpack.sh
+run web/ts/third_party/unpack.sh
 
 # 3a. Compile the TypeScript frontend to web/static/.
 run tsc --project web/ts/tsconfig.json
@@ -47,7 +47,7 @@ run tsc --project web/ts/tsconfig.json
 run tsc --project web/ts/demo/tsconfig.json
 
 # 4. Unpack the committed jsdom install tree (idempotent — no-op if already unpacked).
-run web/ts/vendor/test/unpack.sh
+run web/ts/third_party/test/unpack.sh
 
 # 5. Run frontend XSS-gate, markdown render, task-toggle, subpath-deployment,
 #    email-body, publish-fragment, MyMail-URL, render-kit wiring, HTML-import,

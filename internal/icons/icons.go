@@ -4,13 +4,13 @@
 // a short link instead of a full inline SVG.
 //
 // The icon geometry is embedded only once, in the frontend bundle
-// web/static/vendor/lucide-<version>.js (LUCIDE_ICON_NODES, name → [ [tag, attrs], … ]),
+// web/static/third_party/lucide-<version>.js (LUCIDE_ICON_NODES, name → [ [tag, attrs], … ]),
 // which the picker and the reusable <Icon> component import directly. This
 // package reads that same embedded copy (via web.Static) and reconstructs each
 // icon's standalone <svg> document at init — so the server never embeds a second
 // copy of the ~1700-icon set, and the served icons can never drift from the
 // picker previews. Both are generated from lucide-static by
-// web/ts/vendor/gen-lucide.mjs; regenerate via web/ts/vendor/rebuild.sh.
+// web/ts/third_party/gen-lucide.mjs; regenerate via web/ts/third_party/rebuild.sh.
 package icons
 
 import (
@@ -31,7 +31,7 @@ import (
 const xmlnsAttr = ` xmlns="http://www.w3.org/2000/svg"`
 
 // stroke is the mid-grey baked into the server-served SVGs; it must match STROKE
-// in web/ts/vendor/gen-lucide.mjs. An <img>-loaded SVG is an isolated document,
+// in web/ts/third_party/gen-lucide.mjs. An <img>-loaded SVG is an isolated document,
 // so it cannot follow the app's theme via currentColor the way the inline picker
 // previews (rendered from the same geometry) do.
 const stroke = "#6b7280"
@@ -47,13 +47,13 @@ var svgs = mustBuild()
 func mustBuild() map[string]string {
 	// The bundle filename carries the lucide-static version (lucide-<ver>.js),
 	// so match it by glob rather than pinning a version the maintainer would have
-	// to update here on every bump (see web/ts/vendor/rebuild.sh).
-	matches, err := fs.Glob(web.Static, "static/vendor/lucide-*.js")
+	// to update here on every bump (see web/ts/third_party/rebuild.sh).
+	matches, err := fs.Glob(web.Static, "static/third_party/lucide-*.js")
 	if err != nil {
 		panic("icons: glob lucide bundle: " + err.Error())
 	}
 	if len(matches) != 1 {
-		panic(fmt.Sprintf("icons: expected exactly one static/vendor/lucide-*.js, found %d", len(matches)))
+		panic(fmt.Sprintf("icons: expected exactly one static/third_party/lucide-*.js, found %d", len(matches)))
 	}
 	raw, err := web.Static.ReadFile(matches[0])
 	if err != nil {
@@ -132,7 +132,7 @@ func (c *iconChild) UnmarshalJSON(b []byte) error {
 }
 
 // escapeAttr escapes an attribute value for the SVG document; mirrors escapeAttr
-// in web/ts/vendor/gen-lucide.mjs (& first, then < > ").
+// in web/ts/third_party/gen-lucide.mjs (& first, then < > ").
 func escapeAttr(v string) string {
 	v = strings.ReplaceAll(v, "&", "&amp;")
 	v = strings.ReplaceAll(v, "<", "&lt;")

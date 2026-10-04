@@ -14,7 +14,7 @@
 #
 # The output mirrors web/static/'s directory layout, because render/index.html's
 # import map and the compiled modules reference each other by relative path
-# (../vendor/…, ../util/…). Flattening the tree would break them.
+# (../third_party/…, ../util/…). Flattening the tree would break them.
 set -euo pipefail
 
 if [ $# -ne 1 ]; then
@@ -47,10 +47,10 @@ FILES=(
 vendor_file() {
   local prefix="$1" matches=()
   shopt -s nullglob
-  matches=("$STATIC/vendor/$prefix"*.js)
+  matches=("$STATIC/third_party/$prefix"*.js)
   shopt -u nullglob
   if [ ${#matches[@]} -ne 1 ]; then
-    echo "$(basename "$0"): expected exactly one $prefix*.js in $STATIC/vendor, found ${#matches[@]}" >&2
+    echo "$(basename "$0"): expected exactly one $prefix*.js in $STATIC/third_party, found ${#matches[@]}" >&2
     exit 1
   fi
   printf '%s\n' "${matches[0]}"
@@ -66,14 +66,14 @@ done
 # Replace the whole tree rather than merging, so a bundle that is no longer part
 # of the kit (or an old version-stamped name) cannot linger in the consumer.
 rm -rf "$OUT"
-mkdir -p "$OUT/render" "$OUT/util" "$OUT/vendor"
+mkdir -p "$OUT/render" "$OUT/util" "$OUT/third_party"
 
 for f in "${FILES[@]}"; do
   cp "$STATIC/$f" "$OUT/$f"
 done
 
 for prefix in "${VENDOR_PREFIXES[@]}"; do
-  cp "$(vendor_file "$prefix")" "$OUT/vendor/"
+  cp "$(vendor_file "$prefix")" "$OUT/third_party/"
 done
 
 # Record what was copied, so a consumer repo's diff shows the version bump.

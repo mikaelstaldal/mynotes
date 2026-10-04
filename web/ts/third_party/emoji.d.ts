@@ -1,4 +1,4 @@
-// Types for the generated web/static/vendor/emoji-<version>.js bundle (emojibase-data).
+// Types for the generated web/static/third_party/emoji-<version>.js bundle (emojibase-data).
 // Mapped to the bare specifier "emoji-data" in tsconfig paths + the index.html
 // import map, mirroring the other vendored bundles.
 

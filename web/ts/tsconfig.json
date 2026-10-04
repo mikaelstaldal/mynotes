@@ -11,16 +11,16 @@
     "noEmitOnError": true,
     "outDir": "../static",
     "paths": {
-      "preact": ["./vendor/preact/src/index.d.ts"],
-      "preact/hooks": ["./vendor/preact/hooks/src/index.d.ts"],
-      "preact/jsx-runtime": ["./vendor/preact/jsx-runtime/src/index.d.ts"],
-      "codemirror": ["./vendor/codemirror.d.ts"],
-      "markdown-it": ["./vendor/node_modules/@types/markdown-it/index.d.mts"],
-      "dompurify": ["./vendor/node_modules/dompurify/dist/purify.es.d.mts"],
-      "emoji-data": ["./vendor/emoji.d.ts"],
-      "lucide-icons": ["./vendor/lucide.d.ts"],
-      "asciimath": ["./vendor/asciimath.d.ts"],
-      "mermaid": ["./vendor/mermaid.d.ts"]
+      "preact": ["./third_party/preact/src/index.d.ts"],
+      "preact/hooks": ["./third_party/preact/hooks/src/index.d.ts"],
+      "preact/jsx-runtime": ["./third_party/preact/jsx-runtime/src/index.d.ts"],
+      "codemirror": ["./third_party/codemirror.d.ts"],
+      "markdown-it": ["./third_party/node_modules/@types/markdown-it/index.d.mts"],
+      "dompurify": ["./third_party/node_modules/dompurify/dist/purify.es.d.mts"],
+      "emoji-data": ["./third_party/emoji.d.ts"],
+      "lucide-icons": ["./third_party/lucide.d.ts"],
+      "asciimath": ["./third_party/asciimath.d.ts"],
+      "mermaid": ["./third_party/mermaid.d.ts"]
     },
     "lib": ["ES2020", "DOM", "DOM.Iterable"]
   },
@@ -29,5 +29,5 @@
     "demo/ and demo-sw.ts are the demo service worker: worker code, not DOM code.",
     "They build separately under demo/tsconfig.json (see the comment there)."
   ],
-  "exclude": ["vendor", "demo", "demo-sw.ts"]
+  "exclude": ["third_party", "demo", "demo-sw.ts"]
 }

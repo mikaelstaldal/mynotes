@@ -186,7 +186,7 @@ host page — its own import map, its own `<meta>` CSP, no note content of its o
 Markdown through that API; the DOMPurify gate is the only path to the DOM.
 
 - **No duplication in-repo.** The page references `../util/*.js` and
-  `../vendor/*.js` by relative path; nothing is copied or re-bundled here, and
+  `../third_party/*.js` by relative path; nothing is copied or re-bundled here, and
   no new build tooling is involved. `tools/dist-renderer.sh <outdir>` is a plain
   `cp` that reproduces that subtree for a consumer to vendor.
 - **`web/static/render/note.css` is the canonical note stylesheet**, `@import`ed
@@ -314,20 +314,20 @@ middleware, optional Basic Auth, GET side-effect free.
 ### Vendored libraries (CSP `script-src 'self'`)
 
 CodeMirror 6, markdown-it, DOMPurify are pre-bundled by **esbuild** into
-self-contained ESM files under `web/static/vendor/` (`codemirror.js`,
+self-contained ESM files under `web/static/third_party/` (`codemirror.js`,
 `markdown-it.js`, `dompurify.js`), each added to the import map in
 `web/static/index.html`, and committed like the vendored Preact files.
 
 **Supply-chain stance:** `build.sh` never runs `npm`/`npx`/`yarn`/`pnpm`/`bun`. The
 bundles are committed source-of-truth artifacts; `build.sh` consumes them and
 does not rebuild them. They are regenerated only by an **out-of-band, manually-run
-maintainer script** (e.g. `web/ts/vendor/rebuild.sh`, not part of `build.sh` or
+maintainer script** (e.g. `web/ts/third_party/rebuild.sh`, not part of `build.sh` or
 CI) that pins upstream versions, runs `npm ci --ignore-scripts` into a throwaway
 `.gitignore`d `node_modules`, bundles with esbuild, and is the single place `npm`
 and `esbuild` are required. This keeps every package-manager install manual,
 audited, and outside the automated build.
 
-- `vendor/codemirror-<version>.js` re-exports a fixed minimal surface: from
+- `third_party/codemirror-<version>.js` re-exports a fixed minimal surface: from
   `@codemirror/view` `EditorView` (incl. `updateListener`, `dispatch`,
   `lineWrapping`) + `keymap`; from `@codemirror/state` `EditorState`,
   `EditorSelection`; from `@codemirror/commands` `defaultKeymap`, `history`,
@@ -343,10 +343,10 @@ audited, and outside the automated build.
   `classHighlighter` only assigns stable `tok-*` classes, so the palette is
   defined in `app.css` off the theme variables.
 - **TypeScript resolution:** `web/ts/tsconfig.json` needs `paths` entries for
-  `codemirror`/`markdown-it`/`dompurify` → `.d.ts` shims under `web/ts/vendor/`
+  `codemirror`/`markdown-it`/`dompurify` → `.d.ts` shims under `web/ts/third_party/`
   (upstream `@types/markdown-it`/`@types/dompurify`; a **hand-authored** shim for
   codemirror matching the re-export surface). `noEmitOnError: true` makes missing
-  types a hard `tsc` failure. Keep `exclude: ["vendor"]`.
+  types a hard `tsc` failure. Keep `exclude: ["third_party"]`.
 
 ## Build & test pipeline
 
@@ -365,7 +365,7 @@ Tests:
   rejection, title C0 rejection, removal-only round-trip spike).
 - **Handler:** request/response cycle, error→status mapping.
 - **Frontend XSS gate:** `node:test` + a committed, test-only vendored `jsdom`
-  bundle (under `web/ts/vendor/test/`; **no `npm` devDependency, no `npm ci`**),
+  bundle (under `web/ts/third_party/test/`; **no `npm` devDependency, no `npm ci`**),
   importing the **real vendored `markdown-it.js`/`dompurify.js` bundles** via a
   Node resolution shim mirroring the import map. Tests live under `web/ts` and run
   with only `node` on `$PATH`. Shared server/client parity vector for `data:` and

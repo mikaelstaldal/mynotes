@@ -531,7 +531,7 @@ func run(addr string, port int, dataDir, publicURL, basicAuthFile, basicAuthReal
 	// static handler cannot serve it: http.FileServer canonicalises
 	// "/render/index.html" to "/render/", which — being a directory — falls
 	// through to the SPA shell, leaving the page unreachable. Its sibling assets
-	// (note.css, host.js, ../vendor/*) need no such help.
+	// (note.css, host.js, ../third_party/*) need no such help.
 	mux.Handle("GET /render/{$}", renderHandler(renderHTML, renderCSP))
 	mux.HandleFunc("/", staticHandler(indexHTML))
 

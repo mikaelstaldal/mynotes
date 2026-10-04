@@ -4,7 +4,7 @@
 //
 // The loader (test-preload.mjs → test-hooks.mjs) maps the 'markdown-it' and
 // 'dompurify' bare specifiers in the compiled module to the real committed
-// vendor bundles in web/static/vendor/, so any bundle regression is caught
+// vendor bundles in web/static/third_party/, so any bundle regression is caught
 // here too.  No npm install is required.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -15,7 +15,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // jsdom must be installed in globalThis BEFORE markdown.js is evaluated:
 // DOMPurify detects its own environment (reads `window`) at module-load time.
-const { JSDOM } = await import(path.resolve(__dirname, 'vendor/test/jsdom.js'));
+const { JSDOM } = await import(path.resolve(__dirname, 'third_party/test/jsdom.js'));
 const { window } = new JSDOM('');
 globalThis.window = window;
 globalThis.document = window.document;

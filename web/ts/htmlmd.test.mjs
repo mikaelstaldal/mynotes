@@ -15,7 +15,7 @@ import path from 'node:path';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // jsdom supplies DOMParser and Node, which htmlmd.js reads as globals.
-const { JSDOM } = await import(path.resolve(__dirname, 'vendor/test/jsdom.js'));
+const { JSDOM } = await import(path.resolve(__dirname, 'third_party/test/jsdom.js'));
 const { window } = new JSDOM('');
 globalThis.window = window;
 globalThis.document = window.document;

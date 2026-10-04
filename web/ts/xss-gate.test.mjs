@@ -1,5 +1,5 @@
 // Frontend XSS-gate tests. Run via: node --test web/ts/xss-gate.test.mjs
-// Requires vendor/test/node_modules to be unpacked (vendor/test/unpack.sh).
+// Requires third_party/test/node_modules to be unpacked (third_party/test/unpack.sh).
 // Imports the real committed vendor bundles so any bundle regression is caught.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -12,7 +12,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // The DOMPurify bundle filename carries its version (dompurify-<ver>.js); resolve
 // it by glob so this test needn't be edited when the pinned version bumps.
 function vendorBundle(prefix) {
-  const dir = path.resolve(__dirname, '../static/vendor');
+  const dir = path.resolve(__dirname, '../static/third_party');
   const matches = fs
     .readdirSync(dir)
     .filter((f) => f.startsWith(prefix) && f.endsWith('.js'));
@@ -27,7 +27,7 @@ function vendorBundle(prefix) {
 // jsdom must be loaded before any browser-targeting bundle so we can install
 // DOM globals before DOMPurify reads `window` at module-evaluation time.
 const { JSDOM } = await import(
-  path.resolve(__dirname, 'vendor/test/jsdom.js')
+  path.resolve(__dirname, 'third_party/test/jsdom.js')
 );
 const { window } = new JSDOM('');
 globalThis.window = window;

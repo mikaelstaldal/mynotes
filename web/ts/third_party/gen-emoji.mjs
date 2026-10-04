@@ -1,5 +1,5 @@
 // Maintainer-only generator. Transforms emojibase-data into the compact
-// `web/static/vendor/emoji-<version>.js` bundle consumed by the editor's emoji
+// `web/static/third_party/emoji-<version>.js` bundle consumed by the editor's emoji
 // picker and the Markdown renderer's `:shortcode:` transform.
 //
 // Pure fs — no network. Invoked by rebuild.sh with the source files from the
@@ -101,7 +101,7 @@ for (const { name, emojis } of groups.values()) {
 const total = categories.reduce((n, c) => n + c.emojis.length, 0);
 
 const header =
-  '// AUTO-GENERATED — do not edit. Regenerate via web/ts/vendor/rebuild.sh.\n' +
+  '// AUTO-GENERATED — do not edit. Regenerate via web/ts/third_party/rebuild.sh.\n' +
   '// Source: emojibase-data (MIT). ' + total + ' emoji across ' + categories.length +
   ' categories, ' + Object.keys(shortcodeMap).length + ' shortcodes.\n';
 

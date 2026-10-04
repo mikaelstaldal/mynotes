@@ -16,7 +16,7 @@ import path from 'node:path';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-const { JSDOM } = await import(path.resolve(__dirname, 'vendor/test/jsdom.js'));
+const { JSDOM } = await import(path.resolve(__dirname, 'third_party/test/jsdom.js'));
 const { window } = new JSDOM('<!doctype html><html><body></body></html>', {
   url: 'https://example.com/mynotes/',
 });
