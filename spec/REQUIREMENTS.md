@@ -1226,6 +1226,16 @@ DOMPurify pass on the page, exactly as in the real app.
 
 ## Security (user-facing guarantees)
 
+- All HTTP requests, including published pages and demo-server routes, must
+  pass a Host allowlist before routing, authentication, or CSRF checks. Foreign
+  or malformed hosts receive HTTP 421. Allowed authorities are the public URL
+  and loopback/concrete bind addresses at the listener port; wildcard binds
+  require an explicit public URL. Proxy forwarding headers do not grant access.
+  Browser writes accept only the corresponding HTTP local origins and public
+  URL origin, ignoring its deployment path. These local origins are trusted
+  even behind a proxy; untrusted services must not occupy that listener port
+  on other local interfaces.
+
 - The app must not execute scripts or active content embedded in note bodies;
   rendered notes are sanitized so untrusted content cannot run code.
 - Embedded HTML in notes is allowed only for a safe set of tags/attributes; only

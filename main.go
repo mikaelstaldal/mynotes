@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io/fs"
 	"log"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -25,6 +26,7 @@ import (
 
 	"github.com/mikaelstaldal/go-server-common/auth"
 	"github.com/mikaelstaldal/go-server-common/csrf"
+	"github.com/mikaelstaldal/go-server-common/hostguard"
 	"github.com/mikaelstaldal/go-server-common/httputil"
 	commonweb "github.com/mikaelstaldal/go-server-common/web"
 	"github.com/mikaelstaldal/mynotes/internal/api"
@@ -50,7 +52,7 @@ func main() {
 	port := flag.Int("port", 8080, "HTTP listen port")
 	addr := flag.String("addr", "127.0.0.1", "bind address")
 	dataDir := flag.String("data", "data", "data directory")
-	publicURL := flag.String("public-url", "", "public-facing base URL for CSRF validation, e.g. https://example.com (defaults to http://<addr>:<port>)")
+	publicURL := flag.String("public-url", "", "public-facing base URL for Host and CSRF validation, e.g. https://example.com (optional for concrete binds; required for wildcard binds)")
 	basicAuthFile := flag.String("basic-auth-file", "", "enable HTTP basic auth using this htpasswd file (bcrypt only)")
 	basicAuthRealm := flag.String("basic-auth-realm", "MyNotes", "realm for HTTP basic auth")
 	importMdDir := flag.String("import-md-dir", "", "import every .md file in this directory (recursively) as a note, then exit")
@@ -401,6 +403,10 @@ func injectMetaCSP(html []byte, csp string) []byte {
 }
 
 func run(addr string, port int, dataDir, publicURL, basicAuthFile, basicAuthRealm string, demoMode bool) error {
+	policy, err := hostguard.New(publicURL, addr, port)
+	if err != nil {
+		return err
+	}
 	// --- storage -----------------------------------------------------------
 	// Demo mode has no storage at all: the browser is the backend (see
 	// web/ts/demo/), so no database is opened and no API routes are mounted.
@@ -536,47 +542,13 @@ func run(addr string, port int, dataDir, publicURL, basicAuthFile, basicAuthReal
 	mux.HandleFunc("/", staticHandler(indexHTML))
 
 	// --- middleware chain (outermost first) --------------------------------
-	serverOrigin, err := csrf.ResolveServerOrigin(publicURL, addr, port)
+	httpHandler, err := serverMiddleware(mux, policy, publicURL, basicAuthFile, basicAuthRealm, csp)
 	if err != nil {
 		return err
 	}
-	var httpHandler http.Handler = mux
-	httpHandler = csrf.Middleware(serverOrigin)(httpHandler)
-
-	// Enable HSTS when the public URL is served over HTTPS (typically behind a
-	// TLS-terminating proxy). Without a public URL we assume plain HTTP.
-	hsts := ""
-	if strings.HasPrefix(strings.ToLower(publicURL), "https://") {
-		hsts = "max-age=31536000"
-	}
-
-	httpHandler = httputil.SecurityHeaders(httputil.SecurityHeadersOptions{
-		CSP:            csp,
-		ReferrerPolicy: "same-origin",
-		HSTS:           hsts,
-	})(httpHandler)
-	if basicAuthFile != "" {
-		// Strict: MyNotes reads a file it owns, so a line that is not a
-		// username:bcrypt-hash pair is an operator mistake worth failing at
-		// boot, not a login to skip silently. No username validator — MyNotes
-		// gives usernames no vocabulary of their own; they name nothing in the
-		// database, the filesystem or a URL.
-		htpasswd, err := auth.LoadHtpasswdStrict(basicAuthFile, nil)
-		if err != nil {
-			return fmt.Errorf("load htpasswd: %w", err)
-		}
-		// Everything is private except the published-note surface, which exists
-		// precisely to be shared with people who have no account here. The
-		// exemption is a path prefix rather than a second handler tree so the
-		// public routes keep the body limit, the security headers, and the CSRF
-		// check that wrap everything else.
-		httpHandler = exemptPrefix(handler.PublicPrefix, htpasswd.Middleware(basicAuthRealm))(httpHandler)
-		log.Printf("basic authentication enabled (except %s)", handler.PublicPrefix)
-	}
-	httpHandler = http.MaxBytesHandler(httpHandler, maxRequestBody)
 
 	// --- server with graceful shutdown -------------------------------------
-	serverAddr := fmt.Sprintf("%s:%d", addr, port)
+	serverAddr := net.JoinHostPort(addr, fmt.Sprint(port))
 	srv := &http.Server{
 		Addr:              serverAddr,
 		Handler:           httpHandler,
@@ -601,6 +573,47 @@ func run(addr string, port int, dataDir, publicURL, basicAuthFile, basicAuthReal
 		return fmt.Errorf("server: %w", err)
 	}
 	return nil
+}
+
+// serverMiddleware is shared by the normal and demo servers. Host validation
+// wraps every route and authentication exemption; CSRF uses the same policy.
+func serverMiddleware(next http.Handler, policy *hostguard.Policy, publicURL, basicAuthFile, basicAuthRealm, csp string) (http.Handler, error) {
+	httpHandler := next
+	httpHandler = csrf.MiddlewareOrigins(policy.Origins()...)(httpHandler)
+
+	// Enable HSTS when the public URL is served over HTTPS (typically behind a
+	// TLS-terminating proxy). Without a public URL we assume plain HTTP.
+	hsts := ""
+	if strings.HasPrefix(strings.ToLower(publicURL), "https://") {
+		hsts = "max-age=31536000"
+	}
+
+	httpHandler = httputil.SecurityHeaders(httputil.SecurityHeadersOptions{
+		CSP:            csp,
+		ReferrerPolicy: "same-origin",
+		HSTS:           hsts,
+	})(httpHandler)
+	if basicAuthFile != "" {
+		// Strict: MyNotes reads a file it owns, so a line that is not a
+		// username:bcrypt-hash pair is an operator mistake worth failing at
+		// boot, not a login to skip silently. No username validator — MyNotes
+		// gives usernames no vocabulary of their own; they name nothing in the
+		// database, the filesystem or a URL.
+		htpasswd, err := auth.LoadHtpasswdStrict(basicAuthFile, nil)
+		if err != nil {
+			return nil, fmt.Errorf("load htpasswd: %w", err)
+		}
+		// Everything is private except the published-note surface, which exists
+		// precisely to be shared with people who have no account here. The
+		// exemption is a path prefix rather than a second handler tree so the
+		// public routes keep the body limit, the security headers, and the CSRF
+		// check that wrap everything else.
+		httpHandler = exemptPrefix(handler.PublicPrefix, htpasswd.Middleware(basicAuthRealm))(httpHandler)
+		log.Printf("basic authentication enabled (except %s)", handler.PublicPrefix)
+	}
+	httpHandler = http.MaxBytesHandler(httpHandler, maxRequestBody)
+
+	return policy.Middleware(httpHandler), nil
 }
 
 // buildIndexHTML reads the embedded SPA shell and applies the two

@@ -58,7 +58,7 @@ The SQLite database is created automatically at `data/mynotes.sqlite` on first r
 | `-addr`            | `127.0.0.1` | bind address                                                                                                   |
 | `-port`            | `8080`      | HTTP listen port                                                                                               |
 | `-data`            | `data`      | data directory (holds the SQLite file)                                                                         |
-| `-public-url`      | —           | public base URL for CSRF validation behind a proxy; an `https://` URL also enables `Strict-Transport-Security` |
+| `-public-url`      | —           | public base URL for Host and CSRF validation behind a proxy; an `https://` URL also enables `Strict-Transport-Security` |
 | `-basic-auth-file` | —           | htpasswd file (bcrypt) to enable HTTP basic auth; a malformed, duplicate or non-bcrypt entry fails startup      |
 | `-demo-server`     | —           | run the browser-only demo (no database, no REST API); see [Demo mode](#demo-mode)                              |
 | `-demo-bundle`     | —           | write a static demo site to this new directory and exit                                                        |
@@ -66,6 +66,17 @@ The SQLite database is created automatically at `data/mynotes.sqlite` on first r
 A `-public-url` with a path component (e.g. `https://example.com/mynotes`) also
 serves the UI under that subpath. The path may contain only `A-Z a-z 0-9 . _ ~ - /`, 
 since it is injected into the page's `<base href>`; the server refuses to start otherwise.
+
+Every request, including published pages and demo-server routes, must use an
+allowed Host; foreign or malformed authorities receive HTTP 421. The allowlist
+includes `localhost`, `127.0.0.1`, `[::1]`, and the concrete bind address at
+`-port`, plus the authority of `-public-url`. Browser writes use the corresponding
+origins for CSRF validation; the public URL path is ignored for both checks.
+Wildcard binds (`-addr 0.0.0.0`, `-addr ::`, or an empty address) require
+`-public-url`. Behind a reverse proxy, set that URL to the browser-facing URL
+and preserve its Host or send an allowed local Host including the listener port.
+`Forwarded` and `X-Forwarded-Host` cannot authorize a Host. For example:
+`./mynotes -addr 0.0.0.0 -public-url https://example.com/mynotes`.
 
 ## Demo mode
 

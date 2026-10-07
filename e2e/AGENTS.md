@@ -35,12 +35,13 @@ The two things it exists to prevent are easy to hit and neither announces itself
   something already holds 8091, a hand-started server exits on bind failure while the tests
   run happily against the squatter.
 
-If you do start one by hand, `-public-url` must match the test baseURL origin
-(`http://localhost:8091`), or CSRF rejects with 403 any write driven **through the page**.
-Not every write: `csrf.Middleware` allows a request carrying neither `Origin` nor `Referer`
-(the native-client path), and Playwright's `request` fixture sends neither — so an API-level
-write succeeds against a mismatched `-public-url` and the flag only bites once a test clicks
-Save. Measured, not assumed: 201 without an `Origin` header, 403 with a page-style one.
+If you do start one by hand, use `-public-url http://localhost:8091` to match
+this suite's deployment configuration. Host validation and CSRF share a policy:
+loopback authorities and HTTP origins at the listener port are always allowed,
+so localhost page writes also work without that flag. Foreign Hosts receive 421
+on every method; browser writes from foreign origins receive 403. Requests with
+neither `Origin` nor `Referer` (including Playwright's `request` fixture) bypass
+the CSRF origin check, but still pass through Host validation.
 
 **And a hand-started server is only half the run.** `demo-*.spec.ts` runs in the
 `chromium-demo` project against `http://localhost:8092`, which `test-e2e.sh` serves with a

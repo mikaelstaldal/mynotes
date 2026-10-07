@@ -137,7 +137,9 @@ journalctl -u mynotes -f
 
 MyNotes does not terminate TLS itself. Place it behind a reverse proxy.
 
-Start MyNotes with `-public-url https://notes.example.com` (an `https://` URL also enables `Strict-Transport-Security`). The CSRF middleware rejects state-changing requests whose `Origin` or `Referer` does not match the configured public URL.
+Start MyNotes with `-public-url https://notes.example.com` (an `https://` URL also enables `Strict-Transport-Security`). The Host allowlist applies to every route, including published pages and demo mode, and rejects foreign or malformed authorities with HTTP 421 before authentication. The proxy must preserve the public Host or send an allowed local Host with the listener port; forwarding headers do not authorize a Host. Wildcard binds (`0.0.0.0`, `::`, or an empty address) require `-public-url`.
+
+CSRF accepts the public URL origin (ignoring any deployment path), plus HTTP origins for `localhost`, `127.0.0.1`, `[::1]`, and a concrete bind address at the listener port. Browser writes from other origins receive 403; native requests without Origin or Referer remain accepted. These local origins are trusted even behind a proxy: avoid running untrusted local services at that port on another interface.
 
 One requirement regardless of which reverse proxy you use:
 

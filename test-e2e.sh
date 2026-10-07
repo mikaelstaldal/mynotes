@@ -84,17 +84,10 @@ for p in "$PORT" "$DEMO_PORT"; do
     fi
 done
 
-# -public-url must match the baseURL origin in e2e/playwright.config.ts, or CSRF
-# rejects any write driven through the PAGE with 403.
-#
-# Stated precisely because the obvious stronger claim is wrong, and was checked:
-# go-server-common's csrf.Middleware allows a request carrying neither Origin nor
-# Referer (that is the native-client path), and Playwright's `request` fixture
-# sends neither — so an API-level POST returns 201 even against a deliberately
-# mismatched -public-url. Measured: 201 without an Origin header, 403 with a
-# page-style one. The flag therefore costs nothing today and is required the
-# moment a test clicks Save instead of calling the API, which is exactly when it
-# would be hardest to diagnose.
+# Keep -public-url aligned with the baseURL in e2e/playwright.config.ts.
+# Host and CSRF share a policy; localhost at the listener port is always allowed.
+# Foreign Hosts receive 421 even for native requests without Origin/Referer;
+# browser writes from foreign origins receive 403.
 #
 # The server binds 127.0.0.1 (the -addr default) and everything here addresses
 # `localhost`. On a host that resolves localhost to ::1 only, the readiness probe
