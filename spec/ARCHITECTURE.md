@@ -394,11 +394,11 @@ credentials, just as it ignores Basic credentials.
 
 OpenAPI describes raw token and OAuth routes, which are excluded from ogen
 server generation and mounted explicitly. The TypeScript types still cover them.
-`go-server-common/devicegrant` v1.13.2 supplies authorization, polling, expiry,
-limits, denial exchange and atomic mint/consume transactions. Its consent handler
-requires a nonempty resource scope, so a narrow MyNotes consent adapter validates
-empty scope and records pending→approved/denied using the same schema and SQLite
-write-lock discipline. There are no resource selectors or synthetic resource scopes.
+`go-server-common/devicegrant` v1.14.0 supplies authorization, consent, polling,
+expiry, limits, denial exchange and atomic mint/consume transactions. MyNotes
+sets `AllowEmptyScope: true` and mounts the shared approval handler directly.
+Its scope validator rejects every nonempty resource scope, both at approval and
+exchange. There are no resource selectors or synthetic resource scopes.
 The shared polling callback creates the token using only its supplied transaction.
 `devicegrant/client` supplies timeout/drop retries and lost-response guidance.
 

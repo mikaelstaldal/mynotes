@@ -161,9 +161,9 @@ polling, caps, expiry and single-use exchange. The public exemptions match only
 POST `/api/v1/oauth/device_authorization` and `/api/v1/oauth/token` with canonical
 paths. Both refuse bearer credentials. GET/POST `/api/v1/oauth/device/{user_code}`
 require full access. Minting must use the shared transaction, so token creation
-and grant consumption commit together. The published v1.13.2 consent handler
-requires a resource scope; MyNotes currently uses a narrowly documented unscoped
-consent adapter pending a release of the shared `AllowEmptyScope` setting.
+and grant consumption commit together. The shared v1.14.0 consent handler
+uses `AllowEmptyScope: true` for MyNotes. `ValidateScope` still rejects every
+nonempty resource scope on approval and exchange.
 
 OAuth/token routes use dedicated raw handlers and are excluded in
 `internal/.ogen.yml`; OpenAPI still generates their frontend types. Add new
