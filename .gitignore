@@ -44,3 +44,5 @@ web/static/**/*.js
 /ignored
 
 /mynotes-token
+
+/mynotes-cli

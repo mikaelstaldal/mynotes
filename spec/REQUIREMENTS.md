@@ -1308,3 +1308,30 @@ DOMPurify pass on the page, exactly as in the real app.
   attempts to close the window, with completion text when closing is blocked.
   Lookup/decision errors remain recoverable. Both themes and deployment prefixes
   are supported. Demo mode offers neither API tokens nor device login.
+
+## Read-only command-line API client
+
+`./build.sh` builds `mynotes-cli`, also included in the rolling binary release.
+It supports `notes list`, `notes search -q TEXT`, `notes get SLUG`,
+`notes markdown SLUG`, `tags list`, `artifacts get SHA256` and `icons get NAME`
+(the Lucide set). Every request is GET-only; writes, token management and device
+consent have no command. Tags are result filters, never resource scopes.
+
+Global `-url`, `-token-file` and `-token-stdin` flags precede the command.
+`MYNOTES_URL` supplies the default server URL; explicit `-url` overrides it.
+`MYNOTES_TOKEN_FILE` supplies the default token file; either explicit token flag
+replaces that default. Token flags are mutually exclusive, and an explicit
+empty token-file path is an error. Token input is bounded at 4096 bytes and
+contains one nonblank token, with surrounding whitespace allowed. Without a
+token source, no Authorization header is sent. No Basic credentials are read.
+
+Notes list/search pagination defaults to limit 50 and offset 0, with limits
+1–200 and nonnegative offsets. Browse sorting supports updated/created/title
+and asc/desc. Search requires nonblank text (at most 200 characters), and optionally
+matches the title prefix. Comma-separated tag slugs use the API's AND filter
+(up to 20 tags). JSON, Markdown, SVG and artifact bytes go to stdout unchanged;
+HTTP/request/output failures return nonzero with errors on stderr.
+
+The shared CLI transport preserves deployment path prefixes, requires HTTPS
+except literal loopback IPs, and disables redirects/environment proxies.
+In-flight requests support cancellation on Ctrl-C, SIGTERM or SIGHUP.

@@ -80,7 +80,7 @@ and preserve its Host or send an allowed local Host including the listener port.
 
 ## Read-only API tokens and device login
 
-`./build.sh` builds `mynotes-token` alongside the server. Tokens can read the
+`./build.sh` builds `mynotes-token` and `mynotes-cli` alongside the server. Tokens can read the
 **whole MyNotes API**: every note and search result, tags, artifacts, icons and
 Markdown downloads. They cannot write, manage tokens or approve devices.
 There is no per-note or tag scope. Keep a token private; the server stores only
@@ -120,6 +120,34 @@ Only the secret goes to stdout or `-out`; the revocation slug goes to stderr.
 and removes unsuccessful output. Both commands support deployment path prefixes,
 require HTTPS except for literal loopback IP addresses, disable redirects and
 environment proxies, and stop on cancellation.
+
+Use `mynotes-cli` to read the API with a token:
+
+```bash
+MYNOTES_URL=https://example.com/mynotes MYNOTES_TOKEN_FILE=./laptop.token ./mynotes-cli notes list
+./mynotes-cli -url https://example.com/mynotes -token-file laptop.token notes search -q project -tags work
+./mynotes-cli -url https://example.com/mynotes -token-file laptop.token notes get my-note
+./mynotes-cli -url https://example.com/mynotes -token-file laptop.token notes markdown my-note > my-note.md
+./mynotes-cli -url https://example.com/mynotes -token-file laptop.token tags list
+./mynotes-cli -url https://example.com/mynotes -token-file laptop.token artifacts get SHA256 > image.png
+./mynotes-cli -url https://example.com/mynotes -token-file laptop.token icons get heart > heart.svg
+```
+
+Global flags precede the command. `MYNOTES_URL` supplies the default URL;
+`-url` overrides it. `MYNOTES_TOKEN_FILE` supplies the token file; explicit
+`-token-file` or `-token-stdin` overrides it. The two token flags are mutually
+exclusive. Without a token source, no Authorization header is sent; the command
+reads no Basic credentials. All commands are GET-only. JSON, Markdown, SVG and
+binary output is copied unchanged to stdout; errors go to stderr with a nonzero
+exit status. The same HTTPS, deployment-prefix, redirect and proxy rules apply
+as for `mynotes-token`; network requests can be cancelled with Ctrl-C.
+
+`notes list` supports `-tags`, `-limit` (1–200), `-offset`, `-sort`
+(`updated`, `created`, `title`), and `-order` (`asc`, `desc`). `notes search`
+requires `-q` and supports `-tags`, pagination and `-title-prefix`. Multiple
+tag slugs are comma-separated and all must match; this filters results without
+restricting the token's access. Pages default to 50 notes and offset 0. Run
+`./mynotes-cli help` for all commands and flags.
 
 Read API resources with an Authorization header:
 

@@ -410,3 +410,13 @@ The browser's API client centralizes token metadata and consent requests. Settin
 keeps both panels mounted to preserve consent state; the dedicated HTML page
 shares the shell's import map/CSP hash and receives the deployment base path.
 Token/device routes and controls are absent in demo mode.
+
+### Read-only command-line client
+
+`cmd/cli` builds `mynotes-cli`, a GET-only script client using the same
+`internal/clihttp` transport as token management. It reads bearer secrets from
+an explicit file/stdin or `MYNOTES_TOKEN_FILE`, with explicit flags overriding
+the environment default. Its parser maps only supported read operations and
+validates route identifiers and query parameters before sending a request.
+Responses stream unchanged to stdout, including binary artifacts. Signal-based
+request contexts support cancellation; authentication uses bearer headers only.

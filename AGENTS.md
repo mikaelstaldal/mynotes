@@ -168,7 +168,8 @@ nonempty resource scope on approval and exchange.
 OAuth/token routes use dedicated raw handlers and are excluded in
 `internal/.ogen.yml`; OpenAPI still generates their frontend types. Add new
 ordinary API families to that generation filter and deliberately review bearer
-read access. `cmd/token` builds the optional `mynotes-token` CLI. Settings holds
+read access. `cmd/token` builds `mynotes-token`; `cmd/cli` builds the GET-only `mynotes-cli`
+reader. Both reuse `internal/clihttp` transport rules. Settings holds
 separate Integration/API Tokens panels, and the CLI opens `device-approval.html`.
 Demo mode has neither token routes nor consent controls/pages. The shared
 contract is `../mysuite/spec/device-login.md`.

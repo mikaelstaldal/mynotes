@@ -59,6 +59,8 @@ run env CGO_ENABLED=0 go build -trimpath -buildvcs=true -tags netgo -o "$OUTPUT_
 
 run env CGO_ENABLED=0 go build -trimpath -buildvcs=true -tags netgo -o "$OUTPUT_DIR/mynotes-token" ./cmd/token
 
+run env CGO_ENABLED=0 go build -trimpath -buildvcs=true -tags netgo -o "$OUTPUT_DIR/mynotes-cli" ./cmd/cli
+
 # 7. Run Go tests.
 run go test ./...
 
