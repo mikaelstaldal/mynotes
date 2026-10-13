@@ -105,8 +105,9 @@ adapter; business rules live in the service layer.
 "Publish" renders a note in the browser (`web/ts/util/publish.ts`, the same
 pipeline as the read view) and PUTs the HTML fragment to
 `/api/v1/notes/{slug}/publish`. The server sanitizes it, stores it, and serves it
-at **`/public/notes/{slug}` without authentication** — the one unauthenticated
-surface in the app. See spec/REQUIREMENTS.md § Publishing for the user-facing
+at **`/public/notes/{slug}` without authentication** — the unauthenticated
+note-content surface. Device login additionally exposes two protocol POST routes
+(§ API tokens and device login), which disclose no note content. See spec/REQUIREMENTS.md § Publishing for the user-facing
 contract. The parts that are easy to break:
 
 - **`/public/` is exempt from basic auth** (`exemptPrefix` in `main.go`), so
@@ -146,6 +147,31 @@ contract. The parts that are easy to break:
   note-content rules in `note.css` rather than `page.css`.
 - **Demo mode does not support publishing** (hidden via `isDemo()`); this is a
   documented divergence, not an oversight.
+
+## API tokens and device login
+
+`internal/token` implements opaque SHA-256-hashed, expiring, revocable bearer
+secrets with whole-API read-only access. There are no resource scopes. Bearer
+GET/HEAD requests can read notes/search, tags, artifacts, icons and Markdown
+downloads; management and consent require full access even for GET. Only the
+generated API handler adapts HEAD to GET; raw handlers retain native HEAD support.
+
+`go-server-common/devicegrant` and its client provide RFC 8628 authorization,
+polling, caps, expiry and single-use exchange. The public exemptions match only
+POST `/api/v1/oauth/device_authorization` and `/api/v1/oauth/token` with canonical
+paths. Both refuse bearer credentials. GET/POST `/api/v1/oauth/device/{user_code}`
+require full access. Minting must use the shared transaction, so token creation
+and grant consumption commit together. The published v1.13.2 consent handler
+requires a resource scope; MyNotes currently uses a narrowly documented unscoped
+consent adapter pending a release of the shared `AllowEmptyScope` setting.
+
+OAuth/token routes use dedicated raw handlers and are excluded in
+`internal/.ogen.yml`; OpenAPI still generates their frontend types. Add new
+ordinary API families to that generation filter and deliberately review bearer
+read access. `cmd/token` builds the optional `mynotes-token` CLI. Settings holds
+separate Integration/API Tokens panels, and the CLI opens `device-approval.html`.
+Demo mode has neither token routes nor consent controls/pages. The shared
+contract is `../mysuite/spec/device-login.md`.
 
 ## Demo mode
 
@@ -318,9 +344,11 @@ hand-started server (stale assets, a stale database, a squatter on the port), th
   'none'`. When adding outbound resources, update the relevant directive
   (`script-src`, `img-src`, `connect-src`) at the same time. Published pages have
   their own, stricter policy (§ Publishing) — it must stay script-free.
-- **Authentication is global.** Basic auth wraps the whole handler tree; the only
-  exemption is the `/public/` prefix (§ Publishing). Adding a second one means
-  deciding, deliberately, that everything reachable under it is world-readable.
+- **Authentication wraps all routes.** Basic auth exempts the `/public/` prefix
+  (§ Publishing) and only the two exact public OAuth protocol POST routes
+  (§ API tokens and device login). Bearer auth permits whole-API reads, never
+  writes, token management or device consent. Public publishing ignores attached
+  bearer credentials. Keep Host, CSRF and body-size checks outside all exemptions.
 - **GET is side-effect free:** never modify the database in a GET handler.
 - Add `maxLength` (and other) constraints in `openapi.yaml` for string query
   parameters and body fields, not just in code.

@@ -21,6 +21,7 @@ var migrations = [][]string{
 	schemaV5,
 	schemaV6,
 	schemaV7,
+	schemaV8,
 }
 
 // linksSchemaVersion is the schema version that introduces the note_links table

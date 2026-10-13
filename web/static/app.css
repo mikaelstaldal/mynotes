@@ -2108,3 +2108,17 @@ a.tag-chip:hover { border-color: var(--link); color: var(--link); }
   margin-top: 0.35rem;
   min-height: 1.5rem;
 }
+
+/* Token management and the separate device consent page. */
+.settings-tabs { display: flex; gap: 8px; margin-bottom: 16px; }
+.settings-tabs [aria-selected="true"] { background: var(--hover-bg); font-weight: 600; }
+.settings-dialog { max-height: 90vh; overflow-y: auto; }
+.device-review:disabled { background: var(--hover-bg); color: var(--muted); opacity: .55; cursor: not-allowed; }
+.device-approval dl { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px 16px; }
+.device-approval dd { margin: 0; overflow-wrap: anywhere; }
+.device-approval dt { font-weight: 600; }
+.device-actions { display: flex; gap: 8px; }
+.api-token-list { padding-left: 20px; }
+.api-token-list li { margin: 12px 0; overflow-wrap: anywhere; }
+.device-page { margin: 0; padding: 24px; }
+.device-page-content { max-width: 720px; margin: auto; }

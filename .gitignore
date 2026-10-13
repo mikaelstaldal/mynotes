@@ -42,3 +42,5 @@ web/static/**/*.js
 /web/ts/third_party/test/node_modules/
 
 /ignored
+
+/mynotes-token

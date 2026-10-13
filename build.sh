@@ -57,6 +57,8 @@ run node --import ./web/ts/test-preload.mjs --test web/ts/xss-gate.test.mjs web/
 # 6. Build the single binary (frontend is embedded via web/embed.go).
 run env CGO_ENABLED=0 go build -trimpath -buildvcs=true -tags netgo -o "$OUTPUT_DIR/mynotes" .
 
+run env CGO_ENABLED=0 go build -trimpath -buildvcs=true -tags netgo -o "$OUTPUT_DIR/mynotes-token" ./cmd/token
+
 # 7. Run Go tests.
 run go test ./...
 

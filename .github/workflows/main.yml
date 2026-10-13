@@ -171,8 +171,9 @@ jobs:
           # The asset name says what it is: the static linux/amd64 binary,
           # which is the only platform ./build.sh targets here.
           cp mynotes mynotes-linux-amd64
+          cp mynotes-token mynotes-token-linux-amd64
           gh release delete latest --yes --cleanup-tag || true
-          gh release create latest mynotes-linux-amd64 \
+          gh release create latest mynotes-linux-amd64 mynotes-token-linux-amd64 \
             --target "$SHA" \
             --title "Latest build from main" \
             --notes "Automated build of \`main\` at commit $SHA."

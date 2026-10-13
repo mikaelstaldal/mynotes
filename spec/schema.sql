@@ -1,5 +1,14 @@
 -- Generated from a freshly migrated database. See AGENTS.md.
-PRAGMA user_version = 7;
+PRAGMA user_version = 8;
+
+CREATE TABLE api_tokens (
+ id INTEGER PRIMARY KEY AUTOINCREMENT,
+ name TEXT NOT NULL,
+ slug TEXT NOT NULL UNIQUE,
+ token_hash BLOB NOT NULL UNIQUE,
+ created_at TEXT NOT NULL,
+ expires_at TEXT NOT NULL
+ );
 
 CREATE TABLE artifacts (
 		sha256       TEXT PRIMARY KEY,
@@ -7,6 +16,23 @@ CREATE TABLE artifacts (
 		content_type TEXT NOT NULL,
 		created_at   TEXT NOT NULL
 	);
+
+CREATE TABLE device_authorizations (
+ device_code_hash BLOB PRIMARY KEY NOT NULL,
+ user_code TEXT UNIQUE NOT NULL,
+ client_id TEXT NOT NULL,
+ name TEXT NOT NULL,
+ requested_scope TEXT NOT NULL,
+ requested_lifetime TEXT NOT NULL,
+ requester TEXT NOT NULL,
+ created_at TEXT NOT NULL,
+ expires_at TEXT NOT NULL,
+ last_poll_at TEXT NOT NULL DEFAULT '',
+ interval INTEGER NOT NULL,
+ status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','approved','denied')),
+ granted_scope TEXT NOT NULL DEFAULT '',
+ granted_expiry TEXT NOT NULL DEFAULT ''
+);
 
 CREATE TABLE note_links (
 		source_note_id INTEGER NOT NULL REFERENCES notes(id) ON DELETE CASCADE,

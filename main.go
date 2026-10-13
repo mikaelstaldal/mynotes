@@ -38,6 +38,7 @@ import (
 	"github.com/mikaelstaldal/mynotes/internal/mdimport"
 	"github.com/mikaelstaldal/mynotes/internal/repository"
 	"github.com/mikaelstaldal/mynotes/internal/service"
+	"github.com/mikaelstaldal/mynotes/internal/token"
 	"github.com/mikaelstaldal/mynotes/web"
 )
 
@@ -335,6 +336,10 @@ func writeDemoBundle(ctx context.Context, outDir, publicURL string) error {
 		}
 		rel := strings.TrimPrefix(path, "static")
 		rel = strings.TrimPrefix(rel, "/")
+		// Device consent needs the full-access server and is never a demo page.
+		if rel == "device-approval.html" || rel == "device-approval.js" {
+			return nil
+		}
 		dest := filepath.Join(outDir, filepath.FromSlash(rel))
 		if d.IsDir() {
 			return os.MkdirAll(dest, 0o755)
@@ -412,6 +417,7 @@ func run(addr string, port int, dataDir, publicURL, basicAuthFile, basicAuthReal
 	// web/ts/demo/), so no database is opened and no API routes are mounted.
 	var h *handler.Handler
 	var ogenServer http.Handler
+	var tokenStore *token.Store
 	if !demoMode {
 		dbPath := filepath.Join(dataDir, databaseName)
 		if err := repository.CreateDataDir(dbPath); err != nil {
@@ -437,6 +443,7 @@ func run(addr string, port int, dataDir, publicURL, basicAuthFile, basicAuthReal
 		publishSvc := service.NewPublishService(noteRepo, publishedRepo, artifactRepo)
 		h = handler.New(noteSvc, artifactSvc, tagSvc, publishSvc)
 
+		tokenStore = &token.Store{DB: db}
 		ogenServer, err = api.NewServer(h, api.WithPathPrefix("/api/v1"))
 		if err != nil {
 			return fmt.Errorf("create API server: %w", err)
@@ -512,11 +519,14 @@ func run(addr string, port int, dataDir, publicURL, basicAuthFile, basicAuthReal
 		// specific pattern wins over the "/api/v1/" ogen handler. The "lucide" segment
 		// namespaces the set, leaving room for other icon sets in future.
 		mux.Handle("GET /api/v1/icons/lucide/{name}", handler.WithMiddleware(icons.Handler()))
-		mux.Handle("/api/v1/", handler.WithMiddleware(ogenServer))
+		token.MountDeviceGrant(mux, tokenStore.DeviceGrant(token.DeviceVerificationURI(publicURL, addr, port)))
+		mux.HandleFunc("/api/v1/tokens", tokenStore.Management)
+		mux.HandleFunc("/api/v1/tokens/", tokenStore.Management)
+		mux.Handle("/api/v1/", handler.WithMiddleware(token.ReadHead(ogenServer)))
 
 		// The public surface: published notes, the artifacts they reference, and
-		// the stylesheet they need. These are the only routes served without
-		// authentication (see the basic-auth wiring below), which is why they sit
+		// the stylesheet they need. These are the note-content routes served without
+		// note-content authentication (see the basic-auth wiring below), which is why they sit
 		// under their own prefix rather than alongside the API. Raw handlers for
 		// the same reason the artifact GET above is one — an HTML document and a
 		// dynamic Content-Type are not shapes the generated server produces.
@@ -539,10 +549,24 @@ func run(addr string, port int, dataDir, publicURL, basicAuthFile, basicAuthReal
 	// through to the SPA shell, leaving the page unreachable. Its sibling assets
 	// (note.css, host.js, ../third_party/*) need no such help.
 	mux.Handle("GET /render/{$}", renderHandler(renderHTML, renderCSP))
+	if !demoMode {
+		page, err := fs.ReadFile(web.Static, "static/device-approval.html")
+		if err != nil {
+			return err
+		}
+		page = bytes.ReplaceAll(page, []byte(`<base href="/">`), []byte(`<base href="`+basePath+`">`))
+		mux.Handle("GET /device-approval.html", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			w.Header().Set("Cache-Control", "no-store")
+			_, _ = w.Write(page)
+		}))
+	} else {
+		mux.HandleFunc("GET /device-approval.html", http.NotFound)
+	}
 	mux.HandleFunc("/", staticHandler(indexHTML))
 
 	// --- middleware chain (outermost first) --------------------------------
-	httpHandler, err := serverMiddleware(mux, policy, publicURL, basicAuthFile, basicAuthRealm, csp)
+	httpHandler, err := serverMiddleware(mux, policy, publicURL, basicAuthFile, basicAuthRealm, csp, tokenStore)
 	if err != nil {
 		return err
 	}
@@ -577,9 +601,8 @@ func run(addr string, port int, dataDir, publicURL, basicAuthFile, basicAuthReal
 
 // serverMiddleware is shared by the normal and demo servers. Host validation
 // wraps every route and authentication exemption; CSRF uses the same policy.
-func serverMiddleware(next http.Handler, policy *hostguard.Policy, publicURL, basicAuthFile, basicAuthRealm, csp string) (http.Handler, error) {
+func serverMiddleware(next http.Handler, policy *hostguard.Policy, publicURL, basicAuthFile, basicAuthRealm, csp string, stores ...*token.Store) (http.Handler, error) {
 	httpHandler := next
-	httpHandler = csrf.MiddlewareOrigins(policy.Origins()...)(httpHandler)
 
 	// Enable HSTS when the public URL is served over HTTPS (typically behind a
 	// TLS-terminating proxy). Without a public URL we assume plain HTTP.
@@ -588,11 +611,6 @@ func serverMiddleware(next http.Handler, policy *hostguard.Policy, publicURL, ba
 		hsts = "max-age=31536000"
 	}
 
-	httpHandler = httputil.SecurityHeaders(httputil.SecurityHeadersOptions{
-		CSP:            csp,
-		ReferrerPolicy: "same-origin",
-		HSTS:           hsts,
-	})(httpHandler)
 	if basicAuthFile != "" {
 		// Strict: MyNotes reads a file it owns, so a line that is not a
 		// username:bcrypt-hash pair is an operator mistake worth failing at
@@ -611,6 +629,16 @@ func serverMiddleware(next http.Handler, policy *hostguard.Policy, publicURL, ba
 		httpHandler = exemptPrefix(handler.PublicPrefix, htpasswd.Middleware(basicAuthRealm))(httpHandler)
 		log.Printf("basic authentication enabled (except %s)", handler.PublicPrefix)
 	}
+	if len(stores) > 0 && stores[0] != nil {
+		httpHandler = token.PublicDeviceAccess(httpHandler, next)
+		httpHandler = stores[0].Bearer(httpHandler, next)
+	}
+	httpHandler = csrf.MiddlewareOrigins(policy.Origins()...)(httpHandler)
+	httpHandler = httputil.SecurityHeaders(httputil.SecurityHeadersOptions{
+		CSP:            csp,
+		ReferrerPolicy: "same-origin",
+		HSTS:           hsts,
+	})(httpHandler)
 	httpHandler = http.MaxBytesHandler(httpHandler, maxRequestBody)
 
 	return policy.Middleware(httpHandler), nil

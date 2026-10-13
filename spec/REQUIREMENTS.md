@@ -313,7 +313,7 @@ the one MyCal has with MyMail.
 
 A note can be **published**: served as a web page that anyone with the link can
 read, with no password, while the rest of the deployment stays private. This is
-the only way content leaves the authenticated boundary — everything else the app
+the only way note content leaves the authenticated boundary — everything else the app
 offers (download, print, email) hands the note to the person who is already
 signed in.
 
@@ -720,8 +720,9 @@ existing-note editor (`/notes/{slug}/edit`).
     can only see MyNotes: **cross-repo drift remains undetectable**, so a figure
     agreeing here says nothing about whether MyCal and MyMail still agree with it.
 - **Settings:** a modal opened from the sidebar footer, holding the preferences
-  that have no control of their own — currently just the **MyMail URL** (see
-  **MyMail integration**). The field shows the user's override; leaving it empty
+  that have no control of their own in an **Integration** tab, plus a separate
+  **API Tokens** tab (see **API tokens and device login**). The **MyMail URL**
+  field (see **MyMail integration**) shows the user's override; leaving it empty
   means "use the URL the server derived", which the placeholder and a hint below
   the field name. Saving validates the URL and reports why one is refused —
   relative, not `http`/`https`, carrying a query or fragment, or not on this
@@ -729,7 +730,7 @@ existing-note editor (`/notes/{slug}/edit`).
   The choice takes effect at once: the note toolbars' "Send as email" action
   appears or disappears without a reload. Cancel, Escape, or a click outside
   discards the edit. In demo mode the modal opens all the same, and holds no
-  field: MyMail is the only setting and is unavailable there, so it says so and
+  field: MyMail integration and API tokens are unavailable there, so it says so and
   offers Close alone (§Demo Mode). Escape and a click outside still dismiss it.
 - **Upload Markdown or HTML:** pick a single `.md`/`.markdown`/text or
   `.html`/`.htm` file. For Markdown files, the title is derived client-side (first
@@ -1242,14 +1243,15 @@ DOMPurify pass on the page, exactly as in the real app.
   `http`/`https`/`mailto` link schemes and `https`/safe-`data:`/`artifact:` image
   sources are permitted; unsafe HTML/schemes cause a write to be rejected.
 - The whole app may be gated behind optional HTTP Basic Auth, **except the
-  published-note surface** (§Publishing), which exists to be readable without
-  credentials. The htpasswd file is parsed strictly, rather than leaving the
+  published-note surface** (§Publishing) and the two **device-login protocol
+  POST routes** (§API tokens and device login), which are readable without
+  credentials. Valid bearer tokens bypass Basic only for whole-API reads. The htpasswd file is parsed strictly, rather than leaving the
   operator with a login they believe in that silently does not exist: a line
   that is not a `username:bcrypt-hash` pair, or a duplicate username, fails
   startup naming the file and the line; a file with no entries at all fails
   naming the file, there being no line to point at.
 
-  That exemption covers exactly `/public/…`: a published page, an artifact some
+  The published-note exemption covers exactly `/public/…`: a published page, an artifact some
   published note references, and the stylesheet those pages need. Nothing else
   under that path is served, so an unauthenticated request cannot fall through
   to any other part of the app.
@@ -1260,3 +1262,49 @@ DOMPurify pass on the page, exactly as in the real app.
   creating, editing, or importing a note, and no listing of published notes is
   served.
 - GET requests never modify data.
+
+
+## API tokens and device login
+
+- Persistent opaque bearer tokens grant read-only access to the whole API: notes,
+  search, tags, artifacts, icons and Markdown downloads. There is no resource
+  filtering, resource scope or picker. GET and corresponding HEAD operations are
+  allowed; all writes, token management and device-consent operations are refused.
+  Invalid, expired and revoked tokens fail authentication (401); disallowed access
+  with a valid token is 403. Existing full-access authentication remains available.
+- Tokens have a name (1–200 UTF-8 bytes without controls or format characters),
+  revocation slug, creation time and future expiry. Secrets contain 256 random
+  bits, are returned once and stored only as SHA-256 hashes. Full access permits
+  GET/POST `/api/v1/tokens` and DELETE `/api/v1/tokens/{slug}`. Lists contain only
+  metadata (`total`, `items`); creation adds `token` once.
+- RFC 8628 POST `/api/v1/oauth/device_authorization` and `/api/v1/oauth/token`
+  are public CLI protocol routes. Both retain Host, CSRF and body-size checks and
+  reject bearer credentials. GET/POST `/api/v1/oauth/device/{user_code}` require
+  full access; approval additionally requires normal CSRF protection.
+- Only `mynotes-token` is a supported client ID. Empty scope means whole-API
+  read-only access; nonempty resource scopes are rejected at request and consent.
+  Grants expire after ten minutes, poll at five-second intervals with five-second
+  slow-down increments, and cap live grants at ten globally/three per socket IP.
+  Denial issues no token. Approved minting and single-use grant consumption commit
+  together; a failed mint rolls back both. Secrets cannot be recovered after a lost
+  successful exchange response. The shared client retries eligible polling failures,
+  preserves cancellation and advises revoking an unused token after a lost response.
+- `mynotes-token login -name NAME [-lifetime N[s|m|h|d]] [-out FILE]` requests
+  30 days by default, reads no Basic credentials and prints the approval URL/code
+  and eventual revocation slug to stderr. `create -name NAME -lifetime N[s|m|h|d]
+  [-out FILE]` and `revoke SLUG` use full-access credentials. There are no resource
+  flags. URL/user and credential-source options follow README conventions.
+  Login/create write only the secret to stdout or an exclusive new 0600 output
+  file reserved before issuance; failures remove that file. HTTPS is required
+  except literal loopback IPs; redirects/environment proxies are disabled.
+- Settings has separate Integration and API Tokens tabs. Tokens lists names/slugs
+  and expiry with confirmed revocation, and manual device-code consent; no direct
+  token-creation form. Review request is visibly grey and disabled until a nonblank
+  code is entered. Switching tabs retains a loaded request and lifetime edits.
+- The CLI link opens an approval-only page and automatically inspects its code,
+  without approving. It shows code, client ID, token name, requester IP/User-Agent,
+  request age, requested lifetime and explicit whole-API read-only access. Lifetime
+  is prefilled and adjustable; Approve/Deny must be explicit. Successful completion
+  attempts to close the window, with completion text when closing is blocked.
+  Lookup/decision errors remain recoverable. Both themes and deployment prefixes
+  are supported. Demo mode offers neither API tokens nor device login.

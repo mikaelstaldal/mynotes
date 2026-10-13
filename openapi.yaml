@@ -8,6 +8,9 @@ info:
     server URL and ogen's path prefix). Timestamps use RFC 3339 (UTC). Errors
     return `{"error": "message"}`.
 
+    Bearer tokens grant read-only access to the whole API (GET and corresponding HEAD).
+    Token management and device consent require full access.
+
     # Markdown dialect
 
     A note's `content` is stored and returned as verbatim Markdown. Consumers
@@ -598,7 +601,206 @@ paths:
         default:
           $ref: "#/components/responses/Error"
 
+  /oauth/device_authorization:
+    post:
+      security: []
+      summary: Start a device login (unauthenticated; bearer credentials refused)
+      description: Defaults to a ten-minute grant and five-second polling interval. At most ten live grants and three per requester socket IP. Empty scope means read-only access to the whole API. Nonempty scopes are rejected.
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required: [client_id, name]
+              properties:
+                client_id: {type: string, enum: [mynotes-token]}
+                name: {type: string, minLength: 1, maxLength: 200}
+                scope: {type: string, maxLength: 0, description: Empty scope grants whole-API read-only access}
+                lifetime: {type: string, maxLength: 20, default: 30d}
+      responses:
+        '400':
+          description: OAuth protocol error
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/OAuthError'}
+        '200':
+          description: Device code and approval URL
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/DeviceAuthorization'}
+        default:
+          description: OAuth error (400 validation, 429 cap, 500 server error; bearer credentials return 401/403)
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Error'}
+  /oauth/token:
+    post:
+      security: []
+      summary: Poll a device login (unauthenticated; bearer credentials refused)
+      description: Success consumes the grant and issues an whole-API read-only token atomically. Errors are HTTP 400; slow_down increases the interval by five seconds. No refresh token is issued.
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required: [grant_type, device_code, client_id]
+              properties:
+                grant_type: {type: string, enum: ['urn:ietf:params:oauth:grant-type:device_code']}
+                device_code: {type: string, maxLength: 43}
+                client_id: {type: string, enum: [mynotes-token]}
+      responses:
+        '400':
+          description: OAuth protocol error
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/OAuthError'}
+        '200':
+          description: Token, returned exactly once
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/DeviceToken'}
+        default:
+          description: OAuth error
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Error'}
+  /oauth/device/{user_code}:
+    parameters:
+      - in: path
+        name: user_code
+        required: true
+        schema: {type: string, minLength: 8, maxLength: 32}
+        description: Case- and hyphen-insensitive user code
+    get:
+      security: [{BasicAuth: []}, {}]
+      summary: Inspect a pending device request (full access only)
+      responses:
+        '400':
+          description: OAuth protocol error
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/OAuthError'}
+        '200':
+          description: Request details for explicit user review
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/DeviceRequest'}
+        default:
+          description: Unknown or expired code (404), authentication failure (401), or bearer credentials (403)
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Error'}
+    post:
+      security: [{BasicAuth: []}, {}]
+      summary: Approve or deny a pending device request (full access only; CSRF protected)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/DeviceDecision'}
+      responses:
+        '400':
+          description: OAuth protocol error
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/OAuthError'}
+        '200':
+          description: Decision recorded; token is minted only on next poll
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [approved]
+                properties:
+                  approved: {type: boolean}
+        default:
+          description: OAuth error
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Error'}
+  /tokens:
+    get:
+      security: [{BasicAuth: []}, {}]
+      summary: List API tokens (full access only)
+      responses:
+        "200":
+          description: Token metadata; secrets are never returned again
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [total, items]
+                properties:
+                  total:
+                    type: integer
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/APIToken'
+        default:
+          $ref: '#/components/responses/Error'
+    post:
+      security: [{BasicAuth: []}, {}]
+      summary: Create a whole-API read-only token (full access only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, expires_at]
+              properties:
+                name:
+                  type: string
+                  minLength: 1
+                  maxLength: 200
+                expires_at:
+                  type: string
+                  format: date-time
+                  description: Must be in the future
+      responses:
+        "201":
+          description: Created token; save the secret now
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIToken'
+                  - type: object
+                    required: [token]
+                    properties:
+                      token:
+                        type: string
+        default:
+          $ref: '#/components/responses/Error'
+  /tokens/{slug}:
+    delete:
+      security: [{BasicAuth: []}, {}]
+      summary: Revoke an API token (full access only)
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema:
+            type: string
+            maxLength: 220
+            pattern: '^[a-z0-9]+(-[a-z0-9]+)*$'
+      responses:
+        "204":
+          description: Revoked
+        default:
+          $ref: '#/components/responses/Error'
+
 components:
+  securitySchemes:
+    BasicAuth:
+      type: http
+      scheme: basic
+    BearerAuth:
+      type: http
+      scheme: bearer
   responses:
     Error:
       description: Error response.
@@ -906,3 +1108,69 @@ components:
       properties:
         error:
           type: string
+
+    DeviceAuthorization:
+      type: object
+      required: [device_code, user_code, verification_uri, verification_uri_complete, expires_in, interval]
+      properties:
+        device_code: {type: string, maxLength: 43}
+        user_code: {type: string, maxLength: 9}
+        verification_uri: {type: string, format: uri}
+        verification_uri_complete: {type: string, format: uri}
+        expires_in: {type: integer, format: int64}
+        interval: {type: integer, format: int64}
+    DeviceRequest:
+      type: object
+      required: [user_code, client_id, name, scope, lifetime, requester, created_at, expires_at]
+      properties:
+        user_code: {type: string, maxLength: 9}
+        client_id: {type: string}
+        name: {type: string, maxLength: 200}
+        scope:
+          type: array
+          items: {type: string}
+        lifetime: {type: string}
+        requester: {type: string, description: Socket IP and User-Agent; review before approving}
+        created_at: {type: string, format: date-time}
+        expires_at: {type: string, format: date-time}
+    DeviceDecision:
+      type: object
+      required: [approve]
+      properties:
+        approve: {type: boolean}
+        scope:
+          type: array
+          description: Empty or omitted; whole-API read-only access only
+          maxItems: 0
+          uniqueItems: true
+          items: {type: string, maxLength: 40}
+        lifetime: {type: string, maxLength: 20, description: Required when approving; positive duration in s/m/h/d up to ten years}
+    DeviceToken:
+      type: object
+      required: [access_token, token_type, expires_in, scope, slug]
+      properties:
+        access_token: {type: string}
+        token_type: {type: string, enum: [Bearer]}
+        expires_in: {type: integer, format: int64}
+        scope: {type: string}
+        slug: {type: string, description: Revocation slug of the issued token}
+    APIToken:
+      type: object
+      required: [slug, name, created_at, expires_at]
+      properties:
+        slug:
+          type: string
+        name:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        expires_at:
+          type: string
+          format: date-time
+
+    OAuthError:
+      type: object
+      required: [error]
+      properties:
+        error: {type: string}

@@ -123,6 +123,15 @@ async function request<T>(
 }
 
 export const api = {
+  tokens: {
+    list: () => request<{ total: number; items: components['schemas']['APIToken'][] }>('GET', '/tokens'),
+    revoke: (slug: string) => request<void>('DELETE', `/tokens/${encodeURIComponent(slug)}`),
+  },
+  device: {
+    get: (code: string) => request<components['schemas']['DeviceRequest']>('GET', `/oauth/device/${encodeURIComponent(code)}`),
+    decide: (code: string, decision: components['schemas']['DeviceDecision']) =>
+      request<{ approved: boolean }>('POST', `/oauth/device/${encodeURIComponent(code)}`, decision),
+  },
   notes: {
     list: (opts: { q?: string; tags?: string[]; titlePrefix?: boolean; sort?: SortField; order?: SortOrder; limit?: number; offset?: number } = {}) => {
       const p = new URLSearchParams();

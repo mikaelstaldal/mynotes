@@ -1,4 +1,7 @@
 generator:
+  # OAuth and token management are mounted with dedicated raw HTTP handlers.
+  filters:
+    path_regex: "^/(notes|tags|import|artifacts|icons)(/|$)"
   convenient_errors: "on"
   features:
     disable:

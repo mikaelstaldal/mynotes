@@ -6,6 +6,7 @@ import {
   setMymailUrl,
   validateMymailUrl,
 } from '../util/mymail.js';
+import { ApiTokens } from './ApiTokens.js';
 import { isDemo } from '../util/serverconfig.js';
 
 interface Props {
@@ -13,8 +14,7 @@ interface Props {
   onClose: () => void;
 }
 
-// Modal for the browser-local settings, opened from the sidebar footer. Only
-// the MyMail integration is configured here; the theme and the browse order
+// Modal for integration settings and full-access API token management; the theme and the browse order
 // have their own controls where they apply. A demo build opens the same dialog
 // — the footer offers the same pair of controls everywhere — but has no server
 // to relay a message, so it explains that instead of showing the field.
@@ -75,8 +75,7 @@ function DemoSettings({ onClose }: Props) {
   return (
     <SettingsShell onClose={onClose} describedBy="settings-demo-body">
       <p id="settings-demo-body" class="settings-body">
-        There is nothing to configure in the demo. The MyMail URL is the only setting
-        MyNotes holds, and “Send as email” needs a server to relay the message — this
+        There is nothing to configure in the demo. API tokens and device login need a server. The MyMail URL and “Send as email” needs a server to relay the message — this
         demo has none. The theme is on the button beside Settings in the sidebar footer.
       </p>
       <div class="settings-actions">
@@ -86,8 +85,18 @@ function DemoSettings({ onClose }: Props) {
   );
 }
 
-// The real variant: the MyMail override, and nothing else.
+// Both panels remain mounted to retain in-progress device approval across tabs.
 function MymailSettings({ onClose }: Props) {
+  const [tab, setTab] = useState<'integration' | 'tokens'>('integration');
+  const integrationRef = useRef<HTMLButtonElement>(null);
+  const tokensRef = useRef<HTMLButtonElement>(null);
+  function tabKey(e: KeyboardEvent) {
+    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) return;
+    e.preventDefault();
+    const next = e.key === 'Home' ? 'integration' : e.key === 'End' ? 'tokens' : tab === 'integration' ? 'tokens' : 'integration';
+    setTab(next);
+    (next === 'integration' ? integrationRef : tokensRef).current?.focus();
+  }
   // The override alone, not the effective URL: an empty field means "follow the
   // server", which the placeholder and the hint below spell out.
   const [url, setUrl] = useState(() => mymailOverride());
@@ -108,6 +117,11 @@ function MymailSettings({ onClose }: Props) {
 
   return (
     <SettingsShell onClose={onClose}>
+      <div class="settings-tabs" role="tablist" aria-label="Settings tabs">
+        <button type="button" role="tab" ref={integrationRef} tabIndex={tab === 'integration' ? 0 : -1} onKeyDown={tabKey} aria-selected={tab === 'integration'} aria-controls="settings-integration" id="tab-integration" onClick={() => setTab('integration')}>Integration</button>
+        <button type="button" role="tab" ref={tokensRef} tabIndex={tab === 'tokens' ? 0 : -1} onKeyDown={tabKey} aria-selected={tab === 'tokens'} aria-controls="settings-tokens" id="tab-tokens" onClick={() => setTab('tokens')}>API Tokens</button>
+      </div>
+      <div id="settings-integration" role="tabpanel" aria-labelledby="tab-integration" hidden={tab !== 'integration'}>
       <form onSubmit={handleSubmit}>
         <label class="settings-field">
           <span>MyMail URL</span>
@@ -127,6 +141,11 @@ function MymailSettings({ onClose }: Props) {
           <button type="submit" class="primary">Save</button>
         </div>
       </form>
+      </div>
+      <div id="settings-tokens" role="tabpanel" aria-labelledby="tab-tokens" hidden={tab !== 'tokens'}>
+        <ApiTokens />
+        <div class="settings-actions"><button type="button" onClick={onClose}>Close</button></div>
+      </div>
     </SettingsShell>
   );
 }

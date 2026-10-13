@@ -116,3 +116,12 @@ test.describe('Sidebar footer in a demo build', () => {
     });
   }
 });
+
+
+test('demo has no token-management or consent controls', async ({ page, request }) => {
+  await openDemo(page);
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await expect(page.getByRole('tab', { name: 'API Tokens' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Review request' })).toHaveCount(0);
+  expect((await request.get('/device-approval.html')).status()).toBe(404);
+});

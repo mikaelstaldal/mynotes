@@ -78,6 +78,64 @@ and preserve its Host or send an allowed local Host including the listener port.
 `Forwarded` and `X-Forwarded-Host` cannot authorize a Host. For example:
 `./mynotes -addr 0.0.0.0 -public-url https://example.com/mynotes`.
 
+## Read-only API tokens and device login
+
+`./build.sh` builds `mynotes-token` alongside the server. Tokens can read the
+**whole MyNotes API**: every note and search result, tags, artifacts, icons and
+Markdown downloads. They cannot write, manage tokens or approve devices.
+There is no per-note or tag scope. Keep a token private; the server stores only
+its SHA-256 hash, and returns its secret exactly once.
+
+To log in without sharing Basic credentials with the CLI:
+
+```bash
+./mynotes-token -url https://example.com/mynotes login -name 'Laptop reader' -out laptop.token
+```
+
+Open the approval link printed to stderr, compare its code with the CLI, review
+the requester and whole-API read-only access, adjust the requested lifetime if
+needed, then explicitly Approve or Deny. The default request is `30d`; use
+`-lifetime 7d` to request seven days. You can also enter the code manually in
+**Settings → API Tokens**. The link opens a separate consent-only page; merely
+opening it never approves the request. After a decision it attempts to close,
+with completion text if your browser keeps the tab open.
+
+For direct creation or revocation, use full-access credentials:
+
+```bash
+./mynotes-token -url https://example.com/mynotes -credentials-file credentials create -name 'Automation' -lifetime 7d -out automation.token
+./mynotes-token -url https://example.com/mynotes -credentials-file credentials revoke automation
+```
+
+Global flags precede the command. The URL defaults to `MYNOTES_URL`, then
+`http://127.0.0.1:8080`. Create/revoke accept `-user USER` (or `MYNOTES_USER`)
+with a password prompt, `-credentials-file PATH`, or `-credentials-stdin` with
+one `username:password` line. Without configured Basic auth, credentials can be
+omitted. Login reads no Basic credentials, ignores `MYNOTES_USER`, and rejects
+explicit credential options. Durations are positive integers followed by
+`s`, `m`, `h`, or `d`, up to ten years.
+
+Only the secret goes to stdout or `-out`; the revocation slug goes to stderr.
+`-out` reserves a **new mode-0600 file before issuance**, refuses existing files,
+and removes unsuccessful output. Both commands support deployment path prefixes,
+require HTTPS except for literal loopback IP addresses, disable redirects and
+environment proxies, and stop on cancellation.
+
+Read API resources with an Authorization header:
+
+```bash
+curl -H "Authorization: Bearer $(cat laptop.token)" 'https://example.com/mynotes/api/v1/notes?q=project'
+curl -H "Authorization: Bearer $(cat laptop.token)" 'https://example.com/mynotes/api/v1/notes/my-note/download-markdown'
+```
+
+GET and corresponding HEAD operations are supported. Invalid, expired or revoked
+tokens receive 401; authenticated tokens attempting writes or management receive
+403. Settings lists names, slugs and expiry, and supports confirmed revocation;
+old secrets cannot be displayed. A device request expires in ten minutes. If a
+polling response is lost after issuance, its secret cannot be recovered: check
+Settings and revoke the unused token before starting again. Tokens and device
+login are unavailable in demo mode.
+
 ## Demo mode
 
 Demo mode runs the full web UI with no backend at all. A service worker

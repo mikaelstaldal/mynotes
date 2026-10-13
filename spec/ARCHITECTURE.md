@@ -370,3 +370,43 @@ Tests:
   Node resolution shim mirroring the import map. Tests live under `web/ts` and run
   with only `node` on `$PATH`. Shared server/client parity vector for `data:` and
   HTML allow-list verdicts.
+
+
+## Token authentication and device grants
+
+Migration 8 adds `api_tokens` and the immutable shared `device_authorizations`
+schema (version 1). It preserves notes, tags, links, artifacts and publications;
+`schema.sql` records the result. `internal/token` owns issuance, metadata and
+revocation. Secrets are random 256-bit opaque values prefixed `mynotes_`, stored
+only as SHA-256 digests. Expiry is compared as parsed UTC RFC 3339 timestamps.
+Token names are validated without mutation, and rendered as escaped text.
+
+The middleware chain applies Host policy, body limits, security headers and CSRF
+around both auth alternatives. Basic/full-access requests retain normal routing;
+bearer requests are authenticated and limited to GET/HEAD on the notes, tags,
+artifacts and icons API families. There is no scoped repository or resource filter.
+OAuth and token-management routes always require full access, except the two
+public POST CLI protocol routes. Those reject bearer credentials and retain the
+outer hardening. The generated API handler adapts HEAD to side-effect-free GET routing with body
+output suppressed; raw GET routes retain native HEAD handling. GET handlers
+remain side-effect free. The world-readable publishing surface ignores bearer
+credentials, just as it ignores Basic credentials.
+
+OpenAPI describes raw token and OAuth routes, which are excluded from ogen
+server generation and mounted explicitly. The TypeScript types still cover them.
+`go-server-common/devicegrant` v1.13.2 supplies authorization, polling, expiry,
+limits, denial exchange and atomic mint/consume transactions. Its consent handler
+requires a nonempty resource scope, so a narrow MyNotes consent adapter validates
+empty scope and records pending→approved/denied using the same schema and SQLite
+write-lock discipline. There are no resource selectors or synthetic resource scopes.
+The shared polling callback creates the token using only its supplied transaction.
+`devicegrant/client` supplies timeout/drop retries and lost-response guidance.
+
+`cmd/token` builds `mynotes-token`. `internal/clihttp` centralizes HTTPS/literal
+loopback validation, prefix-preserving API URL construction, disabled redirects
+and proxies. Login never loads Basic credentials. Both issuance commands reserve
+exclusive private files before the HTTP request and clean up unsuccessful output.
+The browser's API client centralizes token metadata and consent requests. Settings
+keeps both panels mounted to preserve consent state; the dedicated HTML page
+shares the shell's import map/CSP hash and receives the deployment base path.
+Token/device routes and controls are absent in demo mode.
