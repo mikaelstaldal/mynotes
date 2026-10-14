@@ -659,3 +659,36 @@ func TestErrorField(t *testing.T) {
 		assert.Equal(t, want, errorField([]byte(body)), body)
 	}
 }
+
+func TestSuccessfulResponseEchoingTheTokenIsRefused(t *testing.T) {
+	const secret = "review-test-secret"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/v1/notes/escaped" {
+			// The token JSON-escaped, which decodes to the secret.
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"tags":[{"slug":"\u0072eview-test-secret"}]}`))
+			return
+		}
+		if strings.HasPrefix(r.URL.Path, "/api/v1/artifacts/") {
+			w.Header().Set("Content-Type", "image/png")
+		} else {
+			w.Header().Set("Content-Type", "application/json")
+		}
+		_, _ = w.Write([]byte(`{"echo":"` + r.Header.Get("Authorization") + `"}`))
+	}))
+	defer server.Close()
+	tokenFile := filepath.Join(t.TempDir(), "token")
+	require.NoError(t, os.WriteFile(tokenFile, []byte(secret), 0o600))
+	session := connect(t, "-url", server.URL, "-token-file", tokenFile)
+	for _, uri := range []string{"mynotes://tags", "mynotes://notes/x/markdown", "mynotes://artifacts/x", "mynotes://notes/escaped"} {
+		_, err := read(t, session, uri)
+		require.Error(t, err, uri)
+		assert.Contains(t, err.Error(), "contains the API token", uri)
+		assert.NotContains(t, err.Error(), secret, uri)
+	}
+	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: "search_notes", Arguments: map[string]any{"q": "x"}})
+	require.NoError(t, err)
+	assert.True(t, result.IsError)
+	assert.NotContains(t, callText(t, result), secret)
+	assert.Nil(t, result.StructuredContent)
+}

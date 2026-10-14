@@ -7,6 +7,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -227,6 +228,13 @@ func (c *client) get(ctx context.Context, resource string, query url.Values) (co
 	if len(body) > maxBody {
 		return "", nil, fmt.Errorf("response exceeds the %d-byte (1 MiB) limit", maxBody)
 	}
+	// A server or proxy echoing the Authorization header must not put the
+	// secret in front of the client (mcp-server.md §2.1). Error text is
+	// redacted, but a successful body is refused whole: its bytes are passed
+	// through unchanged or not at all.
+	if c.containsToken(body) {
+		return "", nil, errors.New("the response contains the API token, so it is not passed on")
+	}
 	return response.Header.Get("Content-Type"), body, nil
 }
 
@@ -271,6 +279,39 @@ func errorField(raw []byte) string {
 		}
 	}
 	return ""
+}
+
+// containsToken reports whether body carries the token, either as its bytes
+// or, in JSON, as a string that decodes to it: `\u0072…` is the same secret to
+// anything that parses the body, including this server's own decoding.
+func (c *client) containsToken(body []byte) bool {
+	if c.token == "" {
+		return false
+	}
+	if bytes.Contains(body, []byte(c.token)) {
+		return true
+	}
+	var value any
+	if json.Unmarshal(body, &value) != nil {
+		return false
+	}
+	var walk func(any) bool
+	walk = func(v any) bool {
+		switch v := v.(type) {
+		case string:
+			return strings.Contains(v, c.token)
+		case []any:
+			return slices.ContainsFunc(v, walk)
+		case map[string]any:
+			for key, field := range v {
+				if strings.Contains(key, c.token) || walk(field) {
+					return true
+				}
+			}
+		}
+		return false
+	}
+	return walk(value)
 }
 
 // redact removes the token from text that came from elsewhere — a server or
