@@ -420,3 +420,15 @@ the environment default. Its parser maps only supported read operations and
 validates route identifiers and query parameters before sending a request.
 Responses stream unchanged to stdout, including binary artifacts. Signal-based
 request contexts support cancellation; authentication uses bearer headers only.
+
+### MCP server
+
+`cmd/mcp` builds `mynotes-mcp`, a Model Context Protocol server on stdio, using
+`github.com/modelcontextprotocol/go-sdk`. Like `mynotes-cli`, it is an HTTP client
+of a running server through `internal/clihttp`, and makes no authorization decision
+of its own: the bearer middleware decides what a token reads. Reads are resources
+and resource templates under `mynotes://`; full-text search is the `search_notes`
+tool. Resource URIs are parsed in `cmd/mcp` rather than by the SDK's template
+matcher, which cannot extract reordered or repeated query parameters. Every
+response body read is capped at 1 MiB. The contract is
+`../mysuite/spec/mcp-server.md`.

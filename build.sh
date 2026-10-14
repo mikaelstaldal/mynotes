@@ -61,6 +61,16 @@ run env CGO_ENABLED=0 go build -trimpath -buildvcs=true -tags netgo -o "$OUTPUT_
 
 run env CGO_ENABLED=0 go build -trimpath -buildvcs=true -tags netgo -o "$OUTPUT_DIR/mynotes-cli" ./cmd/cli
 
+run env CGO_ENABLED=0 go build -trimpath -buildvcs=true -tags netgo -o "$OUTPUT_DIR/mynotes-mcp" ./cmd/mcp
+
+# The MCP server must be statically linked (../mysuite/spec/mcp-server.md §2.1).
+for setting in 'build	CGO_ENABLED=0' 'build	-tags=netgo'; do
+    if ! go version -m "$OUTPUT_DIR/mynotes-mcp" | grep -qF "$setting"; then
+        echo "mynotes-mcp: missing build setting: $setting" >&2
+        exit 1
+    fi
+done
+
 # 7. Run Go tests.
 run go test ./...
 

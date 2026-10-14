@@ -1338,6 +1338,17 @@ The shared CLI transport preserves deployment path prefixes, requires HTTPS
 except literal loopback IPs, and disables redirects/environment proxies.
 In-flight requests support cancellation on Ctrl-C, SIGTERM or SIGHUP.
 
+## MCP server
+
+`./build.sh` builds `mynotes-mcp`, a statically linked Model Context Protocol server
+on stdin/stdout, also included in the rolling binary release. An MCP client starts
+it as a subprocess. It takes `-url` and `-token-file` with the same defaults and
+transport rules as `mynotes-cli`, and runs unauthenticated without a token. It
+exposes what a token can read: tags, browsing notes, a note as JSON or Markdown,
+and artifacts as resources; full-text and title-prefix search as the
+`search_notes` tool. Icons are not exposed. Responses over 1 MiB are refused. The
+shared contract is `../mysuite/spec/mcp-server.md`.
+
 ## API discovery
 
 The server exposes its embedded OpenAPI 3.0.3 generator input at `/openapi.yaml`

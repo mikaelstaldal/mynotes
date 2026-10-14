@@ -46,3 +46,5 @@ web/static/**/*.js
 /mynotes-token
 
 /mynotes-cli
+
+/mynotes-mcp

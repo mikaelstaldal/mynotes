@@ -123,6 +123,33 @@ tag slugs are comma-separated and all must match; this filters results without
 restricting the token's access. Pages default to 50 notes and offset 0. Run
 `./mynotes-cli help` for all commands and flags.
 
+### Use with an AI assistant (MCP)
+
+`./build.sh` also builds `mynotes-mcp`, a [Model Context Protocol](https://modelcontextprotocol.io/)
+server that gives an MCP client such as Claude Code read access to your notes with
+a token. The client starts it and talks to it over stdin/stdout. For example, in
+Claude Code:
+
+```bash
+claude mcp add mynotes -- /path/to/mynotes-mcp -url https://example.com/mynotes -token-file /path/to/laptop.token
+```
+
+It takes the same `-url` and `-token-file` flags and `MYNOTES_URL` and
+`MYNOTES_TOKEN_FILE` defaults as `mynotes-cli`; without a token it sends no
+Authorization header. It offers these resources:
+
+| URI | Contents |
+|---|---|
+| `mynotes://tags` | all tags |
+| `mynotes://notes{?tag*,sort,order,limit,offset}` | a page of notes; `mynotes://notes` is the first |
+| `mynotes://notes/{slug}` | one note as JSON |
+| `mynotes://notes/{slug}/markdown` | one note as Markdown |
+| `mynotes://artifacts/{sha256}` | an image or other artifact |
+
+Search is the `search_notes` tool, taking `q` and optionally `titlePrefix`, `tag`,
+`limit` and `offset`. A resource or search response over 1 MiB is refused rather
+than truncated. Run `./mynotes-mcp -help` for details.
+
 Read API resources with an Authorization header:
 
 ```bash

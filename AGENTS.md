@@ -174,6 +174,15 @@ separate Integration/API Tokens panels, and the CLI opens `device-approval.html`
 Demo mode has neither token routes nor consent controls/pages. The shared
 contract is `../mysuite/spec/device-login.md`.
 
+`cmd/mcp` builds `mynotes-mcp`, a stdio MCP server that is an HTTP client of the
+API, like `mynotes-cli`. It exposes exactly the bearer-protected routes a token can
+read: reads as `mynotes://` resources, full-text search as the `search_notes`
+tool. Its contract is `../mysuite/spec/mcp-server.md`. `cmd/mcp`'s drift test
+probes every GET operation in `openapi.yaml` through the bearer middleware, so a
+token-readable operation documented there fails it until the route is exposed or
+excluded in both the test and the contract. A bearer-readable route missing from
+`openapi.yaml` is invisible to it.
+
 ## Demo mode
 
 `-demo-server` and `-demo-bundle DIR` build the web UI with **no backend**: a
