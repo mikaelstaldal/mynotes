@@ -605,7 +605,7 @@ func TestServerErrors(t *testing.T) {
 
 	for uri, want := range map[string]string{
 		"mynotes://tags":        "HTTP 500: Bearer [token]",
-		"mynotes://notes/plain": "HTTP 502: upstream saw Bearer [token]",
+		"mynotes://notes/plain": "HTTP 502",
 		"mynotes://notes/long":  "HTTP 500: " + longError,
 	} {
 		_, err := read(t, session, uri)
@@ -691,4 +691,32 @@ func TestSuccessfulResponseEchoingTheTokenIsRefused(t *testing.T) {
 	assert.True(t, result.IsError)
 	assert.NotContains(t, callText(t, result), secret)
 	assert.Nil(t, result.StructuredContent)
+}
+
+// TestTokenHiddenInJSON: a token JSON-escaped in an earlier duplicate member,
+// which a decoded map would drop, and in an error body shown as it is.
+func TestTokenHiddenInJSON(t *testing.T) {
+	const secret = "review-test-secret"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v1/notes/a":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"x":"\u0072eview-test-secret","x":"safe"}`))
+		case "/api/v1/notes/b":
+			w.Header().Set("Content-Type", "text/plain")
+			w.WriteHeader(http.StatusBadGateway)
+			_, _ = w.Write([]byte(`{"message":"Bearer \u0072eview-test-secret"}`))
+		}
+	}))
+	defer server.Close()
+	tokenFile := filepath.Join(t.TempDir(), "token")
+	require.NoError(t, os.WriteFile(tokenFile, []byte(secret), 0o600))
+	session := connect(t, "-url", server.URL, "-token-file", tokenFile)
+	_, err := read(t, session, "mynotes://notes/a")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "contains the API token")
+	_, err = read(t, session, "mynotes://notes/b")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "HTTP 502")
+	assert.NotContains(t, err.Error(), "eview-test-secret", "the body is not shown")
 }
