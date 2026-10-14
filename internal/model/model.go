@@ -5,6 +5,10 @@ package model
 
 import "time"
 
+// NoteTimestampFormat is the canonical UTC millisecond form stored for notes
+// and quoted in their ETags.
+const NoteTimestampFormat = "2006-01-02T15:04:05.000Z"
+
 // Note is the single domain entity. Content is verbatim Markdown source. ID is
 // the internal SQLite primary key; the API addresses notes by Slug and never
 // exposes ID. Tags is populated by the repository (batched, never lazy-loaded
@@ -19,7 +23,6 @@ type Note struct {
 	Content       string
 	CreatedAt     time.Time
 	UpdatedAt     time.Time
-	Version       int
 	Tags          []Tag
 	IncomingLinks []NoteLink
 	OutgoingLinks []NoteLink
@@ -37,7 +40,6 @@ type NoteSummary struct {
 	Excerpt       string
 	CreatedAt     time.Time
 	UpdatedAt     time.Time
-	Version       int
 	Tags          []Tag
 	IncomingLinks []NoteLink
 	OutgoingLinks []NoteLink

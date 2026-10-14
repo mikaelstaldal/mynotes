@@ -3,7 +3,9 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -35,7 +37,7 @@ func TestNoteCRUD(t *testing.T) {
 	assert.Equal(t, "Hello", created.Title)
 	assert.Equal(t, "world", created.Content)
 	assert.False(t, created.CreatedAt.IsZero())
-	assert.Equal(t, 1, created.Version, "new note starts at version 1")
+	assert.Equal(t, created.CreatedAt, created.UpdatedAt)
 
 	got, err := repo.GetBySlug(ctx, "hello")
 	require.NoError(t, err)
@@ -48,31 +50,31 @@ func TestNoteCRUD(t *testing.T) {
 	assert.Equal(t, "Updated", updated.Title)
 	assert.Equal(t, "world", updated.Content, "content left unchanged when nil")
 	assert.Equal(t, "hello", updated.Slug, "slug left unchanged when nil")
-	assert.Equal(t, 2, updated.Version, "first update bumps version to 2")
+	assert.True(t, updated.UpdatedAt.After(created.UpdatedAt))
 
 	require.NoError(t, repo.Delete(ctx, "hello"))
 	_, err = repo.GetBySlug(ctx, "hello")
 	assert.ErrorIs(t, err, ErrNotFound)
 }
 
-func TestVersionIncrementsPerUpdate(t *testing.T) {
+func TestTimestampIncrementsPerUpdate(t *testing.T) {
 	ctx := context.Background()
 	repo := NewNoteRepository(newTestDB(t))
 
 	n, err := repo.Create(ctx, "v-note", "V", "")
 	require.NoError(t, err)
-	assert.Equal(t, 1, n.Version)
+	assert.Equal(t, n.CreatedAt, n.UpdatedAt)
 
 	n2, err := repo.Update(ctx, "v-note", ptr("V2"), nil, nil, nil)
 	require.NoError(t, err)
-	assert.Equal(t, 2, n2.Version)
+	assert.True(t, n2.UpdatedAt.After(n.UpdatedAt))
 
 	n3, err := repo.Update(ctx, "v-note", nil, ptr("new content"), nil, nil)
 	require.NoError(t, err)
-	assert.Equal(t, 3, n3.Version)
+	assert.True(t, n3.UpdatedAt.After(n2.UpdatedAt))
 }
 
-func TestListIncludesVersion(t *testing.T) {
+func TestListIncludesUpdatedAt(t *testing.T) {
 	ctx := context.Background()
 	repo := NewNoteRepository(newTestDB(t))
 
@@ -82,7 +84,7 @@ func TestListIncludesVersion(t *testing.T) {
 	notes, _, err := repo.List(ctx, "", nil, false, "updated", "desc", 50, 0)
 	require.NoError(t, err)
 	require.Len(t, notes, 1)
-	assert.Equal(t, 1, notes[0].Version)
+	assert.False(t, notes[0].UpdatedAt.IsZero())
 }
 
 func TestGetMissingReturnsNotFound(t *testing.T) {
@@ -840,4 +842,78 @@ func TestMultipleTagsCombineWithSearchAndTitlePrefix(t *testing.T) {
 	assert.Equal(t, 1, total)
 	require.Len(t, titleHits, 1)
 	assert.Equal(t, "both-report", titleHits[0].Slug)
+}
+
+func TestNoteMillisecondPrecisionAndMonotonicUpdates(t *testing.T) {
+	ctx := context.Background()
+	repo := NewNoteRepository(newTestDB(t))
+	// A future timestamp forces the clock-backwards/equal branch deterministically.
+	authored := time.Now().UTC().Add(time.Hour).Truncate(time.Millisecond).Add(456 * time.Microsecond)
+	n, err := repo.CreateWithTime(ctx, "future", "Future", "body", authored, nil)
+	require.NoError(t, err)
+	require.Equal(t, authored.Truncate(time.Millisecond), n.CreatedAt)
+	require.Equal(t, n.CreatedAt, n.UpdatedAt)
+	var created, updated string
+	require.NoError(t, repo.db.QueryRow(`SELECT created_at, updated_at FROM notes WHERE slug = 'future'`).Scan(&created, &updated))
+	assert.Equal(t, n.CreatedAt.Format(model.NoteTimestampFormat), created)
+	assert.Equal(t, created, updated)
+	for i := 0; i < 20; i++ {
+		next, err := repo.Update(ctx, n.Slug, nil, ptr("changed"), nil, nil)
+		require.NoError(t, err)
+		assert.Equal(t, n.UpdatedAt.Add(time.Millisecond), next.UpdatedAt)
+		assert.Equal(t, n.CreatedAt, next.CreatedAt)
+		n = next
+	}
+}
+
+func TestConditionalUpdateRejectsChangedTimestamp(t *testing.T) {
+	ctx := context.Background()
+	repo := NewNoteRepository(newTestDB(t))
+	n, err := repo.Create(ctx, "guard", "Guard", "initial")
+	require.NoError(t, err)
+	changed, err := repo.UpdateIfUnchanged(ctx, n.Slug, nil, ptr("first"), nil, nil, n.UpdatedAt)
+	require.NoError(t, err)
+	_, err = repo.UpdateIfUnchanged(ctx, n.Slug, ptr("Overwrite"), ptr("stale"), ptr("renamed"), nil, n.UpdatedAt)
+	require.ErrorIs(t, err, ErrVersionMismatch)
+	got, err := repo.GetBySlug(ctx, n.Slug)
+	require.NoError(t, err)
+	assert.Equal(t, changed, got, "a stale write must not change fields, slug or timestamp")
+}
+
+func TestConcurrentConditionalUpdates(t *testing.T) {
+	ctx := context.Background()
+	db, err := OpenDB(filepath.Join(t.TempDir(), "concurrent.sqlite"), 5000)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = db.Close() })
+	db.SetMaxOpenConns(16)
+	repo := NewNoteRepository(db)
+	for round := 0; round < 5; round++ {
+		n, err := repo.Create(ctx, "race", "Race", "initial")
+		require.NoError(t, err)
+		start := make(chan struct{})
+		results := make(chan error, 16)
+		var ready sync.WaitGroup
+		ready.Add(16)
+		for i := 0; i < 16; i++ {
+			go func() {
+				ready.Done()
+				<-start
+				_, err := repo.UpdateIfUnchanged(ctx, n.Slug, nil, ptr("changed"), nil, nil, n.UpdatedAt)
+				results <- err
+			}()
+		}
+		ready.Wait()
+		close(start)
+		successes := 0
+		for i := 0; i < 16; i++ {
+			err := <-results
+			if err == nil {
+				successes++
+			} else {
+				assert.ErrorIs(t, err, ErrVersionMismatch, "contention must be a precondition failure, not a database error")
+			}
+		}
+		assert.Equal(t, 1, successes)
+		require.NoError(t, repo.Delete(ctx, n.Slug))
+	}
 }

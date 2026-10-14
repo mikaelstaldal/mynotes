@@ -50,7 +50,6 @@ type SeedNote struct {
 	Content   string   `json:"content"`
 	CreatedAt string   `json:"createdAt"`
 	UpdatedAt string   `json:"updatedAt"`
-	Version   int      `json:"version"`
 	Tags      []string `json:"tags"`
 }
 
@@ -168,7 +167,7 @@ func exportTags(ctx context.Context, db *sql.DB) ([]SeedTag, error) {
 
 func exportNotes(ctx context.Context, db *sql.DB) ([]SeedNote, error) {
 	rows, err := db.QueryContext(ctx, `
-		SELECT n.id, n.slug, n.title, n.content, n.created_at, n.updated_at, n.version
+		SELECT n.id, n.slug, n.title, n.content, n.created_at, n.updated_at
 		FROM notes n ORDER BY n.id`)
 	if err != nil {
 		return nil, err
@@ -182,7 +181,7 @@ func exportNotes(ctx context.Context, db *sql.DB) ([]SeedNote, error) {
 			id int64
 			n  SeedNote
 		)
-		if err := rows.Scan(&id, &n.Slug, &n.Title, &n.Content, &n.CreatedAt, &n.UpdatedAt, &n.Version); err != nil {
+		if err := rows.Scan(&id, &n.Slug, &n.Title, &n.Content, &n.CreatedAt, &n.UpdatedAt); err != nil {
 			return nil, err
 		}
 		n.Tags = []string{}

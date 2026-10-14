@@ -188,7 +188,7 @@ export function NoteEditor({ slug, initialSlug, initialTitle, onSave }: Props) {
   const snapshotRef = useRef<{ title: string; content: string; slug: string | undefined; tags: string[] }>({
     title: '', content: '', slug: undefined, tags: [],
   });
-  const versionRef = useRef<number | undefined>(undefined);
+  const updatedAtRef = useRef<string | undefined>(undefined);
   // Synchronous mirror of `dirty` state for the navigation guard closure.
   const dirtyRef = useRef(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -357,7 +357,7 @@ export function NoteEditor({ slug, initialSlug, initialTitle, onSave }: Props) {
         if (cancelled) return;
         setTitle(note.title);
         setTags(note.tags);
-        versionRef.current = note.version;
+        updatedAtRef.current = new Date(note.updated_at).toISOString();
         snapshotRef.current = { title: note.title, content: note.content, slug: note.slug, tags: sortedSlugs(note.tags) };
         titleTouchedRef.current = true; // suppress auto-sync in edit mode
         setPreviewHtml(renderNote(note.content, PREVIEW_RENDER));
@@ -541,7 +541,7 @@ export function NoteEditor({ slug, initialSlug, initialTitle, onSave }: Props) {
   }, []);
 
   // Persists the current edit to an existing note. `ifMatch` enables optimistic
-  // locking: pass the quoted version to guard against concurrent edits, or
+  // locking: pass the quoted updated_at to guard against concurrent edits, or
   // undefined to force an overwrite (used when resolving a conflict). On a 412
   // it opens the conflict dialog; other errors surface a toast.
   async function saveEditingNote(noteSlug: string, ifMatch: string | undefined) {
@@ -550,7 +550,7 @@ export function NoteEditor({ slug, initialSlug, initialTitle, onSave }: Props) {
     try {
       const body: UpdateNoteRequest = { title, content, tags: tags.map(t => t.slug) };
       const note = await api.notes.update(noteSlug, body, ifMatch);
-      versionRef.current = note.version;
+      updatedAtRef.current = new Date(note.updated_at).toISOString();
       snapshotRef.current = { title, content, slug: note.slug, tags: sortedSlugs(tags) };
       clearDraft(noteSlug);
       dirtyRef.current = false;
@@ -584,7 +584,7 @@ export function NoteEditor({ slug, initialSlug, initialTitle, onSave }: Props) {
       const note = await api.notes.get(noteSlug);
       setTitle(note.title);
       setTags(note.tags);
-      versionRef.current = note.version;
+      updatedAtRef.current = new Date(note.updated_at).toISOString();
       snapshotRef.current = { title: note.title, content: note.content, slug: note.slug, tags: sortedSlugs(note.tags) };
       const view = viewRef.current;
       if (view) {
@@ -616,8 +616,8 @@ export function NoteEditor({ slug, initialSlug, initialTitle, onSave }: Props) {
     // or crash mid-request. It's cleared only after the backend confirms the save.
     persistDraftRef.current();
     if (editing) {
-      const ifMatch = versionRef.current !== undefined
-        ? `"${versionRef.current}"`
+      const ifMatch = updatedAtRef.current !== undefined
+        ? `"${updatedAtRef.current}"`
         : undefined;
       await saveEditingNote(slug, ifMatch);
       return;

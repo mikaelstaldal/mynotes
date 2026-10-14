@@ -753,7 +753,7 @@ function normalizeDate(value: string): string {
     : s.replace(' ', 'T');
   const ms = Date.parse(iso);
   if (Number.isNaN(ms)) return '';
-  return new Date(ms).toISOString().replace(/\.\d+Z$/, 'Z');
+  return new Date(ms).toISOString().replace(/\.000Z$/, 'Z');
 }
 
 /**
@@ -763,7 +763,7 @@ function normalizeDate(value: string): string {
  */
 function markdownWithFrontmatter(note: DemoNote): string {
   let fm = `title: ${yamlScalar(note.title)}\nslug: ${yamlScalar(note.slug)}\n`
-    + `date: "${note.createdAt}"\n`; // always quoted: a bare RFC 3339 value is a YAML timestamp
+    + `date: "${normalizeDate(note.createdAt)}"\n`; // always quoted: a bare RFC 3339 value is a YAML timestamp
   if (note.tags.length > 0) {
     fm += 'tags:\n' + note.tags.map((t) => `    - ${yamlScalar(t)}\n`).join('');
   }

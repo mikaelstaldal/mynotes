@@ -67,7 +67,7 @@ type docFrontmatter struct {
 func marshalFrontmatter(title string, createdAt time.Time) (string, error) {
 	fm := docFrontmatter{Title: title}
 	if !createdAt.IsZero() {
-		fm.Date = createdAt.UTC().Format(time.RFC3339)
+		fm.Date = createdAt.UTC().Format(time.RFC3339Nano)
 	}
 	data, err := yaml.Marshal(fm)
 	if err != nil {

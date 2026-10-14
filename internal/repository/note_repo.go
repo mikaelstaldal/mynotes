@@ -65,7 +65,7 @@ func scanNote(s interface{ Scan(...any) error }) (model.Note, error) {
 		n                    model.Note
 		createdAt, updatedAt string
 	)
-	if err := s.Scan(&n.ID, &n.Slug, &n.Title, &n.Content, &createdAt, &updatedAt, &n.Version); err != nil {
+	if err := s.Scan(&n.ID, &n.Slug, &n.Title, &n.Content, &createdAt, &updatedAt); err != nil {
 		return model.Note{}, err
 	}
 	n.CreatedAt, _ = time.Parse(rfc3339, createdAt)
@@ -76,7 +76,7 @@ func scanNote(s interface{ Scan(...any) error }) (model.Note, error) {
 // GetBySlug returns the full note, or ErrNotFound if no note has that slug.
 func (r *NoteRepository) GetBySlug(ctx context.Context, slug string) (model.Note, error) {
 	row := r.db.QueryRowContext(ctx, `
-		SELECT id, slug, title, content, created_at, updated_at, version FROM notes WHERE slug = ?`, slug)
+		SELECT id, slug, title, content, created_at, updated_at FROM notes WHERE slug = ?`, slug)
 	n, err := scanNote(row)
 	if errors.Is(err, sql.ErrNoRows) {
 		return model.Note{}, ErrNotFound
@@ -352,8 +352,8 @@ func (r *NoteRepository) CreateWithTimes(ctx context.Context, slug, title, conte
 	}
 	defer func() { _ = tx.Rollback() }() // no-op once Commit succeeds
 
-	createdTS := createdAt.UTC().Format(rfc3339)
-	updatedTS := updatedAt.UTC().Format(rfc3339)
+	createdTS := createdAt.UTC().Format(model.NoteTimestampFormat)
+	updatedTS := updatedAt.UTC().Format(model.NoteTimestampFormat)
 	res, err := tx.ExecContext(ctx, `
 		INSERT INTO notes (slug, title, content, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`,
 		slug, title, content, createdTS, updatedTS)
@@ -391,6 +391,16 @@ func (r *NoteRepository) CreateWithTimes(ctx context.Context, slug, title, conte
 // slice replaces the full tag set. Both the note write and the tag write run
 // in one transaction.
 func (r *NoteRepository) Update(ctx context.Context, slug string, title, content, newSlug *string, tagIDs *[]int64) (model.Note, error) {
+	return r.update(ctx, slug, title, content, newSlug, tagIDs, nil)
+}
+
+// UpdateIfUnchanged checks updated_at inside the write transaction, so a change
+// since the service read cannot be overwritten by a conditional PATCH.
+func (r *NoteRepository) UpdateIfUnchanged(ctx context.Context, slug string, title, content, newSlug *string, tagIDs *[]int64, expected time.Time) (model.Note, error) {
+	return r.update(ctx, slug, title, content, newSlug, tagIDs, &expected)
+}
+
+func (r *NoteRepository) update(ctx context.Context, slug string, title, content, newSlug *string, tagIDs *[]int64, expected *time.Time) (model.Note, error) {
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return model.Note{}, err
@@ -398,15 +408,27 @@ func (r *NoteRepository) Update(ctx context.Context, slug string, title, content
 	defer func() { _ = tx.Rollback() }() // no-op once Commit succeeds
 
 	var existingID int64
-	if err := tx.QueryRowContext(ctx, `SELECT id FROM notes WHERE slug = ?`, slug).Scan(&existingID); err != nil {
+	var storedTimestamp string
+	if err := tx.QueryRowContext(ctx, `SELECT id, updated_at FROM notes WHERE slug = ?`, slug).Scan(&existingID, &storedTimestamp); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return model.Note{}, ErrNotFound
 		}
 		return model.Note{}, err
 	}
 
-	sets := []string{"updated_at = ?", "version = version + 1"}
-	args := []any{time.Now().UTC().Format(rfc3339)}
+	stored, err := time.Parse(time.RFC3339, storedTimestamp)
+	if err != nil {
+		return model.Note{}, err
+	}
+	if expected != nil && !stored.Equal(*expected) {
+		return model.Note{}, ErrVersionMismatch
+	}
+	now := time.Now().UTC().Truncate(time.Millisecond)
+	if !now.After(stored) {
+		now = stored.Add(time.Millisecond)
+	}
+	sets := []string{"updated_at = ?"}
+	args := []any{now.Format(model.NoteTimestampFormat)}
 	if title != nil {
 		sets = append(sets, "title = ?")
 		args = append(args, *title)
@@ -423,6 +445,14 @@ func (r *NoteRepository) Update(ctx context.Context, slug string, title, content
 
 	_, err = tx.ExecContext(ctx,
 		"UPDATE notes SET "+strings.Join(sets, ", ")+" WHERE id = ?", args...)
+	// A competing writer can commit after our deferred transaction's read.
+	// SQLite then refuses to upgrade the stale WAL snapshot to a write
+	// (SQLITE_BUSY_SNAPSHOT), or reports BUSY while that writer is active.
+	// For a conditional save, both mean its precondition must be refreshed.
+	var sqErr *sqlitedrv.Error
+	if expected != nil && errors.As(err, &sqErr) && sqErr.Code()&0xff == sqlite3.SQLITE_BUSY {
+		return model.Note{}, ErrVersionMismatch
+	}
 	if isUniqueViolation(err) {
 		return model.Note{}, ErrConflict
 	}
@@ -691,7 +721,7 @@ func (r *NoteRepository) browse(ctx context.Context, tagSlugs []string, sort, or
 	if len(tagSlugs) == 0 {
 		countQuery = `SELECT COUNT(*) FROM notes`
 		listQuery = `
-			SELECT id, slug, title, created_at, updated_at, substr(content, 1, 501), version
+			SELECT id, slug, title, created_at, updated_at, substr(content, 1, 501)
 			FROM notes
 			` + browseOrderClause(sort, order, "") + `
 			LIMIT ? OFFSET ?`
@@ -701,7 +731,7 @@ func (r *NoteRepository) browse(ctx context.Context, tagSlugs []string, sort, or
 		countQuery = `SELECT COUNT(*) FROM notes n WHERE n.id IN (` + sub + `)`
 		countArgs = tagArgs
 		listQuery = `
-			SELECT n.id, n.slug, n.title, n.created_at, n.updated_at, substr(n.content, 1, 501), n.version
+			SELECT n.id, n.slug, n.title, n.created_at, n.updated_at, substr(n.content, 1, 501)
 			FROM notes n
 			WHERE n.id IN (` + sub + `)
 			` + browseOrderClause(sort, order, "n.") + `
@@ -726,7 +756,7 @@ func (r *NoteRepository) searchTitlePrefix(ctx context.Context, prefix string, t
 		countQuery = `SELECT COUNT(*) FROM notes WHERE title LIKE ? ESCAPE '\'`
 		countArgs = []any{pattern}
 		listQuery = `
-			SELECT id, slug, title, created_at, updated_at, substr(content, 1, 501), version
+			SELECT id, slug, title, created_at, updated_at, substr(content, 1, 501)
 			FROM notes
 			WHERE title LIKE ? ESCAPE '\'
 			ORDER BY title ASC, id DESC
@@ -739,7 +769,7 @@ func (r *NoteRepository) searchTitlePrefix(ctx context.Context, prefix string, t
 			WHERE n.title LIKE ? ESCAPE '\' AND n.id IN (` + sub + `)`
 		countArgs = append([]any{pattern}, tagArgs...)
 		listQuery = `
-			SELECT n.id, n.slug, n.title, n.created_at, n.updated_at, substr(n.content, 1, 501), n.version
+			SELECT n.id, n.slug, n.title, n.created_at, n.updated_at, substr(n.content, 1, 501)
 			FROM notes n
 			WHERE n.title LIKE ? ESCAPE '\' AND n.id IN (` + sub + `)
 			ORDER BY n.title ASC, n.id DESC
@@ -751,7 +781,7 @@ func (r *NoteRepository) searchTitlePrefix(ctx context.Context, prefix string, t
 }
 
 // querySummaries runs a COUNT + page query pair whose list columns are, in
-// order, (id, slug, title, created_at, updated_at, content-probe, version) and
+// order, (id, slug, title, created_at, updated_at, content-probe) and
 // assembles the page (excerpt from the probe, tags attached). Shared by the
 // browse and title-prefix paths, which differ only in their predicates.
 func (r *NoteRepository) querySummaries(ctx context.Context, countQuery string, countArgs []any, listQuery string, listArgs []any) ([]model.NoteSummary, int, error) {
@@ -775,7 +805,7 @@ func (r *NoteRepository) querySummaries(ctx context.Context, countQuery string, 
 			createdAt, updatedAt string
 			probe                string
 		)
-		if err := rows.Scan(&id, &s.Slug, &s.Title, &createdAt, &updatedAt, &probe, &s.Version); err != nil {
+		if err := rows.Scan(&id, &s.Slug, &s.Title, &createdAt, &updatedAt, &probe); err != nil {
 			return nil, 0, err
 		}
 		s.CreatedAt, _ = time.Parse(rfc3339, createdAt)
@@ -815,8 +845,7 @@ func (r *NoteRepository) search(ctx context.Context, q string, tagSlugs []string
 		listQuery = `
 			SELECT n.id, n.slug, n.title, n.created_at, n.updated_at,
 			       snippet(notes_fts, 1, char(2), char(3), '…', 30),
-			       substr(n.content, 1, 201),
-			       n.version
+			       substr(n.content, 1, 201)
 			FROM notes n
 			JOIN notes_fts ON notes_fts.rowid = n.id
 			WHERE notes_fts MATCH ?
@@ -836,8 +865,7 @@ func (r *NoteRepository) search(ctx context.Context, q string, tagSlugs []string
 		listQuery = `
 			SELECT n.id, n.slug, n.title, n.created_at, n.updated_at,
 			       snippet(notes_fts, 1, char(2), char(3), '…', 30),
-			       substr(n.content, 1, 201),
-			       n.version
+			       substr(n.content, 1, 201)
 			FROM notes n
 			JOIN notes_fts ON notes_fts.rowid = n.id
 			WHERE notes_fts MATCH ? AND n.id IN (` + sub + `)
@@ -866,7 +894,7 @@ func (r *NoteRepository) search(ctx context.Context, q string, tagSlugs []string
 			snip                 string
 			probe                string
 		)
-		if err := rows.Scan(&id, &s.Slug, &s.Title, &createdAt, &updatedAt, &snip, &probe, &s.Version); err != nil {
+		if err := rows.Scan(&id, &s.Slug, &s.Title, &createdAt, &updatedAt, &snip, &probe); err != nil {
 			return nil, 0, err
 		}
 		s.CreatedAt, _ = time.Parse(rfc3339, createdAt)

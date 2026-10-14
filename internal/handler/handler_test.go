@@ -20,6 +20,10 @@ import (
 	"github.com/mikaelstaldal/mynotes/internal/service"
 )
 
+func noteETag(updatedAt time.Time) string {
+	return `"` + updatedAt.UTC().Format("2006-01-02T15:04:05.000Z") + `"`
+}
+
 // newServer wires the full handler → service → repository stack against an
 // in-memory database, mirroring the production wiring in main.go.
 func newServer(t *testing.T) *httptest.Server {
@@ -103,19 +107,19 @@ func TestCreateAndGetNote(t *testing.T) {
 	assert.Equal(t, "Buy milk", created.Title)
 	assert.Equal(t, "buy-milk", created.Slug, "slug should be derived from the title")
 	assert.Equal(t, "# Shopping\n\nmilk", created.Content, "content is stored verbatim")
-	assert.Equal(t, 1, created.Version, "new note starts at version 1")
+	assert.Equal(t, created.CreatedAt, created.UpdatedAt)
 
 	res, err := http.Get(srv.URL + "/api/v1/notes/" + created.Slug)
 	require.NoError(t, err)
 	defer res.Body.Close()
 	require.Equal(t, http.StatusOK, res.StatusCode)
-	assert.Equal(t, `"1"`, res.Header.Get("ETag"), "GET response carries ETag")
+	assert.Equal(t, noteETag(created.UpdatedAt), res.Header.Get("ETag"), "GET response carries ETag")
 
 	var got api.Note
 	require.NoError(t, json.NewDecoder(res.Body).Decode(&got))
 	assert.Equal(t, created.Slug, got.Slug)
 	assert.Equal(t, created.Content, got.Content)
-	assert.Equal(t, 1, got.Version)
+	assert.Equal(t, created.UpdatedAt, got.UpdatedAt)
 }
 
 func TestCreateValidationError(t *testing.T) {
@@ -158,19 +162,20 @@ func TestUpdateNote(t *testing.T) {
 	require.NoError(t, err)
 	defer res.Body.Close()
 	require.Equal(t, http.StatusOK, res.StatusCode)
-	assert.Equal(t, `"2"`, res.Header.Get("ETag"), "successful update returns new ETag")
+	assert.NotEqual(t, noteETag(created.UpdatedAt), res.Header.Get("ETag"), "successful update returns new ETag")
 
 	var updated api.Note
 	require.NoError(t, json.NewDecoder(res.Body).Decode(&updated))
 	assert.Equal(t, "new", updated.Content)
 	assert.Equal(t, "Draft", updated.Title, "title left unchanged when absent")
-	assert.Equal(t, 2, updated.Version)
+	assert.True(t, updated.UpdatedAt.After(created.UpdatedAt))
+	assert.Equal(t, noteETag(updated.UpdatedAt), res.Header.Get("ETag"))
 }
 
 func TestOptimisticLocking(t *testing.T) {
 	srv := newServer(t)
 	created := createNote(t, srv, `{"title":"Lock","content":"v1"}`)
-	require.Equal(t, 1, created.Version)
+	require.False(t, created.UpdatedAt.IsZero())
 
 	patchURL := srv.URL + "/api/v1/notes/" + created.Slug
 
@@ -187,19 +192,32 @@ func TestOptimisticLocking(t *testing.T) {
 		return res
 	}
 
-	// Matching version succeeds and bumps to v2.
-	res := patch(`{"content":"v2"}`, `"1"`)
+	// Matching timestamp succeeds and advances updated_at.
+	res := patch(`{"content":"v2"}`, noteETag(created.UpdatedAt))
 	defer res.Body.Close()
 	require.Equal(t, http.StatusOK, res.StatusCode)
-	assert.Equal(t, `"2"`, res.Header.Get("ETag"))
+	assert.NotEqual(t, noteETag(created.UpdatedAt), res.Header.Get("ETag"))
 	var updated api.Note
 	require.NoError(t, json.NewDecoder(res.Body).Decode(&updated))
-	assert.Equal(t, 2, updated.Version)
+	assert.True(t, updated.UpdatedAt.After(created.UpdatedAt))
+	assert.Equal(t, noteETag(updated.UpdatedAt), res.Header.Get("ETag"))
 
-	// Stale If-Match (still "1" but note is now v2) returns 412.
-	res2 := patch(`{"content":"conflict"}`, `"1"`)
+	// The old timestamp returns 412 after an update.
+	res2 := patch(`{"content":"conflict"}`, noteETag(created.UpdatedAt))
 	defer res2.Body.Close()
 	assert.Equal(t, http.StatusPreconditionFailed, res2.StatusCode)
+
+	// An unchanged conditional PATCH preserves both the timestamp and ETag.
+	noOp := patch(`{"content":"v2"}`, noteETag(updated.UpdatedAt))
+	defer noOp.Body.Close()
+	require.Equal(t, http.StatusOK, noOp.StatusCode)
+	assert.Equal(t, noteETag(updated.UpdatedAt), noOp.Header.Get("ETag"))
+
+	for _, invalid := range []string{`"1"`, "invalid", "W/" + noteETag(updated.UpdatedAt)} {
+		rejected := patch(`{"content":"bad"}`, invalid)
+		assert.Equal(t, http.StatusPreconditionFailed, rejected.StatusCode)
+		require.NoError(t, rejected.Body.Close())
+	}
 
 	// Absent If-Match always succeeds (header is optional).
 	res3 := patch(`{"content":"unconditional"}`, "")
@@ -649,14 +667,14 @@ func TestUpdateNoteSameTagSetIsNoOp(t *testing.T) {
 	srv := newServer(t)
 	tag := createTag(t, srv, `{"slug":"work"}`)
 	created := createNote(t, srv, `{"title":"Note","tags":["`+tag.Slug+`"]}`)
-	require.Equal(t, 1, created.Version)
+	require.False(t, created.UpdatedAt.IsZero())
 
 	res := patchNote(t, srv, created.Slug, `{"tags":["`+tag.Slug+`"]}`)
 	defer res.Body.Close()
 	require.Equal(t, http.StatusOK, res.StatusCode)
 	var updated api.Note
 	require.NoError(t, json.NewDecoder(res.Body).Decode(&updated))
-	assert.Equal(t, 1, updated.Version, "replacing with an identical tag set must not bump version")
+	assert.Equal(t, created.UpdatedAt, updated.UpdatedAt, "identical tags must not bump updated_at")
 }
 
 func TestUpdateNoteUnknownTagRejected(t *testing.T) {
@@ -772,7 +790,7 @@ func TestSplitNote(t *testing.T) {
 	var after api.Note
 	require.NoError(t, json.NewDecoder(got.Body).Decode(&after))
 	assert.Equal(t, orig.Content, after.Content)
-	assert.Equal(t, 1, after.Version)
+	assert.Equal(t, orig.UpdatedAt, after.UpdatedAt)
 }
 
 func TestSplitNoteWithoutBody(t *testing.T) {

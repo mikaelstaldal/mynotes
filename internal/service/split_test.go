@@ -171,7 +171,7 @@ func TestSplit_LeavesOriginalUnchanged(t *testing.T) {
 	after, err := svc.Get(ctx, orig.Slug)
 	require.NoError(t, err)
 	assert.Equal(t, content, after.Content, "source content is untouched")
-	assert.Equal(t, orig.Version, after.Version, "source is not written to")
+	assert.Equal(t, orig.UpdatedAt, after.UpdatedAt, "source is not written to")
 }
 
 func TestSplit_PreservesBothTimestamps(t *testing.T) {

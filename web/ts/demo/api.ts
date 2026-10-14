@@ -28,8 +28,8 @@ function noContentResponse(): Response {
   return new Response(null, { status: 204, headers: { 'Cache-Control': 'no-store' } });
 }
 
-function etag(version: number): string {
-  return `"${version}"`;
+function etag(updatedAt: string): string {
+  return `"${new Date(updatedAt).toISOString()}"`;
 }
 
 // ── Projections ──────────────────────────────────────────────────────────────
@@ -90,7 +90,6 @@ function toNoteDTO(note: DemoNote, links: LinkIndex): unknown {
     content: note.content,
     created_at: note.createdAt,
     updated_at: note.updatedAt,
-    version: note.version,
     tags: toTagDTOs(note.tags),
     incoming_links: links.incoming.get(note.slug) ?? [],
     outgoing_links: links.outgoing.get(note.id) ?? [],
@@ -104,7 +103,6 @@ function toSummaryDTO(note: DemoNote, excerpt: string, links: LinkIndex): unknow
     created_at: note.createdAt,
     updated_at: note.updatedAt,
     excerpt,
-    version: note.version,
     tags: toTagDTOs(note.tags),
     incoming_links: links.incoming.get(note.slug) ?? [],
     outgoing_links: links.outgoing.get(note.id) ?? [],
@@ -176,9 +174,8 @@ function createNote(
     slug,
     title: trimmed,
     content,
-    createdAt,
-    updatedAt,
-    version: 1,
+    createdAt: new Date(createdAt).toISOString(),
+    updatedAt: new Date(updatedAt).toISOString(),
     tags,
   };
   state.notes.push(note);
@@ -199,7 +196,7 @@ function ensureTags(state: DemoState, slugs: string[]): void {
   for (const slug of slugs) {
     if (state.tags.some((t) => t.slug === slug)) continue;
     validateSlug(slug);
-    state.tags.push({ slug, createdAt: nowTimestamp() });
+    state.tags.push({ slug, createdAt: nowMetadataTimestamp() });
   }
 }
 
@@ -275,7 +272,7 @@ function browseCompare(a: DemoNote, b: DemoNote, sort: string, order: string): n
 async function getNote(slug: string): Promise<Response> {
   return withStore(async (state) => {
     const note = findNote(state, slug);
-    return jsonResponse(200, toNoteDTO(note, buildLinkIndex(state)), { ETag: etag(note.version) });
+    return jsonResponse(200, toNoteDTO(note, buildLinkIndex(state)), { ETag: etag(note.updatedAt) });
   });
 }
 
@@ -314,12 +311,12 @@ async function patchNote(slug: string, request: Request): Promise<Response> {
     const resolvedTags = tags === null ? null : resolveTags(state, tags);
 
     const note = findNote(state, slug);
-    if (ifMatch !== null && Number(ifMatch.replace(/"/g, '')) !== note.version) {
+    if (ifMatch !== null && ifMatch !== etag(note.updatedAt)) {
       throw new ApiError(412, 'version mismatch');
     }
 
     // Only genuinely-changed fields count; if nothing differs the note is
-    // returned untouched and its version does not move.
+    // returned untouched and its updated_at does not move.
     const changed = (trimmedTitle !== null && trimmedTitle !== note.title)
       || (content !== null && content !== note.content)
       || (resolvedTags !== null && !sameTagSet(resolvedTags, note.tags));
@@ -327,11 +324,10 @@ async function patchNote(slug: string, request: Request): Promise<Response> {
       if (trimmedTitle !== null) note.title = trimmedTitle;
       if (content !== null) note.content = content;
       if (resolvedTags !== null) note.tags = resolvedTags;
-      note.version++;
-      note.updatedAt = nowTimestamp();
+      note.updatedAt = nextNoteTimestamp(note.updatedAt);
       await saveState(state);
     }
-    return jsonResponse(200, toNoteDTO(note, buildLinkIndex(state)), { ETag: etag(note.version) });
+    return jsonResponse(200, toNoteDTO(note, buildLinkIndex(state)), { ETag: etag(note.updatedAt) });
   });
 }
 
@@ -461,7 +457,7 @@ async function postTag(request: Request): Promise<Response> {
     const slug = stringField(body, 'slug') ?? '';
     validateSlug(slug);
     if (state.tags.some((t) => t.slug === slug)) throw conflictError();
-    state.tags.push({ slug, createdAt: nowTimestamp() });
+    state.tags.push({ slug, createdAt: nowMetadataTimestamp() });
     await saveState(state);
     return jsonResponse(201, { slug });
   });
@@ -556,7 +552,7 @@ async function postArtifact(request: Request): Promise<Response> {
   validateArtifactContent(bytes, contentType);
 
   const sha256 = await sha256Hex(buffer);
-  const createdAt = nowTimestamp();
+  const createdAt = nowMetadataTimestamp();
   const existing = await getArtifact(sha256);
   // Content-addressed: uploading the same bytes twice is idempotent.
   if (existing === undefined) await putArtifact({ sha256, contentType, createdAt, data: buffer });

@@ -48,8 +48,8 @@ var (
 	// ErrValidation wraps a human-readable validation failure.
 	ErrValidation = errors.New("validation error")
 	// ErrVersionMismatch is returned when an If-Match ETag does not match the
-	// note's current version (optimistic locking failure).
-	ErrVersionMismatch = errors.New("version mismatch")
+	// note's current updated_at (optimistic locking failure).
+	ErrVersionMismatch = repository.ErrVersionMismatch
 )
 
 // slugPattern mirrors the OpenAPI slug constraint: lowercase alphanumerics in
@@ -253,7 +253,7 @@ func mapTagErr(err error) error {
 // and updated_at is bumped. tags nil leaves the note's tags unchanged; a
 // non-nil (possibly empty) slice of tag slugs replaces the full set — an
 // unknown slug is a validation error. ifMatch, when non-nil, is compared
-// against the stored version; a mismatch returns ErrVersionMismatch
+// against the stored updated_at; a mismatch returns ErrVersionMismatch
 // (optimistic locking).
 func (s *NoteService) Update(ctx context.Context, slug string, title, content *string, tags *[]string, ifMatch *string) (model.Note, error) {
 	if title == nil && content == nil && tags == nil {
@@ -288,9 +288,8 @@ func (s *NoteService) Update(ctx context.Context, slug string, title, content *s
 	}
 
 	if ifMatch != nil {
-		etag := strings.Trim(*ifMatch, `"`)
-		expectedVer, parseErr := strconv.Atoi(etag)
-		if parseErr != nil || expectedVer != existing.Version {
+		expectedETag := `"` + existing.UpdatedAt.UTC().Format(model.NoteTimestampFormat) + `"`
+		if *ifMatch != expectedETag {
 			return model.Note{}, ErrVersionMismatch
 		}
 	}
@@ -313,7 +312,12 @@ func (s *NoteService) Update(ctx context.Context, slug string, title, content *s
 		return existing, nil
 	}
 
-	note, err := s.repo.Update(ctx, slug, changedTitle, changedContent, nil, changedTagIDs)
+	var note model.Note
+	if ifMatch != nil {
+		note, err = s.repo.UpdateIfUnchanged(ctx, slug, changedTitle, changedContent, nil, changedTagIDs, existing.UpdatedAt)
+	} else {
+		note, err = s.repo.Update(ctx, slug, changedTitle, changedContent, nil, changedTagIDs)
+	}
 	return note, mapTagErr(err)
 }
 
@@ -638,7 +642,6 @@ func (s *NoteService) Split(ctx context.Context, slug string, tag *string) ([]mo
 			Excerpt:   repository.Excerpt(note.Content),
 			CreatedAt: note.CreatedAt,
 			UpdatedAt: note.UpdatedAt,
-			Version:   note.Version,
 			Tags:      note.Tags,
 		})
 	}

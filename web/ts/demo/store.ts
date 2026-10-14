@@ -112,6 +112,11 @@ async function loadState(): Promise<DemoState> {
   if (cachedState === null) {
     const stored = await readRecord<DemoState>(KV_STORE, STATE_KEY);
     cachedState = stored ?? (await seedStore());
+    // Normalize persisted demos from before timestamp ETags, just like schemaV9.
+    for (const note of cachedState.notes) {
+      note.createdAt = new Date(note.createdAt).toISOString();
+      note.updatedAt = new Date(note.updatedAt).toISOString();
+    }
   }
   return cachedState;
 }

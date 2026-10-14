@@ -159,8 +159,9 @@ paths:
           headers:
             Etag:
               description: >
-                Strong entity tag reflecting the note's current version.
-                Quoted integer, e.g. "1", "2".
+                Strong entity tag quoting updated_at as a UTC timestamp
+                with three fractional digits.
+                For example, "2026-10-14T08:12:45.782Z".
               required: true
               schema:
                 type: string
@@ -180,9 +181,11 @@ paths:
           required: false
           description: >
             When provided, the update is rejected with 412 Precondition Failed
-            unless the note's current version matches this Etag (quoted integer).
+            unless the note's current updated_at matches this ETag
+            (quoted UTC timestamp with three fractional digits).
           schema:
             type: string
+            maxLength: 100
       requestBody:
         required: true
         content:
@@ -204,7 +207,7 @@ paths:
                 $ref: "#/components/schemas/Note"
         "412":
           description: >
-            Precondition Failed — If-Match was provided and the current version
+            Precondition Failed — If-Match was provided and the current timestamp
             does not match.
           content:
             application/json:
@@ -812,7 +815,7 @@ components:
   schemas:
     Note:
       type: object
-      required: [slug, title, content, created_at, updated_at, version, tags, incoming_links, outgoing_links]
+      required: [slug, title, content, created_at, updated_at, tags, incoming_links, outgoing_links]
       properties:
         slug:
           type: string
@@ -832,16 +835,11 @@ components:
         created_at:
           type: string
           format: date-time
+          x-ogen-time-format: "2006-01-02T15:04:05.000Z07:00"
         updated_at:
           type: string
           format: date-time
-        version:
-          type: integer
-          minimum: 1
-          description: >
-            Monotonically increasing edit counter. Starts at 1 on creation and
-            increments by 1 on each write. No-op PATCHes do not increment it.
-            Use with If-Match for optimistic locking.
+          x-ogen-time-format: "2006-01-02T15:04:05.000Z07:00"
         tags:
           type: array
           items:
@@ -872,7 +870,7 @@ components:
 
     NoteSummary:
       type: object
-      required: [slug, title, created_at, updated_at, excerpt, version, tags, incoming_links, outgoing_links]
+      required: [slug, title, created_at, updated_at, excerpt, tags, incoming_links, outgoing_links]
       properties:
         slug:
           type: string
@@ -885,15 +883,14 @@ components:
         created_at:
           type: string
           format: date-time
+          x-ogen-time-format: "2006-01-02T15:04:05.000Z07:00"
         updated_at:
           type: string
           format: date-time
+          x-ogen-time-format: "2006-01-02T15:04:05.000Z07:00"
         excerpt:
           type: string
           description: Short text excerpt; empty string when none, never absent.
-        version:
-          type: integer
-          minimum: 1
         tags:
           type: array
           items:
@@ -1005,7 +1002,7 @@ components:
             Slugs of existing tags. Absent leaves the note's tags unchanged;
             present (including an empty array) replaces the full set. An
             unknown slug is a 400. Replacing with the same set as before is a
-            no-op (does not bump `version`).
+            no-op (does not bump `updated_at`).
 
     SplitNoteRequest:
       type: object

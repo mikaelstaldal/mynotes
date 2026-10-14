@@ -472,3 +472,11 @@ func TestMarkdownWithFrontmatterEmptyContent(t *testing.T) {
 	assert.Equal(t, "empty", fm.Slug)
 	assert.Empty(t, body)
 }
+
+func TestMarkdownFrontmatterPreservesMilliseconds(t *testing.T) {
+	authored := mustRFC3339("2026-01-02T03:04:05.456Z")
+	note := model.Note{Title: "Milliseconds", Slug: "milliseconds", CreatedAt: authored, Content: "body"}
+	fm, body := parseFrontmatter(MarkdownWithFrontmatter(note))
+	assert.Equal(t, authored, fm.Date)
+	assert.Equal(t, note.Content, body)
+}

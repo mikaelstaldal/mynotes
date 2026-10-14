@@ -22,6 +22,7 @@ var migrations = [][]string{
 	schemaV6,
 	schemaV7,
 	schemaV8,
+	schemaV9,
 }
 
 // linksSchemaVersion is the schema version that introduces the note_links table
@@ -226,4 +227,11 @@ var schemaV1 = []string{
 		INSERT INTO notes_fts(notes_fts, rowid, title, content) VALUES ('delete', old.id, old.title, old.content);
 		INSERT INTO notes_fts(rowid, title, content) VALUES (new.id, new.title, new.content);
 	END`,
+}
+
+// schemaV9 replaces edit counters with millisecond timestamps. Normalize older
+// second-precision rows too, so textual timestamp ordering remains chronological.
+var schemaV9 = []string{
+	`ALTER TABLE notes DROP COLUMN version`,
+	`UPDATE notes SET created_at = strftime('%Y-%m-%dT%H:%M:%fZ', created_at), updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', updated_at)`,
 }

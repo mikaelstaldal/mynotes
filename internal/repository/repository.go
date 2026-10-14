@@ -6,6 +6,8 @@ package repository
 import "errors"
 
 var (
+	// ErrVersionMismatch signals a failed timestamp precondition.
+	ErrVersionMismatch = errors.New("version mismatch")
 	// ErrNotFound is returned when a requested row does not exist.
 	ErrNotFound = errors.New("not found")
 	// ErrConflict is returned when a write violates the slug UNIQUE constraint

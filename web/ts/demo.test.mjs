@@ -292,7 +292,6 @@ test('markdownWithFrontmatter round-trips through parseFrontmatter', () => {
     content: '# My Note\n\nBody text.\n',
     createdAt: '2026-01-02T03:04:05Z',
     updatedAt: '2026-01-02T03:04:05Z',
-    version: 1,
     tags: ['work', 'reference'],
   };
   const out = markdownWithFrontmatter(note);
@@ -310,7 +309,7 @@ test('markdownWithFrontmatter round-trips through parseFrontmatter', () => {
 test('markdownWithFrontmatter leaves plain scalars unquoted', () => {
   const out = markdownWithFrontmatter({
     slug: 'plain', title: 'Plain Title', content: '', createdAt: '2026-01-02T03:04:05Z',
-    updatedAt: '2026-01-02T03:04:05Z', version: 1, tags: ['work'],
+    updatedAt: '2026-01-02T03:04:05Z', tags: ['work'],
   });
   assert.ok(out.includes('title: Plain Title\n'), out);
   assert.ok(out.includes('    - work\n'), out);
@@ -361,7 +360,6 @@ const NOTE = {
   content: '# Sourdough Bread\n\nA reliable everyday loaf with a crisp crust and open crumb.\n',
   createdAt: '2026-01-01T00:00:00Z',
   updatedAt: '2026-01-01T00:00:00Z',
-  version: 1,
   tags: [],
 };
 
@@ -394,4 +392,62 @@ test('searchNote returns no snippet when only the title matched', () => {
   const hit = searchNote(note, ['sourdough']);
   assert.ok(hit.matched);
   assert.equal(hit.snippet, '', 'the caller falls back to the plain excerpt');
+});
+
+const { nextNoteTimestamp, nowTimestamp } = vm.runInThisContext('({ nextNoteTimestamp, nowTimestamp })');
+test('note timestamps retain milliseconds and strictly increase when the clock repeats or moves backwards', () => {
+  assert.match(nowTimestamp(), /\.\d{3}Z$/);
+  const stored = '2026-01-02T03:04:05.456Z';
+  const instant = Date.parse(stored);
+  assert.equal(nextNoteTimestamp(stored, instant), '2026-01-02T03:04:05.457Z');
+  assert.equal(nextNoteTimestamp(stored, instant - 1000), '2026-01-02T03:04:05.457Z');
+  assert.equal(nextNoteTimestamp(stored, instant + 10), '2026-01-02T03:04:05.466Z');
+});
+
+test('frontmatter retains fractional authorship timestamps on export and import', () => {
+  const note = { ...NOTE, createdAt: '2026-01-02T03:04:05.456Z' };
+  const { fm } = parseFrontmatter(markdownWithFrontmatter(note));
+  assert.equal(fm.date, note.createdAt);
+});
+
+test('demo PATCH uses timestamp ETags, preserves no-ops, and rejects stale writes', async () => {
+  const state = {
+    notes: [{ ...NOTE, createdAt: '2099-01-01T00:00:00.000Z', updatedAt: '2099-01-01T00:00:00.000Z' }],
+    tags: [], nextNoteId: 2,
+  };
+  let writes = 0;
+  const context = vm.createContext({
+    Request, Response, Headers,
+    withStore: async fn => fn(state),
+    saveState: async () => { writes++; },
+  });
+  for (const name of ['model.js', 'text.js', 'api.js']) {
+    const file = path.resolve(__dirname, '../static/demo', name);
+    vm.runInContext(readFileSync(file, 'utf8'), context, { filename: file });
+  }
+  const { getNote, patchNote } = vm.runInContext('({ getNote, patchNote })', context);
+  const before = await getNote(NOTE.slug);
+  const tag = before.headers.get('ETag');
+  assert.equal(tag, '"2099-01-01T00:00:00.000Z"');
+  assert.equal('version' in await before.json(), false);
+  const patch = (content, ifMatch) => patchNote(NOTE.slug, new Request('http://localhost/api/v1/notes/' + NOTE.slug, {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json', 'If-Match': ifMatch },
+    body: JSON.stringify({ content }),
+  }));
+  const noOp = await patch(NOTE.content, tag);
+  assert.equal(noOp.headers.get('ETag'), tag);
+  assert.equal(writes, 0);
+  const changed = await patch('Changed', tag);
+  const body = await changed.json();
+  assert.equal(body.updated_at, '2099-01-01T00:00:00.001Z');
+  assert.equal(changed.headers.get('ETag'), `"${body.updated_at}"`);
+  assert.equal(writes, 1);
+  await assert.rejects(patch('Stale overwrite', tag), err => err.status === 412);
+  assert.equal(state.notes[0].content, 'Changed');
+  assert.equal(writes, 1);
+});
+
+test('tag and artifact timestamps retain server second precision', () => {
+  const { nowMetadataTimestamp } = vm.runInThisContext('({ nowMetadataTimestamp })');
+  assert.match(nowMetadataTimestamp(), /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/);
 });

@@ -71,7 +71,6 @@ func toAPI(n model.Note) api.Note {
 		Content:       n.Content,
 		CreatedAt:     n.CreatedAt,
 		UpdatedAt:     n.UpdatedAt,
-		Version:       n.Version,
 		Tags:          toAPITags(n.Tags),
 		IncomingLinks: toAPINoteLinks(n.IncomingLinks),
 		OutgoingLinks: toAPINoteLinks(n.OutgoingLinks),
@@ -86,7 +85,6 @@ func toAPISummary(n model.NoteSummary) api.NoteSummary {
 		Excerpt:       n.Excerpt,
 		CreatedAt:     n.CreatedAt,
 		UpdatedAt:     n.UpdatedAt,
-		Version:       n.Version,
 		Tags:          toAPITags(n.Tags),
 		IncomingLinks: toAPINoteLinks(n.IncomingLinks),
 		OutgoingLinks: toAPINoteLinks(n.OutgoingLinks),
@@ -94,7 +92,9 @@ func toAPISummary(n model.NoteSummary) api.NoteSummary {
 	}
 }
 
-func formatETag(version int) string { return fmt.Sprintf(`"%d"`, version) }
+func formatETag(updatedAt time.Time) string {
+	return `"` + updatedAt.UTC().Format(model.NoteTimestampFormat) + `"`
+}
 
 // optPtr converts an ogen OptString to a *string: nil when absent (leave
 // unchanged), a pointer to the value when present.
@@ -124,7 +124,7 @@ func (h *Handler) GetNote(ctx context.Context, params api.GetNoteParams) (*api.N
 	if err != nil {
 		return nil, err
 	}
-	return &api.NoteHeaders{Etag: formatETag(n.Version), Response: toAPI(n)}, nil
+	return &api.NoteHeaders{Etag: formatETag(n.UpdatedAt), Response: toAPI(n)}, nil
 }
 
 func (h *Handler) CreateNote(ctx context.Context, req *api.CreateNoteRequest) (*api.Note, error) {
@@ -159,7 +159,7 @@ func (h *Handler) UpdateNote(ctx context.Context, req *api.UpdateNoteRequest, pa
 	if err != nil {
 		return nil, err
 	}
-	return &api.NoteHeaders{Etag: formatETag(n.Version), Response: toAPI(n)}, nil
+	return &api.NoteHeaders{Etag: formatETag(n.UpdatedAt), Response: toAPI(n)}, nil
 }
 
 func (h *Handler) DeleteNote(ctx context.Context, params api.DeleteNoteParams) error {

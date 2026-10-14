@@ -26,7 +26,6 @@ interface DemoNote {
   content: string;
   createdAt: string;
   updatedAt: string;
-  version: number;
   /** Tag slugs, in the order the API returns them (sorted, case-insensitive). */
   tags: string[];
 }
@@ -105,7 +104,7 @@ function conflictError(): ApiError {
 
 /** The UTC RFC 3339 form the server stores and the API emits. */
 function nowTimestamp(): string {
-  return new Date().toISOString().replace(/\.\d+Z$/, 'Z');
+  return new Date().toISOString();
 }
 
 /** Code-point count, matching Go's utf8.RuneCountInString. */
@@ -113,4 +112,14 @@ function runeLength(s: string): number {
   let n = 0;
   for (const _ of s) n++;
   return n;
+}
+
+/** Mirrors NoteRepository.update: every changed write advances by at least 1 ms. */
+function nextNoteTimestamp(stored: string, now = Date.now()): string {
+  return new Date(Math.max(now, Date.parse(stored) + 1)).toISOString();
+}
+
+/** Tags and artifacts still mirror the server's second-precision timestamps. */
+function nowMetadataTimestamp(): string {
+  return new Date().toISOString().replace(/\.\d+Z$/, 'Z');
 }

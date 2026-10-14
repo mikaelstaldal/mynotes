@@ -189,3 +189,30 @@ func TestBackfillNoteLinksSkipsAPopulatedIndex(t *testing.T) {
 		`SELECT count(*) FROM note_links WHERE target_slug = 'sentinel'`).Scan(&sentinels))
 	assert.Equal(t, 1, sentinels, "a populated index is claimed, so the pass must not rewrite it")
 }
+
+func TestNoteTimestampMigration(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "old.sqlite")
+	db, err := sqlite.Open(path, 0, migrations[:8])
+	require.NoError(t, err)
+	_, err = db.Exec(`INSERT INTO notes (slug, title, content, created_at, updated_at, version)
+ VALUES ('old', 'Old', 'searchable content', '2026-01-02T03:04:05Z', '2026-01-02T03:04:06Z', 42)`)
+	require.NoError(t, err)
+	require.NoError(t, db.Close())
+	db, err = OpenDB(path, 0)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = db.Close() })
+	var created, updated string
+	require.NoError(t, db.QueryRow(`SELECT created_at, updated_at FROM notes WHERE slug = 'old'`).Scan(&created, &updated))
+	assert.Equal(t, "2026-01-02T03:04:05.000Z", created)
+	assert.Equal(t, "2026-01-02T03:04:06.000Z", updated)
+	var count int
+	require.NoError(t, db.QueryRow(`SELECT count(*) FROM pragma_table_info('notes') WHERE name = 'version'`).Scan(&count))
+	assert.Zero(t, count)
+	repo := NewNoteRepository(db)
+	notes, total, err := repo.List(context.Background(), "searchable", nil, false, "updated", "desc", 50, 0)
+	require.NoError(t, err)
+	require.Equal(t, 1, total, "FTS search survives migration")
+	require.Len(t, notes, 1)
+	assert.Equal(t, "Old", notes[0].Title)
+	assert.Equal(t, "2026-01-02T03:04:06.000Z", notes[0].UpdatedAt.Format("2006-01-02T15:04:05.000Z"))
+}

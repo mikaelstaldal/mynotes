@@ -20,7 +20,7 @@ built. Implementation choices live in `ARCHITECTURE.md`; the build plan lives in
 ### Non-goals (v1)
 
 - Real-time collaboration / concurrent multi-user editing (beyond simple optimistic locking).
-- Version history / revisions (beyond version number).
+- Version history / revisions.
 - Folders or hierarchical organization (tags are supported — see below).
 - Any public publishing workflow beyond the stable URL existing.
 
@@ -444,18 +444,18 @@ The API manages notes keyed by slug. Operations:
   slugs, defaults to none — an unknown slug is a validation error). Returns
   the full created note.
 - **Fetch a note** by slug — returns the full note (Markdown content, tags),
-  plus a `version` integer and an `ETag` response header quoting the version
-  (e.g. `"1"`).
+  plus an `ETag` response header quoting `updated_at` as a UTC timestamp
+  with three fractional digits (e.g. `"2026-10-14T08:12:45.782Z"`).
 - **Update a note** (partial) — any of title, content, tags; absent fields are
   left unchanged. Returns the full updated note. An update that changes nothing
-  does not bump the updated timestamp or version — this includes replacing
+  does not bump the updated timestamp — this includes replacing
   `tags` with the same set the note already has. A present `tags` array
   (including an empty one) replaces the note's full tag set; an unknown slug
   is a validation error. An update with no recognized fields is an error.
   Supports optimistic locking via the `If-Match` request
   header: if provided, the update is rejected with 412 Precondition Failed when
-  the note's current version does not match. The response includes the new
-  `version` and `ETag`.
+  the note's current timestamp ETag does not match. The response includes the
+  new `updated_at` and `ETag`. The precondition is checked in the write transaction.
 - **Delete a note** by slug — deleting an unknown note is a not-found error
   (delete is not idempotent).
 - **Split a note** — `POST /notes/{slug}/split` creates one new note per
@@ -526,9 +526,11 @@ The API manages notes keyed by slug. Operations:
   Markdown is subject to the same validation as regular note creation (401 on auth
   failure, 400 on invalid content, 409 on slug conflict).
 
-Notes also expose a monotonically increasing `version` integer (1 on creation,
-+1 per write, no-op PATCHes do not increment it) in all response bodies
-(`Note` and `NoteSummary`).
+Note `created_at` and `updated_at` use millisecond precision. Each changed
+write advances `updated_at` strictly: if the clock is at or before the stored
+timestamp, the stored timestamp plus one millisecond is used. No-op PATCHes
+preserve it. Existing second-precision timestamps are normalized to milliseconds
+on migration. Notes expose no numeric version counter.
 
 Errors use the shape `{ "error": "message" }`. Status codes: 201
 create/import/split; 200 get/update/list/download; 204 delete; 400

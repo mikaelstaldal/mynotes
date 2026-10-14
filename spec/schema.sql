@@ -1,5 +1,5 @@
 -- Generated from a freshly migrated database. See AGENTS.md.
-PRAGMA user_version = 8;
+PRAGMA user_version = 9;
 
 CREATE TABLE api_tokens (
  id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -53,7 +53,7 @@ CREATE TABLE notes (
 		content    TEXT NOT NULL DEFAULT '',
 		created_at TEXT NOT NULL,
 		updated_at TEXT NOT NULL
-	, version INTEGER NOT NULL DEFAULT 1);
+	);
 
 CREATE VIRTUAL TABLE notes_fts USING fts5(
 		title,

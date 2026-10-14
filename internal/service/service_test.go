@@ -388,7 +388,7 @@ func TestUpdate_SameTagSetIsNoOp(t *testing.T) {
 
 	updated, err := svc.Update(ctx, created.Slug, nil, nil, &[]string{work.Slug}, nil)
 	require.NoError(t, err)
-	assert.Equal(t, created.Version, updated.Version, "replacing with an identical tag set must not bump version")
+	assert.Equal(t, created.UpdatedAt, updated.UpdatedAt, "replacing with an identical tag set must not bump updated_at")
 	assert.Equal(t, created.UpdatedAt, updated.UpdatedAt)
 }
 

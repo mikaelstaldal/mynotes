@@ -39,7 +39,7 @@ func MarkdownWithFrontmatter(n model.Note) string {
 	}{
 		Title:   n.Title,
 		Slug:    n.Slug,
-		Date:    n.CreatedAt.UTC().Format(time.RFC3339),
+		Date:    n.CreatedAt.UTC().Format(time.RFC3339Nano),
 		Tags:    tags,
 		Dialect: "mynotes",
 	}

@@ -27,7 +27,6 @@ func TestBuildSeed(t *testing.T) {
 		slugs[i] = n.Slug
 		assert.NotEmpty(t, n.Title, n.Slug)
 		assert.NotEmpty(t, n.Content, n.Slug)
-		assert.Equal(t, 1, n.Version, n.Slug)
 		assert.NotEmpty(t, n.CreatedAt, n.Slug)
 		assert.NotEmpty(t, n.UpdatedAt, n.Slug)
 		assert.NotNil(t, n.Tags, "tags must marshal as [] rather than null")

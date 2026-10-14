@@ -63,7 +63,7 @@ export function NoteRows({ rows, activeSlug, showActions, onMutate }: Props) {
         <li key={n.slug}>
           <div class={`note-row${n.slug === activeSlug ? ' note-row--active' : ''}${showActions ? ' note-row--actions' : ''}`}>
             <a class="link" href={`${base}/notes/${n.slug}`}>{n.title}</a>
-            <span class="muted note-date" title={`Version ${n.version}`}>
+            <span class="muted note-date">
               <time dateTime={n.created_at}>created {formatDate(n.created_at)}</time>
               {' · '}
               <time dateTime={n.updated_at}>updated {formatDate(n.updated_at)}</time>
