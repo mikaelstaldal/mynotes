@@ -492,6 +492,7 @@ func run(addr string, port int, dataDir, publicURL, basicAuthFile, basicAuthReal
 	renderCSP := cspCommon + "; frame-ancestors 'self'"
 
 	mux := http.NewServeMux()
+	mountAPIDiscovery(mux, demoMode)
 	if demoMode {
 		// The demo's initial content, produced by the same seeding pipeline the
 		// -demo flag runs. The service worker fetches it once, on first load.
@@ -571,6 +572,8 @@ func run(addr string, port int, dataDir, publicURL, basicAuthFile, basicAuthReal
 		return err
 	}
 
+	httpHandler = apiDescriptionLink(httpHandler, demoMode)
+
 	// --- server with graceful shutdown -------------------------------------
 	serverAddr := net.JoinHostPort(addr, fmt.Sprint(port))
 	srv := &http.Server{
@@ -633,6 +636,7 @@ func serverMiddleware(next http.Handler, policy *hostguard.Policy, publicURL, ba
 		httpHandler = token.PublicDeviceAccess(httpHandler, next)
 		httpHandler = stores[0].Bearer(httpHandler, next)
 	}
+	httpHandler = publicAPIDiscovery(httpHandler, next)
 	httpHandler = csrf.MiddlewareOrigins(policy.Origins()...)(httpHandler)
 	httpHandler = httputil.SecurityHeaders(httputil.SecurityHeadersOptions{
 		CSP:            csp,

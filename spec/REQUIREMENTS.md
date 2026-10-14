@@ -1337,3 +1337,11 @@ HTTP/request/output failures return nonzero with errors on stderr.
 The shared CLI transport preserves deployment path prefixes, requires HTTPS
 except literal loopback IPs, and disables redirects/environment proxies.
 In-flight requests support cancellation on Ctrl-C, SIGTERM or SIGHUP.
+
+## API discovery
+
+The server exposes its embedded OpenAPI 3.0.3 generator input at `/openapi.yaml`
+and an RFC 9727 API catalog at `/.well-known/api-catalog`, supporting GET and HEAD
+without authentication. API responses include a `service-desc` Link header.
+Both discovery resources return 404 in demo mode. The shared contract is
+`../mysuite/spec/api-discovery.md`.

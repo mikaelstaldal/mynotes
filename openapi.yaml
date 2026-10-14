@@ -28,8 +28,8 @@ info:
     full grammar, the callout alias/colour table, and the wikilink indexing rules.
   version: 1.0.0
 servers:
-  - url: http://localhost:8080/api/v1
-    description: Local development server
+  - url: /api/v1
+    description: API on this origin
 
 paths:
   /notes:

@@ -376,3 +376,9 @@ UI, exposing `render(markdown)` and `setTheme(theme, vars?)` on
 - **Frontend networking:** all requests go through `api` in `web/ts/api/client.ts`
   (centralized retry, 401/404 handling, error parsing). Do not call `fetch`
   directly from components.
+
+## API discovery
+
+`/openapi.yaml`, `/.well-known/api-catalog`, and the API response `Link` header
+are governed by `../mysuite/spec/api-discovery.md`. Read that contract before
+changing their paths, media types, authentication exemptions, or demo behaviour.
