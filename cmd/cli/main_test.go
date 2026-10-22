@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -132,4 +133,68 @@ func TestErrorsRedirectsAndCancellation(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { cancel(); <-r.Context().Done() }))
 	defer server.Close()
 	require.ErrorIs(t, runContext(ctx, []string{"-url", server.URL, "tags", "list"}, strings.NewReader(""), io.Discard), context.Canceled)
+}
+
+func TestCopyResponse(t *testing.T) {
+	payload := "å日本語�\t\n\x1b[2J\x1b]52;c;YQ==\x07\r\x00\x7f\u009b31m\u009dtitle\xff\x9b"
+	var out bytes.Buffer
+	require.NoError(t, copyResponse(&out, strings.NewReader(payload), true))
+	assert.Equal(t, "å日本語�\t\n\\x1b[2J\\x1b]52;c;YQ==\\a\\r\\x00\\x7f\\u009b31m\\u009dtitle\\xff\\x9b", out.String())
+	out.Reset()
+	require.NoError(t, copyResponse(&out, strings.NewReader(payload), false))
+	assert.Equal(t, payload, out.String())
+}
+
+func TestDownloadsPreserveRedirectedBytes(t *testing.T) {
+	t.Setenv("MYNOTES_TOKEN_FILE", "")
+	payload := "\x00\xff\x1b]52;c;YQ==\x07\u009b31m\r\n"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.WriteString(w, payload)
+	}))
+	defer server.Close()
+	for _, command := range [][]string{
+		{"artifacts", "get", strings.Repeat("a", 64)},
+		{"notes", "markdown", "note"},
+		{"icons", "get", "heart"},
+	} {
+		file, err := os.CreateTemp(t.TempDir(), "download")
+		require.NoError(t, err)
+		require.NoError(t, run(append([]string{"-url", server.URL}, command...), strings.NewReader(""), file))
+		require.NoError(t, file.Close())
+		got, err := os.ReadFile(file.Name())
+		require.NoError(t, err)
+		assert.Equal(t, payload, string(got))
+	}
+}
+
+func TestHTTPErrorEscapesControls(t *testing.T) {
+	t.Setenv("MYNOTES_TOKEN_FILE", "")
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = io.WriteString(w, "bad å\x1b[2J\x1b]52;c;YQ==\x07\u009b31m\xff\rtext")
+	}))
+	defer server.Close()
+	var out bytes.Buffer
+	err := run([]string{"-url", server.URL, "tags", "list"}, strings.NewReader(""), &out)
+	require.EqualError(t, err, "HTTP 500: bad å\\x1b[2J\\x1b]52;c;YQ==\\a\\u009b31m\\xff\\rtext")
+	assert.Empty(t, out.String())
+}
+
+type failingOutput struct{ err error }
+
+func (w failingOutput) Write([]byte) (int, error) { return 0, w.err }
+
+type failingInput struct{ err error }
+
+func (r failingInput) Read([]byte) (int, error) { return 0, r.err }
+
+func TestCopyResponseErrors(t *testing.T) {
+	failure := errors.New("I/O failure")
+	for _, terminal := range []bool{false, true} {
+		require.ErrorIs(t, copyResponse(failingOutput{failure}, strings.NewReader("small"), terminal), failure)
+		require.ErrorIs(t, copyResponse(failingOutput{failure}, strings.NewReader(strings.Repeat("x", 8192)), terminal), failure)
+		var out bytes.Buffer
+		require.ErrorIs(t, copyResponse(&out, io.MultiReader(strings.NewReader("prefix"), failingInput{failure}), terminal), failure)
+		assert.Equal(t, "prefix", out.String())
+	}
 }

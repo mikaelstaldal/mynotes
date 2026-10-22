@@ -2,6 +2,7 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"flag"
@@ -19,6 +20,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/mikaelstaldal/mynotes/internal/clihttp"
+	"golang.org/x/term"
 )
 
 const usage = `Usage: mynotes-cli [global flags] <command> [command flags]
@@ -42,7 +44,9 @@ Commands:
   icons get NAME
 
 All commands are read-only. Token access covers the whole API; tag flags filter results.
-JSON, Markdown, SVG and binary responses go to stdout unchanged; errors go to stderr.
+Responses go to stdout; files and pipes receive unchanged bytes.
+Terminal output escapes control characters other than TAB and LF, and invalid UTF-8.
+HTTP error diagnostics escape these characters too; errors go to stderr.
 Use shell redirection to save downloads. No Basic credentials are read or sent.
 HTTP is allowed only for literal loopback addresses; remote servers require HTTPS.
 Redirects and environment HTTP proxies are disabled.
@@ -145,13 +149,60 @@ func runContext(ctx context.Context, args []string, stdin io.Reader, stdout io.W
 	defer func() { _ = response.Body.Close() }()
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		body, _ := io.ReadAll(io.LimitReader(response.Body, 4096))
-		return fmt.Errorf("HTTP %d: %s", response.StatusCode, strings.TrimSpace(string(body)))
+		var diagnostic strings.Builder
+		if err := copyResponse(&diagnostic, strings.NewReader(strings.TrimSpace(string(body))), true); err != nil {
+			return err
+		}
+		return fmt.Errorf("HTTP %d: %s", response.StatusCode, diagnostic.String())
 	}
 	if response.StatusCode == http.StatusNoContent {
 		return nil
 	}
-	_, err = io.Copy(stdout, response.Body)
-	return err
+	terminal := false
+	if file, ok := stdout.(*os.File); ok {
+		terminal = term.IsTerminal(int(file.Fd()))
+	}
+	return copyResponse(stdout, response.Body, terminal)
+}
+
+// copyResponse protects terminal displays without changing exported files or pipes.
+func copyResponse(dst io.Writer, src io.Reader, terminal bool) (err error) {
+	if !terminal {
+		_, err := io.Copy(dst, src)
+		return err
+	}
+	buffered := bufio.NewWriter(dst)
+	defer func() { err = errors.Join(err, buffered.Flush()) }()
+	reader := bufio.NewReader(src)
+	for {
+		r, size, err := reader.ReadRune()
+		if errors.Is(err, io.EOF) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		var text string
+		if r == unicode.ReplacementChar && size == 1 {
+			// Invalid UTF-8 may include a terminal's single-byte C1 controls.
+			if err := reader.UnreadRune(); err != nil {
+				return err
+			}
+			b, err := reader.ReadByte()
+			if err != nil {
+				return err
+			}
+			text = fmt.Sprintf("\\x%02x", b)
+		} else if unicode.IsControl(r) && r != '\t' && r != '\n' {
+			quoted := strconv.QuoteRune(r)
+			text = quoted[1 : len(quoted)-1]
+		} else {
+			text = string(r)
+		}
+		if _, err := io.WriteString(buffered, text); err != nil {
+			return err
+		}
+	}
 }
 
 var slugPattern = regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)
