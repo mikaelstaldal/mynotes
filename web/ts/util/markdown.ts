@@ -17,10 +17,11 @@ const md = new MarkdownIt({ html: true, linkify: true });
 // The optional '#' sigil selects a tag link; without it the target is a note.
 // The slug charset is the same as the API slug pattern
 // (^[a-z0-9]+(?:-[a-z0-9]+)*$); the label may be any run of characters except
-// ']' and newline. The default text is the slug (tag links prefix it with '#').
+// ']' and newline. Attempts are bounded to 100 alphanumeric slug characters
+// (plus separating hyphens) and 256 Unicode label characters, matching Go/demo. The default text is the slug (tag links prefix it with '#').
 // Anything not matching is left as literal text, so the [[ / ]] delimiters never
 // collide with Markdown, raw HTML, SVG or MathML (none of which use them).
-const WIKI_LINK_RE = /^\[\[(#?)([a-z0-9]+(?:-[a-z0-9]+)*)(?:\|([^\]\n]+))?\]\]/;
+const WIKI_LINK_RE = /^\[\[(#?)([a-z0-9](?:-?[a-z0-9]){0,99})(?:\|([^\]\n]{1,256}))?\]\]/u;
 
 // Registered before 'link' so it consumes [[…]] before the standard link rule
 // sees the leading '['. Inline rules do not run inside code spans/fences or raw

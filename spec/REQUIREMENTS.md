@@ -152,7 +152,9 @@ identity exists but is never exposed as the URL key.
   sigil) links to a tag's note list (`/tags/{slug}`). `[[slug|Display text]]` (or
   `[[#slug|Display text]]`) overrides the shown text; the default is the `slug`
   itself (tag links prefix it with `#`). `slug` must match the slug pattern
-  (`^[a-z0-9]+(?:-[a-z0-9]+)*$`); anything else is left as literal text. This is a
+  (`^[a-z0-9]+(?:-[a-z0-9]+)*$`). Wikilinks allow up to 100 alphanumeric characters
+  in the slug (plus separating hyphens) and 256 characters in the display label;
+  anything else is left as literal text. This is a
   client render-time transform only — the reference is stored verbatim in the
   Markdown and is not validated against existing notes/tags (following a link to a
   non-existent note or tag creates it — see the routing section for the note-editor

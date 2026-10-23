@@ -357,7 +357,7 @@ function splitByHeadings(content: string): SplitSection[] {
  * Mirrors repository.mdWikiLinkRE and WIKI_LINK_RE in web/ts/util/markdown.ts.
  * Groups: 1 = sigil ("#" for a tag), 2 = slug, 3 = optional display label.
  */
-const WIKI_LINK_RE = /\[\[(#?)([a-z0-9]+(?:-[a-z0-9]+)*)(?:\|([^\]\n]+))?\]\]/g;
+const WIKI_LINK_RE = /\[\[(#?)([a-z0-9](?:-?[a-z0-9]){0,99})(?:\|([^\]\n]{1,256}))?\]\]/gu;
 
 /**
  * The distinct note-link target slugs in content, in first-seen order. Tag

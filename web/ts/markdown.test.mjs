@@ -974,3 +974,20 @@ test('a delimiter belonging to an inline math span does not close a sub/sup', ()
 test('a ~~ pair is strikethrough, not two subscripts', () => {
   assertPresent(renderNote('~~struck~~'), '<s>struck</s>', 'strikethrough wins over sub');
 });
+
+test('wikilink attempts are bounded, including Unicode labels', () => {
+  const slug = 'a'.repeat(100);
+  const label = '😀'.repeat(256);
+  assertPresent(renderNote(`[[${slug}|${label}]]`), `href="/notes/${slug}"`, 'at limit');
+  assertAbsent(renderNote(`[[${slug}a]]`), 'href="/notes/', 'over slug limit');
+  assertAbsent(renderNote(`[[a|${label}界]]`), 'href="/notes/', 'over label limit');
+});
+
+test('malformed wikilink runs render in bounded time', { timeout: 60000 }, () => {
+  for (const unit of ['[', '[[a|', '[[a', '[[a-']) {
+    const start = performance.now();
+    const out = renderNote(unit.repeat(Math.floor(1_000_000 / unit.length)));
+    assertAbsent(out, 'href="/notes/', 'malformed input');
+    assert.ok(performance.now() - start < 10000, 'million-character render takes under ten seconds');
+  }
+});

@@ -1,6 +1,10 @@
 package repository
 
 import (
+	"bytes"
+	"regexp"
+	"unicode/utf8"
+
 	"github.com/yuin/goldmark"
 	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/parser"
@@ -43,13 +47,33 @@ func (n *wikiLinkNode) Dump(source []byte, level int) {
 // reuses mdWikiLinkRE (the same grammar the excerpt stripper uses) and only
 // matches at the reader position, so a `[` that does not begin a wikilink falls
 // through to Goldmark's default link parser.
+var inlineWikiLinkRE = regexp.MustCompile("^" + mdWikiLinkRE.String())
+
 type wikiLinkParser struct{}
 
 func (p *wikiLinkParser) Trigger() []byte { return []byte{'['} }
 
 func (p *wikiLinkParser) Parse(_ ast.Node, block gmtext.Reader, _ parser.Context) ast.Node {
 	line, _ := block.PeekLine()
-	m := mdWikiLinkRE.FindSubmatchIndex(line)
+	// Reject malformed candidates with bounded byte scans before running the
+	// regexp. The first ']' must close the link, and a label cannot span a newline.
+	const maxWikiLinkBytes = 2 + 1 + 199 + 1 + 256*4 + 2
+	if !bytes.HasPrefix(line, []byte("[[")) {
+		return nil
+	}
+	window := line[:min(len(line), maxWikiLinkBytes)]
+	end := bytes.IndexAny(window, "]\n")
+	if end < 0 || end+1 >= len(window) || window[end] != ']' || window[end+1] != ']' {
+		return nil
+	}
+	candidate := window[:end+2]
+	// A nearby closing delimiter alone does not make repeated "[[a|" cheap:
+	// reject overlong labels without taking 256 regexp transitions per attempt.
+	if pipe := bytes.IndexByte(candidate[:end], '|'); pipe >= 0 &&
+		utf8.RuneCount(candidate[pipe+1:end]) > 256 {
+		return nil
+	}
+	m := inlineWikiLinkRE.FindSubmatchIndex(candidate)
 	// Only consume when a wikilink starts exactly at the current position.
 	if m == nil || m[0] != 0 {
 		return nil

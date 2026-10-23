@@ -19,7 +19,9 @@ var (
 	// mdWikiLinkRE matches internal wikilinks ([[slug]], [[slug|text]],
 	// [[#slug]], [[#slug|text]]); mirrors WIKI_LINK_RE in web/ts/util/markdown.ts.
 	// Groups: 1=sigil ("#" for a tag), 2=slug, 3=optional display label.
-	mdWikiLinkRE = regexp.MustCompile(`\[\[(#?)([a-z0-9]+(?:-[a-z0-9]+)*)(?:\|([^\]\n]+))?\]\]`)
+	// Bound each attempt, including malformed input, to prevent quadratic parsing.
+	// Keep the grammar in sync with the frontend renderer and demo backend.
+	mdWikiLinkRE = regexp.MustCompile(`\[\[(#?)([a-z0-9](?:-?[a-z0-9]){0,99})(?:\|([^\]\n]{1,256}))?\]\]`)
 	mdCodeRE     = regexp.MustCompile("`+([^`]*)`+")
 	mdStrikeRE   = regexp.MustCompile(`~~([^~]*)~~`)
 	// mdSubRE and mdSupRE match the Pandoc sub/superscript spans (~x~, ^x^),
@@ -346,6 +348,7 @@ func (r *NoteRepository) CreateWithTime(ctx context.Context, slug, title, conten
 // independently, so a caller (e.g. the note split) can preserve BOTH of an
 // original note's timestamps on the copies it produces.
 func (r *NoteRepository) CreateWithTimes(ctx context.Context, slug, title, content string, createdAt, updatedAt time.Time, tagIDs []int64) (model.Note, error) {
+	links := extractNoteLinks(content, slug)
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return model.Note{}, err
@@ -373,7 +376,7 @@ func (r *NoteRepository) CreateWithTimes(ctx context.Context, slug, title, conte
 			return model.Note{}, err
 		}
 	}
-	if err := setNoteLinks(ctx, tx, id, extractNoteLinks(content, slug)); err != nil {
+	if err := setNoteLinks(ctx, tx, id, links); err != nil {
 		return model.Note{}, err
 	}
 
@@ -401,6 +404,15 @@ func (r *NoteRepository) UpdateIfUnchanged(ctx context.Context, slug string, tit
 }
 
 func (r *NoteRepository) update(ctx context.Context, slug string, title, content, newSlug *string, tagIDs *[]int64, expected *time.Time) (model.Note, error) {
+	finalSlug := slug
+	if newSlug != nil {
+		finalSlug = *newSlug
+	}
+	var links []string
+	if content != nil {
+		links = extractNoteLinks(*content, finalSlug)
+	}
+
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return model.Note{}, err
@@ -466,17 +478,12 @@ func (r *NoteRepository) update(ctx context.Context, slug string, title, content
 		}
 	}
 
-	finalSlug := slug
-	if newSlug != nil {
-		finalSlug = *newSlug
-	}
-
 	// Re-index outgoing links only when content changed (content != nil). A
 	// title-only or tag-only edit leaves the note's own links untouched; the
 	// titles other notes see for this note are resolved by JOIN at read time, so
 	// no re-index is needed there either.
 	if content != nil {
-		if err := setNoteLinks(ctx, tx, existingID, extractNoteLinks(*content, finalSlug)); err != nil {
+		if err := setNoteLinks(ctx, tx, existingID, links); err != nil {
 			return model.Note{}, err
 		}
 	}

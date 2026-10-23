@@ -451,3 +451,18 @@ test('tag and artifact timestamps retain server second precision', () => {
   const { nowMetadataTimestamp } = vm.runInThisContext('({ nowMetadataTimestamp })');
   assert.match(nowMetadataTimestamp(), /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/);
 });
+
+test('wikilink bounds mirror Go and renderer, including Unicode labels', () => {
+  const slug = 'a'.repeat(100);
+  const label = '😀'.repeat(256);
+  assert.deepEqual(extractNoteLinks(`[[${slug}|${label}]]`, 'self'), [slug]);
+  assert.deepEqual(extractNoteLinks(`[[${slug}a]] [[a|${label}界]] [[ok]]`, 'self'), ['ok']);
+});
+
+test('malformed wikilink runs extract in bounded time', () => {
+  for (const unit of ['[', '[[a|', '[[a', '[[a-']) {
+    const start = performance.now();
+    assert.deepEqual(extractNoteLinks(unit.repeat(Math.floor(1_000_000 / unit.length)), 'self'), []);
+    assert.ok(performance.now() - start < 3000, 'million-character extraction takes under three seconds');
+  }
+});
