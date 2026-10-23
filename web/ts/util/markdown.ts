@@ -874,12 +874,13 @@ DOMPurify.addHook('uponSanitizeElement', (node, data) => {
 // the duration of that (synchronous) call.
 let interactiveTasks = false;
 
-// Open external links in a new tab; keep internal links in the same tab.
+// Open external (http/https/mailto) links in a new tab; keep internal links in
+// the same tab.
 // Also force task-list checkboxes to stay non-interactive (read-only view).
 DOMPurify.addHook('afterSanitizeAttributes', (node) => {
   if (node.tagName === 'A') {
     const href = node.getAttribute('href') ?? '';
-    if (/^https?:\/\//i.test(href)) {
+    if (/^(?:https?:\/\/|mailto:)/i.test(href)) {
       node.setAttribute('target', '_blank');
       node.setAttribute('rel', 'noopener noreferrer');
     }

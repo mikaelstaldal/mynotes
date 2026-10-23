@@ -267,7 +267,8 @@ is packaged as an embeddable kit that native clients load in a web view.
   through that API, so the sanitization gate is the only path to the DOM.
 - Wikilinks and tag links render as the same root-relative `/notes/{slug}` and
   `/tags/{slug}` URLs as in the web UI; an embedding client intercepts those
-  navigations and routes them natively. External links carry `target="_blank"`.
+  navigations and routes them natively. External links (`http`, `https` and
+  `mailto`) carry `target="_blank"`.
 - Images resolve as ordinary requests to `/api/v1/artifacts/{sha256}` (what an
   `artifact:{sha256}` reference expands to; the kit has no `<base href>`, so the
   path is root-relative) and `/api/v1/icons/lucide/{name}`, which an embedding

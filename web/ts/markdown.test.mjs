@@ -157,6 +157,8 @@ test('safe <img src="https://…"> survives', () => {
 test('mailto: link survives', () => {
   const out = renderNote('[email](mailto:user@example.com)');
   assertPresent(out, 'mailto:user@example.com', 'mailto href');
+  assertPresent(out, 'target="_blank"', 'mailto opens in a new tab');
+  assertPresent(out, 'rel="noopener noreferrer"', 'mailto rel');
 });
 
 // ---------------------------------------------------------------------------
@@ -245,6 +247,7 @@ test('bare http:// URL is auto-linked and anchor survives', () => {
 test('bare https:// URL is auto-linked and anchor survives', () => {
   const out = renderNote('visit https://example.com for details');
   assertPresent(out, 'href="https://example.com"', 'https autolink href');
+  assertPresent(out, 'target="_blank"', 'https autolink opens in a new tab');
 });
 
 test('email address is auto-linked as mailto: and anchor survives', () => {
@@ -254,6 +257,7 @@ test('email address is auto-linked as mailto: and anchor survives', () => {
   assertPresent(out, '<a', 'autolink anchor');
   assertPresent(out, 'mailto:', 'mailto scheme');
   assertPresent(out, 'user@example.com', 'address in output');
+  assertPresent(out, 'target="_blank"', 'mailto autolink opens in a new tab');
 });
 
 // ---------------------------------------------------------------------------
