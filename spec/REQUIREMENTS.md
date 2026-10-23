@@ -104,8 +104,14 @@ identity exists but is never exposed as the URL key.
   [Mermaid](https://mermaid.js.org/) library (lazy-loaded on first use)
   converts the block to SVG in the browser read view and editor preview,
   following the light/dark theme, with Mermaid's `securityLevel: 'strict'`
-  plus a dedicated DOMPurify pass sanitizing the output. A malformed diagram
-  falls back to showing its source. The web UI's Download HTML / print export
+  plus dedicated markup and CSS gates. Diagram directives cannot override
+  CSS-bearing configuration. CSS selectors must stay within their SVG and may
+  not load external resources; animation names are unique per diagram. Sources
+  whose styling statements contain braces, CSS escapes, comments or resource
+  functions fall back to code with an error indication, as do malformed
+  diagrams. CSS-bearing configuration (including theme variables and fonts)
+  is controlled by the app, while non-security flowchart options remain usable.
+  The web UI's Download HTML / print export
   renders diagrams too (it reuses the same browser render pipeline), so exported
   documents contain the rendered SVG. The editor
   toolbar has a button that inserts a starter `mermaid` block.

@@ -76,17 +76,17 @@ function tooltipFor(note: NoteSummary): string {
 // htmlLabels:false (required, see mermaid.ts) Mermaid renders labels as SVG
 // <text> and, crucially, prints HTML/entity escapes *literally* — so `#quot;` or
 // `&quot;` would show up verbatim rather than as a quote. The only characters
-// that actually misrender are the double quote (closes the label / double-
-// escapes) and `<` (its trailing text is dropped as a pseudo-tag); every other
-// punctuation mark (`#`, `&`, `[`, `]`, `|`, …) renders fine. So instead of
-// entity-escaping we substitute look-alike Unicode punctuation. Titles are
-// server-validated to have no control characters, so there are no newlines to
-// handle. This is a rendering-fidelity concern, not an XSS one — the SVG still
-// passes through the DOMPurify gate in mermaid.ts.
+// that misrender include quotes and angle brackets. Percent signs must also
+// be escaped: Mermaid detects %% directives even inside quoted labels.
+// Substitute Unicode look-alikes to preserve readable titles without allowing
+// them to become Mermaid configuration or syntax.
 function escapeLabel(title: string): string {
   return title
     .replace(/"/g, '”') // " -> ” (right double quotation mark)
-    .replace(/</g, '‹'); // < -> ‹ (single left-pointing angle quote)
+    .replace(/</g, '‹') // < -> ‹ (single left-pointing angle quote)
+    .replace(/%/g, '％')
+    .replace(/{/g, '｛')
+    .replace(/}/g, '｝');
 }
 
 export function buildGraphSource(notes: NoteSummary[]): GraphResult {

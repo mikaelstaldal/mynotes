@@ -5,6 +5,8 @@
 
 /** Subset of Mermaid's config we set; Mermaid ignores unknown keys. */
 export interface MermaidConfig {
+  /** Configuration keys diagram directives and frontmatter cannot override. */
+  secure?: string[];
   /** Never auto-scan the page on load; we render explicitly. */
   startOnLoad?: boolean;
   /** 'strict' makes Mermaid sanitize labels and disable click/callbacks. */

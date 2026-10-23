@@ -261,8 +261,8 @@ against the demo, everything else against the real server. **A demo spec named a
 runs against 8091 and fails on its first assertion about the demo**, which is loud but not
 obvious, so name it accordingly.
 
-Two of the five spec files are this repo's half of **three** cross-repo contracts (`../mysuite`,
-`spec/` — see `web/AGENTS.md`); the other three are MyNotes' own, and the distinction matters,
+Two spec files are this repo's half of **three** cross-repo contracts (`../mysuite`,
+`spec/` — see `web/AGENTS.md`); the others are MyNotes' own, and the distinction matters,
 because changing what the first two assert is a change in three repositories and changing the
 others is not. Note the counts differ on purpose: `logo.spec.ts` carries two contracts, because
 the badge and the name beside it are governed separately:
@@ -294,6 +294,9 @@ the badge and the name beside it are governed separately:
   computed value — those belong to `sidebar-footer.spec.ts` alone, and restating one here would
   put the contract in two files in this repo. `../mysuite`, `spec/sidebar-footer.md` §10.9 has
   the history: Settings used to be absent from demo builds.
+- `tests/mermaid-security.spec.ts` — local security and rendering regressions:
+  diagram directives and graph titles cannot inject global CSS or beacons, and
+  ordinary diagram types render in both themes.
 
 The CI step needs no change as specs are added — it runs `./test-e2e.sh` with no arguments,
 which picks up everything under `tests/`.
@@ -343,7 +346,8 @@ hand-started server (stale assets, a stale database, a squatter on the port), th
   - **Note `title`** - only validated for length and no control characters, 
     no HTML sanitization since it is not used in contexts where that would be an issue.
     Because it is stored unescaped, anything splicing it into markup must escape
-    it (`service.escapeHTMLText` in the published-page document).
+    it (`service.escapeHTMLText` in the published-page document). Mermaid graph labels
+    must also escape directive syntax (`escapeLabel` in `web/ts/util/graph.ts`).
   - **Published note HTML** — sanitize-and-store with `sanitize.PublishedHTML`;
     it is rendered output, not a source of truth. See § Publishing.
 - **Validate URL schemes** (allow only `http`, `https`, `mailto`) wherever URLs

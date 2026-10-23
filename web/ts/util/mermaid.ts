@@ -36,7 +36,8 @@ function loadMermaid(): Promise<Mermaid> {
 // was set up with setConfig(), per-call config is ignored. A separate instance
 // keeps its own config, so we allow the SVG profile plus the <style>/style that
 // Mermaid inlines for theming, while still dropping scripts and on* handlers.
-// (DOMPurify sanitizes the CSS inside <style>/style.) This is defense-in-depth:
+// DOMPurify does not sanitize CSS text; the CSS gate below handles that.
+// This is defense-in-depth:
 // Mermaid's securityLevel:'strict' already sanitizes labels with its own
 // bundled DOMPurify; this is a second gate on the produced markup.
 const svgPurify = DOMPurify(window);
@@ -45,6 +46,64 @@ svgPurify.setConfig({
   ADD_TAGS: ['style'],
   ADD_ATTR: ['style'],
 });
+
+// Fail closed on CSS syntax that can escape Mermaid's SVG selector scope or
+// load external resources. Inspect inert markup before it reaches the live DOM.
+// CSS escapes, comments, non-animation at-rules and nesting are unsupported.
+export function sanitizeMermaidSVG(svg: string, id: string): string {
+  const template = document.createElement('template');
+  template.innerHTML = svgPurify.sanitize(svg);
+  const safeValues = (css: string): boolean =>
+    !/[\\]|\/\*/.test(css) &&
+    !/\b(?:url|image|image-set|-webkit-image-set|cross-fade|src|element)\(/i.test(
+      css.replace(/url\(\s*["']?#[\w-]+["']?\s*\)/gi, '')) &&
+    !/\bposition\s*:\s*(?:fixed|sticky)\b|\b[\d.]+(?:vw|vh|vmin|vmax|dvw|dvh)\b/i.test(css);
+  for (const style of template.content.querySelectorAll('style')) {
+    const css = style.textContent ?? '';
+    if (!safeValues(css) || /@(?!keyframes\b)/i.test(css)) throw new Error('Unsafe diagram CSS');
+    const sheet = new CSSStyleSheet();
+    sheet.replaceSync(css);
+    const animations = new Map<string, string>();
+    for (const rule of Array.from(sheet.cssRules)) {
+      if (rule instanceof CSSKeyframesRule) {
+        const name = rule.name;
+        if (!/^[\w-]+$/.test(name)) throw new Error('Unsafe animation name');
+        animations.set(name, `${id}-${name}`);
+        rule.name = `${id}-${name}`;
+        continue;
+      }
+      if (!(rule instanceof CSSStyleRule) || rule.cssRules.length > 0 ||
+          !rule.selectorText.split(',').every((selector) => {
+            const trimmed = selector.trim();
+            return (trimmed === `#${id}` || trimmed.startsWith(`#${id} `)) &&
+              !/[()~+]/.test(trimmed);
+          })) throw new Error('Unscoped diagram CSS');
+      if (rule.selectorText.split(',').some((selector) => selector.trim() === `#${id}`) &&
+          Array.from(rule.style).some((property) =>
+            !['font-family', 'font-size', 'fill', 'color'].includes(property))) {
+        throw new Error('Unsafe diagram root CSS');
+      }
+    }
+    // Keyframes have document-wide names even when their users are scoped.
+    for (const rule of Array.from(sheet.cssRules)) {
+      if (!(rule instanceof CSSStyleRule)) continue;
+      for (const property of ['animation', 'animation-name']) {
+        const value = rule.style.getPropertyValue(property);
+        if (value) rule.style.setProperty(property, value.replace(/[\w-]+/g,
+          (name) => animations.get(name) ?? name), rule.style.getPropertyPriority(property));
+      }
+    }
+    // Serialize the parsed, validated rules, never the original CSS text.
+    style.textContent = Array.from(sheet.cssRules, (rule) => rule.cssText).join('\n');
+  }
+  for (const element of template.content.querySelectorAll('*')) {
+    for (const attr of Array.from(element.attributes)) {
+      if (/^(style|fill|stroke|filter|clip-path|mask|cursor|marker.*)$/i.test(attr.name) &&
+          !safeValues(attr.value)) throw new Error('Unsafe diagram attribute');
+    }
+  }
+  return template.innerHTML;
+}
 
 // Monotonic id source for the SVG root Mermaid requires. Not Math.random (which
 // is disallowed in some contexts and needlessly non-deterministic); a counter
@@ -78,6 +137,9 @@ export async function renderMermaidBlocks(
     mermaid.initialize({
       startOnLoad: false,
       securityLevel: 'strict',
+      secure: ['secure', 'securityLevel', 'startOnLoad', 'maxTextSize',
+        'suppressErrorRendering', 'maxEdges', 'themeCSS', 'themeVariables',
+        'fontFamily', 'altFontFamily', 'fontSize', 'htmlLabels'],
       theme: themeOverride ?? currentMermaidTheme(),
       // Never let Mermaid inject its own full-screen "bomb" error graphic into
       // the DOM; we handle failures ourselves (see below).
@@ -103,6 +165,16 @@ export async function renderMermaidBlocks(
       if (!pre || pre.dataset.mermaidProcessed) return;
       pre.dataset.mermaidProcessed = 'true';
       const source = code.textContent ?? '';
+      // Styling statements reach a temporary live SVG before the output gate.
+      // Braces can close Stylis's scope; escapes/comments and resource syntax
+      // can hide a declaration or initiate a request before we inspect output.
+      // Check styling statements rather than labels or Mermaid's shape syntax.
+      const styling = source.match(/\b(?:classDef|style|linkStyle|cssClass)\s+[^\n]*/g) ?? [];
+      if (styling.some((line) =>
+        /[{}&\\@]|\/\*|:(?:has|is|where)\s*\(|(?:url|image|image-set|cross-fade|src|element)\s*\(/i.test(line))) {
+        pre.classList.add('mermaid-error');
+        return;
+      }
 
       // Validate before rendering. In the editor the preview re-runs on every
       // (debounced) keystroke, so the source is frequently an incomplete
@@ -118,10 +190,11 @@ export async function renderMermaidBlocks(
       if (!valid) return;
 
       try {
-        const { svg } = await mermaid.render(`mermaid-${++diagramSeq}`, source);
+        const id = `mermaid-${++diagramSeq}`;
+        const { svg } = await mermaid.render(id, source);
         const wrapper = document.createElement('div');
         wrapper.className = 'mermaid-diagram';
-        wrapper.innerHTML = svgPurify.sanitize(svg);
+        wrapper.innerHTML = sanitizeMermaidSVG(svg, id);
         // If the container's HTML was replaced mid-render (e.g. a fast preview
         // update), `pre` is detached and replaceWith() is a no-op — harmless.
         pre.replaceWith(wrapper);
