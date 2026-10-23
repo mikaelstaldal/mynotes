@@ -877,10 +877,12 @@ let interactiveTasks = false;
 // Likewise bridges RenderOptions.mailtoHref into the hook below.
 let mailtoHref: ((mailto: string) => string) | undefined;
 
-// Open external (http/https/mailto) links in a new tab; keep internal links in
-// the same tab. A mailto: link is first re-pointed at RenderOptions.mailtoHref
-// when the caller supplied one; this runs after the URI allow-list, which has
-// already validated the original href.
+// Open external (http/https) links in a new tab; keep internal links in the
+// same tab. A mailto: link is first re-pointed at RenderOptions.mailtoHref when
+// the caller supplied one (so it opens in a new tab too); this runs after the
+// URI allow-list, which has already validated the original href. A plain
+// mailto: link gets no target: Firefox ignores it, and with a desktop mail
+// client it can leave an empty tab behind.
 // Also force task-list checkboxes to stay non-interactive (read-only view).
 DOMPurify.addHook('afterSanitizeAttributes', (node) => {
   if (node.tagName === 'A') {
@@ -889,7 +891,7 @@ DOMPurify.addHook('afterSanitizeAttributes', (node) => {
       href = mailtoHref(href);
       node.setAttribute('href', href);
     }
-    if (/^(?:https?:\/\/|mailto:)/i.test(href)) {
+    if (/^https?:\/\//i.test(href)) {
       node.setAttribute('target', '_blank');
       node.setAttribute('rel', 'noopener noreferrer');
     }
