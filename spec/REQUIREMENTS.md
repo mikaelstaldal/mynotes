@@ -309,6 +309,14 @@ the one MyCal has with MyMail.
   it is entered rather than failing at send time.
 - The web UI posts to MyMail's `POST /api/v1/messages/send-with-attachments`.
   MyNotes stores nothing about the message and provides no API of its own for it.
+- **Email links open MyMail in a new tab.** While MyMail is configured, `mailto:`
+  links in the note view and the editor preview (explicit and auto-linked) point
+  at MyMail's compose route, `<mymail>/#/compose?mailto=<uri>` — the URL MyMail's
+  own registered `mailto:` handler opens — with `target="_blank"`. Pointing at it
+  directly is needed because Firefox ignores `target="_blank"` on a `mailto:` link
+  handled by a web handler and replaces the MyNotes tab. Without MyMail configured
+  they stay plain `mailto:` links. Published pages, the HTML download, print and
+  the email body always keep the `mailto:` link.
 
 ## Publishing
 

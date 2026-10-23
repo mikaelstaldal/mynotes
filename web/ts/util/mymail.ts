@@ -84,3 +84,14 @@ export function onMymailChange(cb: (url: string) => void): () => void {
   document.addEventListener(MYMAIL_EVENT, handler);
   return () => document.removeEventListener(MYMAIL_EVENT, handler);
 }
+
+// The href a mailto: link in a rendered note points at instead when MyMail is
+// configured: MyMail's compose route, the same URL its registered mailto:
+// handler opens (`<base>/#/compose?mailto=%s`), or undefined when MyMail is not
+// configured and the link should stay a plain mailto:. Pass the result as
+// renderNote()'s `mailtoHref` option.
+export function mymailMailtoHref(): ((mailto: string) => string) | undefined {
+  const mymail = getMymailUrl();
+  if (mymail === '') return undefined;
+  return (mailto) => `${mymail}/#/compose?mailto=${encodeURIComponent(mailto)}`;
+}

@@ -161,6 +161,18 @@ test('mailto: link survives', () => {
   assertPresent(out, 'rel="noopener noreferrer"', 'mailto rel');
 });
 
+test('mailtoHref rewrites explicit and auto-linked mailto: links only', () => {
+  const opts = { mailtoHref: (m) => `https://example.com/mymail/#/compose?mailto=${encodeURIComponent(m)}` };
+  const out = renderNote('[email](mailto:a@example.com?subject=Hi) b@example.com [web](https://example.com/x)', opts);
+  assertPresent(out, 'href="https://example.com/mymail/#/compose?mailto=mailto%3Aa%40example.com%3Fsubject%3DHi"', 'explicit');
+  assertPresent(out, 'href="https://example.com/mymail/#/compose?mailto=mailto%3Ab%40example.com"', 'autolink');
+  assertPresent(out, 'href="https://example.com/x"', 'http link untouched');
+  assert.ok(!out.includes('href="mailto:'), `a mailto: href survived:\n${out}`);
+  assert.equal(out.match(/target="_blank"/g)?.length, 3, out);
+  // The option does not leak into the next render.
+  assertPresent(renderNote('[email](mailto:a@example.com)'), 'href="mailto:a@example.com"', 'plain render');
+});
+
 // ---------------------------------------------------------------------------
 // Artifact references — artifact:<sha256> resolves to the artifact endpoint.
 // This document has no <base href>, so base is '' (a root deployment); the

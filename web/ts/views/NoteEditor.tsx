@@ -11,7 +11,8 @@ import { api, NotFoundError, PreconditionFailedError, type CreateNoteRequest, ty
 import { navigate, setNavigationGuard } from '../router.js';
 import { showToast } from '../util/toast.js';
 import { confirmDialog, type ConfirmOptions } from '../util/dialog.js';
-import { renderNote, sanitizeSVGOrMathML, rawHtmlBlockSeparator } from '../util/markdown.js';
+import { renderNote, sanitizeSVGOrMathML, rawHtmlBlockSeparator, type RenderOptions } from '../util/markdown.js';
+import { mymailMailtoHref, onMymailChange } from '../util/mymail.js';
 import { taskToggleAt } from '../util/tasks.js';
 import { renderMermaidBlocks } from '../util/mermaid.js';
 import { onThemeChange } from '../util/theme.js';
@@ -31,8 +32,10 @@ import { saveDraft, loadDraft, clearDraft, type Draft } from '../util/draft.js';
 const DATA_URL_RE = /data:([^;,\s]+);base64,[A-Za-z0-9+/]+=*/g;
 
 // The preview renders task-list checkboxes the user can click to flip the
-// matching "[ ]"/"[x]" in the document (handlePreviewClick), like the read view.
-const PREVIEW_RENDER = { interactiveTasks: true };
+// matching "[ ]"/"[x]" in the document (handlePreviewClick), like the read view,
+// and points mailto: links at MyMail when it is configured (see
+// RenderOptions.mailtoHref).
+const previewRender = (): RenderOptions => ({ interactiveTasks: true, mailtoHref: mymailMailtoHref() });
 
 // Font sizes for the H1–H6 previews in the heading dropdown.
 const HEADING_SIZES = ['1.5rem', '1.3rem', '1.15rem', '1.05rem', '0.95rem', '0.85rem'];
@@ -343,7 +346,7 @@ export function NoteEditor({ slug, initialSlug, initialTitle, onSave }: Props) {
     const currentSlug = editing ? snapshotRef.current.slug : (slugOverrideActive ? slugOverride : undefined);
     applyDirty(currentTitle, doc, currentSlug, tags);
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => setPreviewHtml(renderNote(doc, PREVIEW_RENDER)), 300);
+    debounceRef.current = setTimeout(() => setPreviewHtml(renderNote(doc, previewRender())), 300);
   };
 
   // Load note for edit mode.
@@ -360,7 +363,7 @@ export function NoteEditor({ slug, initialSlug, initialTitle, onSave }: Props) {
         updatedAtRef.current = new Date(note.updated_at).toISOString();
         snapshotRef.current = { title: note.title, content: note.content, slug: note.slug, tags: sortedSlugs(note.tags) };
         titleTouchedRef.current = true; // suppress auto-sync in edit mode
-        setPreviewHtml(renderNote(note.content, PREVIEW_RENDER));
+        setPreviewHtml(renderNote(note.content, previewRender()));
 
         // Offer to restore any unsaved work from a previous session. The editor
         // isn't mounted yet, so stash the draft for the editor-creation effect.
@@ -438,6 +441,13 @@ export function NoteEditor({ slug, initialSlug, initialTitle, onSave }: Props) {
     void renderMermaidBlocks(el);
   }), [previewHtml]);
 
+  // mailto: links in the preview point at MyMail (previewRender), so re-render
+  // it from the current document when the MyMail URL changes in Settings.
+  useEffect(() => onMymailChange(() => {
+    const view = viewRef.current;
+    if (view) setPreviewHtml(renderNote(view.state.doc.toString(), previewRender()));
+  }), []);
+
   // Create CodeMirror editor once content is available.
   // For /new: runs on mount (loading is already false).
   // For edit: runs after loading becomes false and the editor container appears in DOM.
@@ -478,7 +488,7 @@ export function NoteEditor({ slug, initialSlug, initialTitle, onSave }: Props) {
         ? snapshotRef.current.slug
         : (pending.slugOverride || undefined);
       applyDirty(pending.title, pending.content, restoredSlug, pending.tags);
-      setPreviewHtml(renderNote(pending.content, PREVIEW_RENDER));
+      setPreviewHtml(renderNote(pending.content, previewRender()));
       pendingDraftRef.current = null;
     }
 
@@ -590,7 +600,7 @@ export function NoteEditor({ slug, initialSlug, initialTitle, onSave }: Props) {
       if (view) {
         view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: note.content } });
       }
-      setPreviewHtml(renderNote(note.content, PREVIEW_RENDER));
+      setPreviewHtml(renderNote(note.content, previewRender()));
       clearDraft(noteSlug);
       dirtyRef.current = false;
       setDirty(false);

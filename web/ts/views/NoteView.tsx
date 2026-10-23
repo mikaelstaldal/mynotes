@@ -4,6 +4,7 @@ import { navigate, currentPath } from '../router.js';
 import { base } from '../basepath.js';
 import { showToast } from '../util/toast.js';
 import { renderNote } from '../util/markdown.js';
+import { mymailMailtoHref, onMymailChange } from '../util/mymail.js';
 import { taskToggleAt } from '../util/tasks.js';
 import { renderMermaidBlocks } from '../util/mermaid.js';
 import { onThemeChange } from '../util/theme.js';
@@ -80,11 +81,15 @@ export function NoteView({ slug, onDelete }: Props) {
     return () => { document.title = prev; };
   }, [note]);
 
+  // Re-render when the MyMail URL changes: mailto: links point at it.
+  const [mymailVersion, setMymailVersion] = useState(0);
+  useEffect(() => onMymailChange(() => setMymailVersion((v) => v + 1)), []);
+
   const renderedContent = useMemo(() => {
     if (!note) return '';
     // Clickable task-list checkboxes: see handleContentClick.
-    return renderNote(note.content, { interactiveTasks: true });
-  }, [note]);
+    return renderNote(note.content, { interactiveTasks: true, mailtoHref: mymailMailtoHref() });
+  }, [note, mymailVersion]);
 
   // Render any ```mermaid diagrams once the sanitized HTML is in the DOM.
   const contentRef = useRef<HTMLDivElement>(null);

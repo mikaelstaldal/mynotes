@@ -874,12 +874,21 @@ DOMPurify.addHook('uponSanitizeElement', (node, data) => {
 // the duration of that (synchronous) call.
 let interactiveTasks = false;
 
+// Likewise bridges RenderOptions.mailtoHref into the hook below.
+let mailtoHref: ((mailto: string) => string) | undefined;
+
 // Open external (http/https/mailto) links in a new tab; keep internal links in
-// the same tab.
+// the same tab. A mailto: link is first re-pointed at RenderOptions.mailtoHref
+// when the caller supplied one; this runs after the URI allow-list, which has
+// already validated the original href.
 // Also force task-list checkboxes to stay non-interactive (read-only view).
 DOMPurify.addHook('afterSanitizeAttributes', (node) => {
   if (node.tagName === 'A') {
-    const href = node.getAttribute('href') ?? '';
+    let href = node.getAttribute('href') ?? '';
+    if (mailtoHref && /^mailto:/i.test(href)) {
+      href = mailtoHref(href);
+      node.setAttribute('href', href);
+    }
     if (/^(?:https?:\/\/|mailto:)/i.test(href)) {
       node.setAttribute('target', '_blank');
       node.setAttribute('rel', 'noopener noreferrer');
@@ -949,15 +958,24 @@ export interface RenderOptions {
   // the HTML export, print, the email body, the render kit — takes the default
   // and gets the read-only checkbox it always got.
   interactiveTasks?: boolean;
+  // Rewrite every mailto: link's href with this function. Firefox ignores
+  // target="_blank" on a mailto: link handled by a registered web handler and
+  // navigates the current tab away, so the web UI's note view and editor
+  // preview point such links straight at MyMail's compose route instead
+  // (util/mymail.ts) when MyMail is configured. Every other consumer — notably
+  // publishing, the HTML export and the email body — keeps the mailto: link.
+  mailtoHref?: (mailto: string) => string;
 }
 
 export function renderNote(markdown: string, opts: RenderOptions = {}): string {
   const env = { interactiveTasks: opts.interactiveTasks === true };
   interactiveTasks = env.interactiveTasks;
+  mailtoHref = opts.mailtoHref;
   try {
     return DOMPurify.sanitize(md.render(markdown, env));
   } finally {
     interactiveTasks = false;
+    mailtoHref = undefined;
   }
 }
 

@@ -32,6 +32,7 @@ const {
   setMymailUrl,
   validateMymailUrl,
   onMymailChange,
+  mymailMailtoHref,
 } = await import(path.resolve(__dirname, '../static/util/mymail.js'));
 
 const DERIVED = 'https://example.com/mymail';
@@ -116,4 +117,14 @@ test('rejects what cannot work as a MyMail base URL', () => {
   ]) {
     assert.notEqual(validateMymailUrl(url), '', `expected ${url} to be rejected`);
   }
+});
+
+test('mailto: links point at MyMail compose only when MyMail is configured', () => {
+  window.__serverConfig = {};
+  assert.equal(mymailMailtoHref(), undefined);
+  window.__serverConfig = { mymailUrl: DERIVED };
+  assert.equal(
+    mymailMailtoHref()('mailto:a+b@example.org?subject=Hi%20there&body=a%26b'),
+    'https://example.com/mymail/#/compose?mailto=mailto%3Aa%2Bb%40example.org%3Fsubject%3DHi%2520there%26body%3Da%2526b',
+  );
 });
