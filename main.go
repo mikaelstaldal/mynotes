@@ -647,7 +647,16 @@ func serverMiddleware(next http.Handler, policy *hostguard.Policy, publicURL, ba
 	})(httpHandler)
 	httpHandler = http.MaxBytesHandler(httpHandler, maxRequestBody)
 
-	return policy.Middleware(httpHandler), nil
+	return exemptPrefix(handler.PublicPrefix, privateResourcePolicy)(policy.Middleware(httpHandler)), nil
+}
+
+// Prevent cross-origin image loads from revealing whether a private artifact
+// exists, including when the browser sends cached Basic credentials.
+func privateResourcePolicy(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cross-Origin-Resource-Policy", "same-origin")
+		next.ServeHTTP(w, r)
+	})
 }
 
 // buildIndexHTML reads the embedded SPA shell and applies the two

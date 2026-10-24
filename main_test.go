@@ -10,11 +10,13 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mikaelstaldal/go-server-common/hostguard"
 	"github.com/mikaelstaldal/mynotes/internal/demo"
 	"github.com/mikaelstaldal/mynotes/internal/handler"
 	"github.com/mikaelstaldal/mynotes/web"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/crypto/bcrypt"
 )
 
 func TestBasePathFromPublicURL(t *testing.T) {
@@ -295,4 +297,67 @@ func TestRunMarkdownExportWritesOneFilePerNote(t *testing.T) {
 		"the file carries the download-Markdown frontmatter")
 	assert.Contains(t, string(welcome), "slug: welcome-to-mynotes\n",
 		"the file name is the note's slug, the same identifier as in its URL")
+}
+
+// Exercise the production middleware stack so success, errors and early denials
+// all carry the policy, while the public publishing surface stays embeddable.
+func TestPrivateResourcePolicy(t *testing.T) {
+	policy, err := hostguard.New("", "127.0.0.1", 8080)
+	require.NoError(t, err)
+	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/missing") {
+			http.Error(w, "missing", http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Type", "image/gif")
+		w.WriteHeader(http.StatusOK)
+	})
+	guarded, err := serverMiddleware(next, policy, "", "", "", "default-src 'self'")
+	require.NoError(t, err)
+	for _, tc := range []struct {
+		path   string
+		host   string
+		status int
+		corp   string
+	}{
+		{"/api/v1/artifacts/existing", "127.0.0.1:8080", 200, "same-origin"},
+		{"/api/v1/artifacts/missing", "127.0.0.1:8080", 404, "same-origin"},
+		{"/api/v1/artifacts/existing", "foreign.example", 421, "same-origin"},
+		{"/", "127.0.0.1:8080", 200, "same-origin"},
+		{"/public/artifacts/existing", "127.0.0.1:8080", 200, ""},
+		{"/public/notes/missing", "127.0.0.1:8080", 404, ""},
+		{"/publicity", "127.0.0.1:8080", 200, "same-origin"},
+		{"/%70ublic/artifacts/existing", "127.0.0.1:8080", 200, "same-origin"},
+	} {
+		t.Run(tc.path+tc.host, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, tc.path, nil)
+			req.Host = tc.host
+			req.Header.Set("Sec-Fetch-Site", "cross-site")
+			req.Header.Set("Sec-Fetch-Mode", "no-cors")
+			req.Header.Set("Sec-Fetch-Dest", "image")
+			rec := httptest.NewRecorder()
+			guarded.ServeHTTP(rec, req)
+			assert.Equal(t, tc.status, rec.Code)
+			assert.Equal(t, tc.corp, rec.Header().Get("Cross-Origin-Resource-Policy"))
+		})
+	}
+}
+
+func TestPrivateResourcePolicyOnAuthFailure(t *testing.T) {
+	policy, err := hostguard.New("", "127.0.0.1", 8080)
+	require.NoError(t, err)
+	hash, err := bcrypt.GenerateFromPassword([]byte("password"), bcrypt.MinCost)
+	require.NoError(t, err)
+	passwordFile := filepath.Join(t.TempDir(), "htpasswd")
+	require.NoError(t, os.WriteFile(passwordFile, append([]byte("user:"), hash...), 0600))
+	next := http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		t.Fatal("unauthenticated request reached private handler")
+	})
+	guarded, err := serverMiddleware(next, policy, "", passwordFile, "MyNotes", "default-src 'self'")
+	require.NoError(t, err)
+	req := httptest.NewRequest(http.MethodGet, "http://127.0.0.1:8080/api/v1/artifacts/existing", nil)
+	rec := httptest.NewRecorder()
+	guarded.ServeHTTP(rec, req)
+	assert.Equal(t, http.StatusUnauthorized, rec.Code)
+	assert.Equal(t, "same-origin", rec.Header().Get("Cross-Origin-Resource-Policy"))
 }

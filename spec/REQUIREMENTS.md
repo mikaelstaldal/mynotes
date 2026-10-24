@@ -1270,6 +1270,11 @@ DOMPurify pass on the page, exactly as in the real app.
 
 ## Security (user-facing guarantees)
 
+- Responses outside the public publishing prefix carry
+  `Cross-Origin-Resource-Policy: same-origin`, preventing cross-origin embedding
+  from revealing whether a private image artifact exists. Native API clients
+  remain supported; public pages and artifacts remain embeddable across origins.
+
 - All HTTP requests, including published pages and demo-server routes, must
   pass a Host allowlist before routing, authentication, or CSRF checks. Foreign
   or malformed hosts receive HTTP 421. Allowed authorities are the public URL
