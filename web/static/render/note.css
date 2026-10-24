@@ -74,6 +74,11 @@
 }
 
 .note-content {
+  /* Untrusted content can borrow app classes, including fixed overlays.
+     Keep their layout, painting and stacking inside the note in every host. */
+  contain: layout paint;
+  /* Preserve access to wide tables, inline math and unbroken text. */
+  overflow-x: auto;
   /* Match the exported HTML's text column exactly. The export body is
      max-width:65ch with 1.25rem horizontal padding under border-box, so its
      text wraps at 65ch - 2.5rem. Here the 1.25rem gutter lives on
