@@ -2,6 +2,8 @@ package service
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -479,4 +481,59 @@ func TestMarkdownFrontmatterPreservesMilliseconds(t *testing.T) {
 	fm, body := parseFrontmatter(MarkdownWithFrontmatter(note))
 	assert.Equal(t, authored, fm.Date)
 	assert.Equal(t, note.Content, body)
+}
+
+func TestImportMarkdownRejectsBeforeCreatingTags(t *testing.T) {
+	for _, md := range []string{
+		"---\ntags: [fresh]\n---\nNo title.",
+		"---\ntitle: T\ntags: [fresh]\n---\n<script>alert(1)</script>",
+		"---\ntitle: T\nslug: BAD\ntags: [fresh]\n---\nBody.",
+		"---\ntitle: T\ntags: [fresh, BAD]\n---\nBody.",
+	} {
+		t.Run(md, func(t *testing.T) {
+			svc := newTestService(t)
+			_, err := svc.ImportMarkdown(context.Background(), md)
+			require.ErrorIs(t, err, ErrValidation)
+			tags, err := svc.tags.ListWithCounts(context.Background())
+			require.NoError(t, err)
+			assert.Empty(t, tags)
+		})
+	}
+}
+
+func TestImportMarkdownTagLimit(t *testing.T) {
+	for _, format := range []string{"yaml", "toml", "json"} {
+		for _, count := range []int{50, 51} {
+			t.Run(fmt.Sprintf("%s/%d", format, count), func(t *testing.T) {
+				svc := newTestService(t)
+				tags := make([]string, count)
+				for i := range tags {
+					tags[i] = fmt.Sprintf("tag-%d", i)
+				}
+				// Repeated slugs must not count toward the limit.
+				tags = append(tags, tags...)
+				encoded, err := json.Marshal(tags)
+				require.NoError(t, err)
+				var md string
+				switch format {
+				case "yaml":
+					md = fmt.Sprintf("---\ntitle: T\ntags: %s\n---\nBody.", encoded)
+				case "toml":
+					md = fmt.Sprintf("+++\ntitle = \"T\"\ntags = %s\n+++\nBody.", encoded)
+				case "json":
+					md = fmt.Sprintf("{\"title\":\"T\",\"tags\":%s}\nBody.", encoded)
+				}
+				note, err := svc.ImportMarkdown(context.Background(), md)
+				if count == 50 {
+					require.NoError(t, err)
+					assert.Len(t, note.Tags, count)
+				} else {
+					require.ErrorIs(t, err, ErrValidation)
+					tags, err := svc.tags.ListWithCounts(context.Background())
+					require.NoError(t, err)
+					assert.Empty(t, tags)
+				}
+			})
+		}
+	}
 }

@@ -195,10 +195,16 @@ function clampTitle(title: string): string {
  * Creates any tag in slugs that does not exist yet, so an imported note can
  * carry tags that were never explicitly created. Mirrors service.ensureTags.
  */
+const MAX_IMPORT_TAGS = 50;
+
 function ensureTags(state: DemoState, slugs: string[]): void {
-  for (const slug of slugs) {
+  const distinct = [...new Set(slugs)];
+  if (distinct.length > MAX_IMPORT_TAGS) {
+    throw validationError(`frontmatter must contain at most ${MAX_IMPORT_TAGS} distinct tags`);
+  }
+  for (const slug of distinct) validateSlug(slug);
+  for (const slug of distinct) {
     if (state.tags.some((t) => t.slug === slug)) continue;
-    validateSlug(slug);
     state.tags.push({ slug, createdAt: nowMetadataTimestamp() });
   }
 }
@@ -434,6 +440,9 @@ async function importNote(request: Request, clientId: string): Promise<Response>
 
   title = clampTitle(title);
   return withStore(async (state) => {
+    validateTitle(title.trim());
+    validateContent(markdown);
+    if (slug !== null) validateSlug(slug);
     ensureTags(state, tagSlugs);
     const note = createNote(state, title, markdown, slug, tagSlugs, createdAt, createdAt);
     await saveState(state);

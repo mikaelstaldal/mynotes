@@ -488,7 +488,16 @@ The API manages notes keyed by slug. Operations:
   summaries (not full content) of the created notes in document order
   (`{ "notes": [ … ] }`). A note with no headings is a validation error. The
   source note is left unchanged.
-- **Download Markdown** — `GET /notes/{slug}/download-markdown` returns the note as a `.md` file (filename derived from slug). The body is a YAML frontmatter block (`title`, `slug`, `date` — the note's `created_at` as an RFC 3339 UTC timestamp — and `tags`, an array of the note's tag slugs, omitted when the note has none) followed by the Markdown content soft-wrapped at column 80. Wrapping reflows only over-long top-level paragraph lines, inserting soft line breaks at word boundaries (never splitting a word, and never before a token that could start a block); headings, code, tables, blockquotes, and list items are left verbatim. Because a soft break inside a paragraph renders as a space, the wrapped download renders identically to the stored note. The frontmatter is round-trip compatible with the Markdown import feature (re-importing the downloaded file restores the same title, slug, creation date, and tags); a single newline separates the closing `---` from the content (the parsed body is the wrapped content, which renders identically to the original).
+- **Download Markdown** — `GET /notes/{slug}/download-markdown` returns the note as a `.md` file (filename derived
+  from slug). The body is a YAML frontmatter block (`title`, `slug`, `date` — the note's `created_at` as an RFC
+  3339 UTC timestamp — and `tags`, an array of the note's tag slugs, omitted when the note has none) followed by
+  the Markdown content soft-wrapped at column 80. Wrapping reflows only over-long top-level paragraph lines,
+  inserting soft line breaks at word boundaries (never splitting a word, and never before a token that could start
+  a block); headings, code, tables, blockquotes, and list items are left verbatim. Because a soft break inside a
+  paragraph renders as a space, the wrapped download renders identically to the stored note. For notes with at most
+  50 tags, the frontmatter is round-trip compatible with the Markdown import feature (re-importing the downloaded
+  file restores the same title, slug, creation date, and tags); a single newline separates the closing `---` from
+  the content (the parsed body is the wrapped content, which renders identically to the original).
 - **Download HTML** — a **web-UI-only** feature (no server endpoint): the browser renders the note to a complete, standalone HTML document and downloads it as a `.html` file (filename derived from slug). It reuses the read-view render pipeline (markdown-it + DOMPurify, AsciiMath → MathML, inline Lucide icon `<svg>`) and additionally renders Mermaid diagrams to SVG, so the exported file matches the on-screen view — including diagrams, which a server render cannot produce. Internal artifact image references (`![alt](artifact:{sha256})`) are fetched and inlined as base64 `data:` URLs so the document renders standalone, without a live server (an SVG loaded via `<img src="data:">` cannot execute script, so it stays inert); an artifact larger than 16 MiB is replaced by an inline broken-image icon, and unknown or unresolvable references are left as-is. A small embedded stylesheet approximates the read view; the current light/dark theme is baked into the downloaded file (a `data-theme` attribute on `<html>`, and dark-themed Mermaid SVG) so it looks like what the user saw. The **Print** action reuses the same generated document, loaded into an off-screen iframe whose print dialog is invoked, but is always exported light (dark on paper wastes ink and reads poorly); the embedded stylesheet additionally resets to light under `@media print`, so even a saved dark document prints light.
 - **Send as email** — a **web-UI-only** feature (no server endpoint) available
   only when the MyMail integration is configured (see "MyMail integration"). The
@@ -984,6 +993,11 @@ Combining `-import-md-dir` with `-demo`, `-demo-server`, `-demo-bundle`, or the
   treated as failures.
 
 ### Title, date, slug, and tags
+
+All Markdown import paths accept at most 50 distinct frontmatter tags (YAML, TOML, or JSON).
+Notes created or updated through the API can exceed this limit, but their Markdown exports cannot be re-imported
+until the tag count is reduced. Duplicate tag slugs count once. The title, content, explicit slug, and every tag slug
+are validated before any tags are created; imports rejected by these validations create no tags.
 
 The file's content is authoritative and reaches the service **verbatim**; the
 filesystem only supplies fallbacks for what the file itself does not say.  A

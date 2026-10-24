@@ -25,7 +25,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // The subset of demo-sw.ts's importScripts list that carries no browser
 // dependency. store.js and icons.js are left out: they reach for indexedDB and
 // fetch at call time, which this process does not provide.
-const SCRIPTS = ['model.js', 'text.js'];
+const SCRIPTS = ['model.js', 'text.js', 'api.js'];
 
 // Evaluated in this realm rather than a fresh vm context, so the values that
 // come back are ordinary arrays and objects that deepEqual can compare.
@@ -573,4 +573,21 @@ test('editor and demo scan pathological heading lines in linear time', () => {
     assert.equal(firstATXHeading(line), suffix === '#' ? 'a' : line.slice(2));
     assert.ok(performance.now() - start < 1000, '200 KB heading takes under one second');
   }
+});
+
+
+test('import tags validate the full list and distinct count before mutation', () => {
+  const ensureTags = vm.runInThisContext('ensureTags');
+  for (const slugs of [
+    ['fresh', 'BAD'],
+    Array.from({ length: 51 }, (_, i) => 'tag-' + i),
+  ]) {
+    const state = { tags: [] };
+    assertRejects(() => ensureTags(state, slugs), 400, 'invalid import tags');
+    assert.deepEqual(state.tags, []);
+  }
+  const state = { tags: [] };
+  const slugs = Array.from({ length: 50 }, (_, i) => 'tag-' + i);
+  ensureTags(state, [...slugs, ...slugs]);
+  assert.equal(state.tags.length, 50);
 });

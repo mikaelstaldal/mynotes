@@ -13,6 +13,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"regexp"
 	"strconv"
 	"strings"
@@ -416,12 +417,27 @@ func (s *NoteService) ImportMarkdownWithDefaults(ctx context.Context, markdownCo
 		slugPtr = &fm.Slug
 	}
 
+	// Validate the complete import before creating any frontmatter tags.
+	if err := validateTitle(strings.TrimSpace(title)); err != nil {
+		return model.Note{}, err
+	}
+	if err := validateContent(content); err != nil {
+		return model.Note{}, err
+	}
+	if slugPtr != nil {
+		if err := validateSlug(*slugPtr); err != nil {
+			return model.Note{}, err
+		}
+	}
 	if err := s.ensureTags(ctx, fm.Tags); err != nil {
 		return model.Note{}, err
 	}
 
+	// createNote repeats validation to keep its shared write path self-contained.
 	return s.createNote(ctx, title, &content, slugPtr, createdAt, time.Time{}, fm.Tags)
 }
+
+const maxImportTags = 50
 
 // ensureTags creates any tag in slugs that does not already exist, so an
 // imported note can carry tags that were never explicitly created via
@@ -430,6 +446,14 @@ func (s *NoteService) ImportMarkdownWithDefaults(ctx context.Context, markdownCo
 // to a concurrent one (ErrConflict) is ignored — the tag exists either way.
 func (s *NoteService) ensureTags(ctx context.Context, slugs []string) error {
 	dedup := dedupeStrings(slugs)
+	if len(dedup) > maxImportTags {
+		return validationError(fmt.Sprintf("frontmatter must contain at most %d distinct tags", maxImportTags))
+	}
+	for _, slug := range dedup {
+		if err := validateSlug(slug); err != nil {
+			return err
+		}
+	}
 	if len(dedup) == 0 {
 		return nil
 	}
@@ -444,9 +468,6 @@ func (s *NoteService) ensureTags(ctx context.Context, slugs []string) error {
 	for _, slug := range dedup {
 		if existing[slug] {
 			continue
-		}
-		if err := validateSlug(slug); err != nil {
-			return err
 		}
 		if _, err := s.tags.Create(ctx, slug); err != nil && !errors.Is(err, ErrConflict) {
 			return err
