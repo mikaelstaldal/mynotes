@@ -493,3 +493,33 @@ test('inline math does not cross paragraph boundaries', () => {
 test('math markers inside an HTML block do not hide HTML', () => {
   assertRejects(() => validateContent('<div>\n$$\n<script>x</script>'), 400, 'HTML block');
 });
+
+test('validateContent rejects ambiguous scheme prefixes in destinations', () => {
+  for (const dest of [
+    '&#106;avascript:alert(1)', 'javascript&colon;alert(1)',
+    'java&#9;script:alert(1)', 'java&#10;script:alert(1)',
+    'java&#13;script:alert(1)', String.raw`java\script:alert(1)`,
+    String.raw`javascript\:alert(1)`, '&#47;&#47;evil.example/x',
+    '/&#47;evil.example/x', String.raw`/\/evil.example/x`,
+  ]) {
+    for (const content of [
+      `[x](${dest})`, `![x](${dest})`,
+      `[x][r]\n\n[r]: ${dest}`, `![x][r]\n\n[r]: ${dest}`,
+      `[r]\n\n[r]: ${dest}`, `[r][]\n\n[r]: ${dest}`,
+    ]) assertRejects(() => validateContent(content), 400, content);
+  }
+  validateContent('[x](https://example.com/a?x=1&amp;y=2)');
+  validateContent('![x](/a&amp;b.png) and [x](./a&amp;b) and [x](#a&amp;b)');
+});
+
+test('reference destinations use the allow-list of each use', () => {
+  for (const content of [
+    '![x][r]\n\n[r]: http://example.com/a.png',
+    '[x][r]\n\n[r]: data:image/png;base64,AAAA',
+    '[r][]\n\n[r]: artifact:' + 'a'.repeat(64),
+  ]) assertRejects(() => validateContent(content), 400, content);
+  validateContent('[r]: javascript:alert(1)'); // unused definition
+  validateContent('paragraph\n[r]: javascript:alert(1)'); // literal paragraph text
+  validateContent('![r]\n\n[r]: artifact:' + 'a'.repeat(64));
+  validateContent('[x][R]\n\n[r]: https://example.com');
+});

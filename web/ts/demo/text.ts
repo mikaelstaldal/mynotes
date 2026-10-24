@@ -164,9 +164,16 @@ const SCHEME_RE = /^([a-zA-Z][a-zA-Z0-9+.\-]*):/;
  */
 function checkScheme(dest: string, isImage: boolean): void {
   const d = dest.trim();
+  // Reject ambiguous scheme prefixes, mirroring service.checkScheme.
+  const prefix = d.split(/[:/?#]/, 1)[0];
+  if (/[&\\\x00-\x1f\x7f-\x9f]/.test(prefix)) {
+    throw validationError(isImage
+      ? 'content contains an image with a disallowed URL scheme'
+      : 'content contains a link with a disallowed URL scheme');
+  }
   // A scheme-relative URL inherits the page scheme to reach an arbitrary host,
   // outside the explicit allow-list — reject it on both links and images.
-  if (!d.startsWith('//')) {
+  if (!d.startsWith('//') && !/^\/[&\\\x00-\x20]/.test(d)) {
     const m = SCHEME_RE.exec(d);
     if (m === null) return; // no scheme: relative destinations are allowed
     const scheme = m[1].toLowerCase();
@@ -226,6 +233,26 @@ function validateMarkdownStructure(content: string): void {
   MD_DESTINATION_RE.lastIndex = 0;
   for (let m = MD_DESTINATION_RE.exec(src); m !== null; m = MD_DESTINATION_RE.exec(src)) {
     checkScheme(m[2], m[1] === '!');
+  }
+
+  // Resolve ordinary full, collapsed and shortcut references so each use
+  // receives the link or image allow-list, as it does in the server's AST.
+  const definitions = new Map<string, string>();
+  const labelKey = (label: string): string => label.trim().replace(/\s+/g, ' ').toLowerCase();
+  let canDefine = true;
+  const body = src.split('\n').map((line) => {
+    const m = /^ {0,3}\[([^\]]+)\]:[ \t]*(?:<([^>\n]*)>|([^\s]+))/.exec(line);
+    if (canDefine && m !== null) {
+      const key = labelKey(m[1]);
+      if (!definitions.has(key)) definitions.set(key, m[2] ?? m[3]);
+      return '';
+    }
+    canDefine = line.trim() === '';
+    return line;
+  }).join('\n');
+  for (const m of body.matchAll(/(!?)\[([^\]]+)\](?:\[([^\]]*)\])?(?![([])/g)) {
+    const dest = definitions.get(labelKey(m[3] || m[2]));
+    if (dest !== undefined) checkScheme(dest, m[1] === '!');
   }
 
   MD_AUTOLINK_RE.lastIndex = 0;

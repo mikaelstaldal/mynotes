@@ -208,9 +208,22 @@ func canonicalizeHTML(fragment string) string {
 func checkScheme(dest string, isImage bool) error {
 	d := strings.TrimSpace(dest)
 
+	// Reject ambiguous prefixes rather than guessing how a downstream renderer
+	// decodes entities/escapes or strips URL controls. Once a literal URL
+	// delimiter is reached, these characters cannot disguise the scheme.
+	for _, r := range d {
+		if strings.ContainsRune(":/?#", r) {
+			break
+		}
+		if r == '&' || r == '\\' || unicode.IsControl(r) {
+			return schemeError(isImage)
+		}
+	}
+
 	// Scheme-relative URLs inherit the page scheme to reach an arbitrary host,
 	// outside the explicit allow-list — reject on both links and images.
-	if strings.HasPrefix(d, "//") {
+	if strings.HasPrefix(d, "//") || (strings.HasPrefix(d, "/") && len(d) > 1 &&
+		(d[1] == '&' || d[1] == '\\' || d[1] <= ' ')) {
 		return schemeError(isImage)
 	}
 

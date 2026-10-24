@@ -286,3 +286,29 @@ func TestMathDelimiterValidation(t *testing.T) {
 		require.NoError(t, validateMarkdownStructure(content), content)
 	}
 }
+
+func TestValidateMarkdownStructure_AmbiguousSchemePrefixes(t *testing.T) {
+	for _, dest := range []string{
+		"&#106;avascript:alert(1)", "javascript&colon;alert(1)",
+		"java&#9;script:alert(1)", "java&#10;script:alert(1)",
+		"java&#13;script:alert(1)", `java\script:alert(1)`,
+		`javascript\:alert(1)`, "&#47;&#47;evil.example/x",
+		"/&#47;evil.example/x", `/\/evil.example/x`,
+	} {
+		for _, content := range []string{
+			"[x](" + dest + ")", "![x](" + dest + ")",
+			"[x][r]\n\n[r]: " + dest, "![x][r]\n\n[r]: " + dest,
+			"[r]\n\n[r]: " + dest, "[r][]\n\n[r]: " + dest,
+		} {
+			t.Run(content, func(t *testing.T) {
+				require.ErrorIs(t, validateMarkdownStructure(content), ErrValidation)
+			})
+		}
+	}
+	for _, content := range []string{
+		"[x](https://example.com/a?x=1&amp;y=2)",
+		"![x](/a&amp;b.png)", "[x](./a&amp;b)", "[x](#a&amp;b)",
+	} {
+		require.NoError(t, validateMarkdownStructure(content))
+	}
+}
