@@ -14,6 +14,8 @@ import (
 	"github.com/mikaelstaldal/mynotes/internal/repository"
 )
 
+const maxArtifactBytes = 10 << 20
+
 var sha256HexPattern = regexp.MustCompile(`^[0-9a-f]{64}$`)
 
 var (
@@ -85,6 +87,9 @@ func NewArtifactService(repo *repository.ArtifactRepository) *ArtifactService {
 // Create computes the SHA-256 of content, stores the artifact (idempotent on
 // repeated uploads of the same bytes), and returns the stored record.
 func (s *ArtifactService) Create(ctx context.Context, content []byte, contentType string) (model.Artifact, error) {
+	if len(content) > maxArtifactBytes {
+		return model.Artifact{}, validationError("artifact must contain at most 10485760 bytes")
+	}
 	if len(content) == 0 {
 		return model.Artifact{}, validationError("artifact content must not be empty")
 	}

@@ -126,6 +126,9 @@ func normalizeOrder(order string) string {
 // explicitly (POST /tags) before they can be attached to a note, so an
 // unknown slug is a validation error, not a not-found.
 func (s *NoteService) resolveTagIDs(ctx context.Context, tagSlugs []string) ([]int64, error) {
+	if len(tagSlugs) > 50 {
+		return nil, validationError("at most 50 tags are allowed")
+	}
 	dedup := dedupeStrings(tagSlugs)
 	if len(dedup) == 0 {
 		return nil, nil
@@ -357,6 +360,9 @@ var atxHeadingRe = regexp.MustCompile(`^#{1,6}[ \t]+(.+?)(?:[ \t]+#+[ \t]*)?$`)
 // (3) first ATX heading in the produced Markdown, (4) empty string, which
 // validateTitle rejects as "title is required" → 400 Bad Request.
 func (s *NoteService) ImportHTML(ctx context.Context, htmlContent string) (model.Note, error) {
+	if utf8.RuneCountInString(htmlContent) > maxContentLen {
+		return model.Note{}, validationError("import must contain at most 1000000 characters")
+	}
 	result, err := htmlmd.Convert(htmlContent)
 	if err != nil {
 		return model.Note{}, validationError("invalid HTML: " + err.Error())
@@ -394,6 +400,9 @@ func (s *NoteService) ImportMarkdown(ctx context.Context, markdownContent string
 // wins. An empty fallbackTitle/zero fallbackDate means "no fallback", which is
 // exactly ImportMarkdown.
 func (s *NoteService) ImportMarkdownWithDefaults(ctx context.Context, markdownContent, fallbackTitle string, fallbackDate time.Time) (model.Note, error) {
+	if utf8.RuneCountInString(markdownContent) > maxContentLen {
+		return model.Note{}, validationError("import must contain at most 1000000 characters")
+	}
 	fm, content := parseFrontmatter(markdownContent)
 
 	title := fm.Title
@@ -429,6 +438,7 @@ func (s *NoteService) ImportMarkdownWithDefaults(ctx context.Context, markdownCo
 			return model.Note{}, err
 		}
 	}
+	fm.Tags = dedupeStrings(fm.Tags)
 	if err := s.ensureTags(ctx, fm.Tags); err != nil {
 		return model.Note{}, err
 	}

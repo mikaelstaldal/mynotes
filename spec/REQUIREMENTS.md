@@ -1407,3 +1407,12 @@ and an RFC 9727 API catalog at `/.well-known/api-catalog`, supporting GET and HE
 without authentication. API responses include a `service-desc` Link header.
 Both discovery resources return 404 in demo mode. The shared contract is
 `../mysuite/spec/api-discovery.md`.
+
+## Input limits
+
+Note creation and updates accept at most 50 tag entries, counted before deduplication.
+Existing notes remain readable; replacing a tag list longer than 50 entries requires reducing it to the limit.
+Updates that omit tags leave the existing list unchanged.
+HTML and Markdown import sources accept at most 1,000,000 Unicode characters, checked before parsing or conversion.
+Artifact uploads accept at most 10 MiB (10,485,760 bytes); the demo retains its documented 2 MiB cap.
+Oversized inputs are rejected as validation errors.

@@ -78,3 +78,14 @@ func TestArtifactServiceCreate_AcceptsMatchingContent(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "image/svg+xml", a.ContentType)
 }
+
+func TestArtifactSizeLimit(t *testing.T) {
+	s := newTestArtifactService(t)
+	content := make([]byte, maxArtifactBytes+1)
+	copy(content, pngMagic)
+	_, err := s.Create(context.Background(), content, "image/png")
+	require.ErrorIs(t, err, ErrValidation)
+	assert.Contains(t, err.Error(), "10485760")
+	_, err = s.Create(context.Background(), content[:maxArtifactBytes], "image/png")
+	require.NoError(t, err)
+}

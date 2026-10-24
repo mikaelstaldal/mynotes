@@ -591,3 +591,16 @@ test('import tags validate the full list and distinct count before mutation', ()
   ensureTags(state, [...slugs, ...slugs]);
   assert.equal(state.tags.length, 50);
 });
+
+test('demo rejects oversized tag arrays and imports before processing', async () => {
+  const resolve = vm.runInThisContext('resolveTags');
+  const state = { tags: [{ slug: 'known' }] };
+  assert.deepEqual(resolve(state, Array(50).fill('known')), ['known']);
+  assertRejects(() => resolve(state, Array(51).fill('known')), 400, 'tag cap');
+  const importDocument = vm.runInThisContext('importNote');
+  for (const type of ['text/html', 'text/markdown']) {
+    await assert.rejects(importDocument(new Request('https://demo/api/v1/import', {
+      method: 'POST', headers: { 'Content-Type': type }, body: 'é'.repeat(1_000_001),
+    }), 'unused'), (err) => err.status === 400 && err.message.includes('import must contain'));
+  }
+});

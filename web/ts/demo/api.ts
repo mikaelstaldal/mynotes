@@ -123,6 +123,7 @@ function findNote(state: DemoState, slug: string): DemoNote {
  * Mirrors service.resolveTagIDs.
  */
 function resolveTags(state: DemoState, slugs: string[]): string[] {
+  if (slugs.length > 50) throw validationError("at most 50 tags are allowed");
   const known = new Set(state.tags.map((t) => t.slug));
   const out: string[] = [];
   for (const slug of slugs) {
@@ -416,6 +417,9 @@ async function downloadNoteMarkdown(slug: string): Promise<Response> {
 async function importNote(request: Request, clientId: string): Promise<Response> {
   const contentType = (request.headers.get('Content-Type') ?? '').split(';')[0].trim();
   const source = await request.text();
+  if (Array.from(source).length > 1_000_000) {
+    throw validationError("import must contain at most 1000000 characters");
+  }
 
   let title: string;
   let markdown: string;
@@ -443,6 +447,7 @@ async function importNote(request: Request, clientId: string): Promise<Response>
     validateTitle(title.trim());
     validateContent(markdown);
     if (slug !== null) validateSlug(slug);
+    tagSlugs = [...new Set(tagSlugs)];
     ensureTags(state, tagSlugs);
     const note = createNote(state, title, markdown, slug, tagSlugs, createdAt, createdAt);
     await saveState(state);

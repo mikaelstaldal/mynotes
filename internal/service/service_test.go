@@ -435,3 +435,33 @@ func TestListDeDupesTagSlugs(t *testing.T) {
 	require.Len(t, notes, 1)
 	assert.Equal(t, "Report", notes[0].Title)
 }
+
+func TestInputSizeLimits(t *testing.T) {
+	s := newTestService(t)
+	ctx := context.Background()
+	for _, count := range []int{51, 40000} {
+		_, err := s.resolveTagIDs(ctx, make([]string, count))
+		require.ErrorIs(t, err, ErrValidation)
+		assert.Contains(t, err.Error(), "at most 50")
+	}
+	_, err := s.ImportMarkdown(ctx, "---\ntitle: Tagged\ntags: [known]\n---\nBody")
+	require.NoError(t, err)
+	duplicates := make([]string, 50)
+	for i := range duplicates {
+		duplicates[i] = "known"
+	}
+	ids, err := s.resolveTagIDs(ctx, duplicates)
+	require.NoError(t, err)
+	assert.Len(t, ids, 1)
+	for _, source := range []string{strings.Repeat("a", maxContentLen+1), strings.Repeat("é", maxContentLen+1)} {
+		_, err = s.ImportHTML(ctx, source)
+		require.ErrorIs(t, err, ErrValidation)
+		assert.Contains(t, err.Error(), "import must contain")
+		_, err = s.ImportMarkdown(ctx, source)
+		require.ErrorIs(t, err, ErrValidation)
+		assert.Contains(t, err.Error(), "import must contain")
+	}
+	source := "# Title\n" + strings.Repeat("é", maxContentLen-8)
+	_, err = s.ImportMarkdown(ctx, source)
+	require.NoError(t, err)
+}
