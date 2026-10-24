@@ -308,7 +308,8 @@ var mathMLAttrs = []string{
 //     them and every published diagram renders unstyled.
 //
 // bluemonday will not emit a <style> element's content unless AllowUnsafe is
-// set, and it does not sanitize CSS text, so published CSS is stored verbatim.
+// set, and it does not sanitize CSS text. PublishedHTML removes ambiguous
+// raw-text bodies before returning the result; ordinary CSS is kept verbatim.
 // The compensating control is the response policy on the public route
 // (handler.publishedNoteCSP): no script-src, so a published page cannot execute
 // script no matter what reaches it. AllowUnsafe also ungates <script>, but only
@@ -375,5 +376,30 @@ func HTML(s string) string {
 // call is the write-time guard on the publish endpoint rather than a comparison
 // input. See newPublishedPolicy for what it keeps and why.
 func PublishedHTML(s string) string {
-	return publishedPolicy.Sanitize(s)
+	// The flat tokenizer treats style/title bodies as raw text/RCDATA even in
+	// SVG and MathML, where a browser can instead interpret them as markup.
+	// Remove any such body containing a literal '<', including unfinished tags.
+	// Inspect raw bytes: entity-escaped text cannot introduce markup. Keeping
+	// ordinary CSS verbatim preserves Mermaid child combinators ('>').
+	z := html.NewTokenizer(strings.NewReader(publishedPolicy.Sanitize(s)))
+	var out strings.Builder
+	ambiguousBody := false
+	for {
+		switch z.Next() {
+		case html.ErrorToken:
+			return out.String()
+		case html.StartTagToken, html.SelfClosingTagToken:
+			raw := string(z.Raw())
+			tag := z.Token().Data
+			ambiguousBody = tag == "style" || tag == "title"
+			out.WriteString(raw)
+		case html.TextToken:
+			if !ambiguousBody || !bytes.ContainsRune(z.Raw(), '<') {
+				out.Write(z.Raw())
+			}
+		default:
+			ambiguousBody = false
+			out.Write(z.Raw())
+		}
+	}
 }

@@ -2,7 +2,12 @@ package sanitize
 
 import (
 	"fmt"
+	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/require"
+	"golang.org/x/net/html"
+	"golang.org/x/net/html/atom"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -113,4 +118,50 @@ func TestHTMLRejectsAmbiguousTitle(t *testing.T) {
 	assert.NotEmpty(t, HTML(`<div><svg><title>Plain title</title></svg></div>`))
 	assert.NotEmpty(t, HTML(`<div><svg><title>x &lt; y</title></svg></div>`))
 	assert.NotEmpty(t, HTML(`<div><svg><title>&lt;img onerror=alert(1)&gt;</title></svg></div>`))
+}
+
+// Parse the sanitized bytes as a browser does, rather than using the flat
+// tokenizer whose raw-text handling caused this bypass.
+func TestPublishedHTMLStripsAmbiguousForeignBodies(t *testing.T) {
+	for _, wrapper := range []string{
+		`<svg><style>%s</style></svg>`,
+		`<math><style>%s</style></math>`,
+		`<svg><STYLE>%s</STYLE></svg>`,
+		`<svg><style/>%s</svg>`,
+		`<math><style>%s`,
+		`<svg><title>%s</title></svg>`,
+		`<math><mtext><title>%s</title></mtext></math>`,
+	} {
+		for _, body := range []string{
+			`<meta http-equiv="refresh" content="0;url=https://evil.example">`,
+			`<img src=x onerror=alert(1)>`,
+			`<a href="javascript:alert(1)">click</a>`,
+			`<div onclick=x>text</div>`,
+			`<img src=x`,
+		} {
+			t.Run(fmt.Sprintf(wrapper, body), func(t *testing.T) {
+				out := PublishedHTML(fmt.Sprintf(wrapper, body))
+				nodes, err := html.ParseFragment(strings.NewReader(out), &html.Node{Type: html.ElementNode, DataAtom: atom.Main, Data: "main"})
+				require.NoError(t, err)
+				var walk func(*html.Node)
+				walk = func(n *html.Node) {
+					if n.Type == html.ElementNode {
+						assert.NotContains(t, []string{"meta", "img", "a", "div"}, n.Data)
+						for _, a := range n.Attr {
+							assert.False(t, strings.HasPrefix(a.Key, "on"))
+							assert.NotContains(t, strings.ToLower(a.Val), "javascript:")
+						}
+					}
+					for c := n.FirstChild; c != nil; c = c.NextSibling {
+						walk(c)
+					}
+				}
+				for _, n := range nodes {
+					walk(n)
+				}
+			})
+		}
+	}
+	assert.Equal(t, `<svg><style>.a > .b{fill:red}</style><title>x &lt; y</title></svg>`,
+		PublishedHTML(`<svg><style>.a > .b{fill:red}</style><title>x &lt; y</title></svg>`))
 }

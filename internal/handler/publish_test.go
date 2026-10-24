@@ -12,6 +12,8 @@ import (
 	"strings"
 	"testing"
 
+	"golang.org/x/net/html"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -478,4 +480,42 @@ func TestPublicArtifactConditionalRangeAndHead(t *testing.T) {
 	require.NoError(t, err)
 	res.Body.Close()
 	assert.Equal(t, 404, res.StatusCode)
+}
+
+func TestPublishRemovesForeignRawTextMarkup(t *testing.T) {
+	srv := newServer(t)
+	note := createNote(t, srv, `{"title":"Safe public page","content":"hello"}`)
+	for _, element := range []string{"style", "title"} {
+		for _, namespace := range []string{"svg", "math"} {
+			t.Run(namespace+"/"+element, func(t *testing.T) {
+				payload := `<p>Kept</p><` + namespace + `><` + element + `>` +
+					`<meta http-equiv="refresh" content="0;url=https://evil.example/login">` +
+					`<img src=x onerror=alert(1)><a href="javascript:alert(1)">click</a>` +
+					`</` + element + `></` + namespace + `>`
+				res := publishNote(t, srv, note.Slug, payload)
+				res.Body.Close()
+				require.Equal(t, http.StatusOK, res.StatusCode)
+				page, body := getBody(t, srv.URL+"/public/notes/"+note.Slug)
+				require.Equal(t, http.StatusOK, page.StatusCode)
+				assert.Contains(t, body, `<p>Kept</p>`)
+				doc, err := html.Parse(strings.NewReader(body))
+				require.NoError(t, err)
+				var walk func(*html.Node)
+				walk = func(n *html.Node) {
+					if n.Type == html.ElementNode {
+						assert.NotEqual(t, "img", n.Data)
+						for _, a := range n.Attr {
+							assert.NotEqual(t, "http-equiv", a.Key)
+							assert.False(t, strings.HasPrefix(a.Key, "on"))
+							assert.NotContains(t, strings.ToLower(a.Val), "javascript:")
+						}
+					}
+					for c := n.FirstChild; c != nil; c = c.NextSibling {
+						walk(c)
+					}
+				}
+				walk(doc)
+			})
+		}
+	}
 }
