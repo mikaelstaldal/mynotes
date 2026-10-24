@@ -215,7 +215,7 @@ function validateMarkdownStructure(content: string): void {
     for (let a = HTML_ATTR_RE.exec(attrText); a !== null; a = HTML_ATTR_RE.exec(attrText)) {
       const key = a[1].toLowerCase();
       const value = a[2] ?? a[3] ?? a[4] ?? '';
-      if (key.startsWith('on')) throw validationError('content contains disallowed HTML');
+      if (key.startsWith('on') || key === 'class' || key === 'style') throw validationError('content contains disallowed HTML');
       if ((name === 'a' && key === 'href') || (name === 'img' && key === 'src')) {
         checkScheme(value, name === 'img');
       }
@@ -245,21 +245,30 @@ function stripCode(content: string, stripWikiLinks = false): string {
   const lines = content.split('\n');
   let fenceChar = '';
   let fenceLen = 0;
+  let mathBlock = false;
+  let htmlBlock = false;
+  const htmlBlockStart = /^ {0,3}<(?:\/?(?:address|article|aside|base|basefont|blockquote|body|caption|center|col|colgroup|dd|details|dialog|dir|div|dl|dt|fieldset|figcaption|figure|footer|form|frame|frameset|h[1-6]|head|header|hr|html|iframe|legend|li|link|main|menu|menuitem|nav|noframes|ol|optgroup|option|p|param|search|section|summary|table|tbody|td|tfoot|th|thead|title|tr|track|ul)(?=[\s/>])|!--|\?|!\[CDATA\[)/i;
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     const run = leadingRun(line);
+    if (!line.trim()) htmlBlock = false;
+    if (fenceLen === 0 && !mathBlock && (htmlBlock || htmlBlockStart.test(line))) {
+      htmlBlock = true;
+      continue;
+    }
+    if (fenceLen === 0 && (mathBlock || /^ {0,3}\$\$/.test(line))) {
+      const body: string = mathBlock ? line : line.trimStart().slice(2);
+      mathBlock = !body.trim().endsWith('$$');
+      lines[i] = ' '.repeat(line.length);
+      continue;
+    }
     if (fenceLen === 0) {
       if ((run.char === '`' || run.char === '~') && run.len >= 3) {
         fenceChar = run.char;
         fenceLen = run.len;
+        lines[i] = ' '.repeat(line.length);
         continue;
       }
-      // Inline code spans, replaced by spaces of the same length.
-      // Wikilinks and code must be consumed in source order: a backtick in
-      // an opaque wikilink label cannot open a code span over later HTML.
-      const inline = new RegExp('\\\\.|' + WIKI_LINK_RE.source + '|`+[^`]*`+', 'gu');
-      lines[i] = line.replace(inline, (s) =>
-        s.startsWith('\\') || (s.startsWith('[[') && !stripWikiLinks) ? s : ' '.repeat(s.length));
     } else {
       if (run.char === fenceChar && run.len >= fenceLen && line.slice(run.len).trim() === '') {
         fenceLen = 0;
@@ -268,7 +277,32 @@ function stripCode(content: string, stripWikiLinks = false): string {
       lines[i] = ' '.repeat(line.length);
     }
   }
-  return lines.join('\n');
+  return lines.join('\n').split(/(\n[ \t]*\n)/).map((line) => {
+    if (/^\n[ \t]*\n$/.test(line) || htmlBlockStart.test(line)) return line;
+    // Inline code spans, replaced by spaces of the same length.
+    // Wikilinks and code must be consumed in source order: a backtick in
+    // an opaque wikilink label cannot open a code span over later HTML.
+    const inline = new RegExp('\\\\.|' + WIKI_LINK_RE.source + '|`+[^`]*`+', 'guy');
+    let out = '';
+    for (let pos = 0; pos < line.length;) {
+      const end = line[pos] === '$' ? validationMathEnd(line, pos) : 0;
+      if (end > pos) {
+        out += line.slice(pos, end).replace(/[^\n]/g, ' ');
+        pos = end;
+        continue;
+      }
+      inline.lastIndex = pos;
+      const m = inline.exec(line);
+      if (m?.index === pos) {
+        const s = m[0];
+        out += s.startsWith('\\') || (s.startsWith('[[') && !stripWikiLinks) ? s : s.replace(/[^\n]/g, ' ');
+        pos += s.length;
+      } else {
+        out += line[pos++];
+      }
+    }
+    return out;
+  }).join('');
 }
 
 /** The character a line starts with and how many times it repeats. */
@@ -974,4 +1008,27 @@ const YAML_NEEDS_QUOTES = /^$|^[-?:,[\]{}#&*!|>'"%@`]|: | #|^\s|\s$|^[-+.\d]|^(t
 function yamlScalar(value: string): string {
   if (!YAML_NEEDS_QUOTES.test(value)) return value;
   return '"' + value.split('\\').join('\\\\').split('"').join('\\"') + '"';
+}
+
+/** Mirrors the renderer's inline display/single-dollar math rules. */
+function validationMathEnd(src: string, start: number): number {
+  const escaped = (pos: number): boolean => {
+    let n = 0;
+    while (pos > 0 && src[--pos] === '\\') n++;
+    return n % 2 !== 0;
+  };
+  if (src.startsWith('$$', start)) {
+    for (let i = start + 2; i + 1 < src.length; i++) {
+      if (src.startsWith('$$', i) && !escaped(i)) {
+        if (src.slice(start + 2, i).trim()) return i + 2;
+        break;
+      }
+    }
+  }
+  if (/[ \t]/.test(src[start + 1] ?? '')) return start + 1;
+  for (let i = start + 1; i < src.length; i++) {
+    if (src[i] !== '$' || escaped(i) || /[ \t]/.test(src[i - 1]) || /[0-9]/.test(src[i + 1] ?? '')) continue;
+    return src.slice(start + 1, i).trim() ? i + 1 : 0;
+  }
+  return 0;
 }

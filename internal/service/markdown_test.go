@@ -249,3 +249,40 @@ func TestValidateMarkdownStructure_WikiLinkCodeDifferential(t *testing.T) {
 		require.NoError(t, validateMarkdownStructure(content), content)
 	}
 }
+
+func TestMathCannotHideFollowingHTML(t *testing.T) {
+	for _, prefix := range []string{"$`$", "text $$`$$", "$x\n`$", "$$\n`\n$$\n"} {
+		require.ErrorIs(t, validateMarkdownStructure(prefix+`<span class="dialog-overlay">hi</span>`+"`"), ErrValidation, prefix)
+	}
+	for _, content := range []string{"$`<span class=\"dialog-overlay\">`$", "text $$`<script>x</script>`$$", "$$\n<script>x</script>\n$$", "`$` <kbd>ok</kbd>", "$5 and $10"} {
+		require.NoError(t, validateMarkdownStructure(content), content)
+	}
+}
+
+func TestMathValidationContainers(t *testing.T) {
+	for _, content := range []string{
+		"> $x\n> `$<span class=\"dialog-overlay\">hi</span>`",
+		"- $x\n  `$<span class=\"dialog-overlay\">hi</span>`",
+		"> $$\n> `\n> $$\n\n<span class=\"dialog-overlay\">hi</span>`",
+		"- $$\n  `\n  $$\n\n<span class=\"dialog-overlay\">hi</span>`",
+		"- $$\n  `\n\n<span class=\"dialog-overlay\">hi</span>`",
+	} {
+		require.ErrorIs(t, validateMarkdownStructure(content), ErrValidation, content)
+	}
+}
+
+func TestMathDelimiterValidation(t *testing.T) {
+	for _, content := range []string{
+		"$x\\$`y$<span class=\"dialog-overlay\">hi</span>`",
+		"text $$x\\$$`y$$<span class=\"dialog-overlay\">hi</span>`",
+		"$x$2`y$<span class=\"dialog-overlay\">hi</span>`",
+	} {
+		require.ErrorIs(t, validateMarkdownStructure(content), ErrValidation, content)
+	}
+	for _, content := range []string{
+		"$ <kbd>x</kbd> `code`", "$x\\$`<script>x</script>`$", "text $$x\\$$`<script>x</script>`$$",
+		"`$<script>x</script>$`", "$5 and $10",
+	} {
+		require.NoError(t, validateMarkdownStructure(content), content)
+	}
+}

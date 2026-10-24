@@ -991,3 +991,9 @@ test('malformed wikilink runs render in bounded time', { timeout: 60000 }, () =>
     assert.ok(performance.now() - start < 10000, 'million-character render takes under ten seconds');
   }
 });
+
+test('math backticks leave following HTML visible to the write-time gate', async () => {
+  const out = await renderNote('$`$<span class="dialog-overlay">hi</span>`');
+  assertPresent(out, '<math', 'math consumes the first backtick');
+  assertPresent(out, 'class="dialog-overlay"', 'following HTML is live and must be rejected on write');
+});

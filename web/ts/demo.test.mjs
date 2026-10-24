@@ -476,3 +476,20 @@ test('wikilink label backticks cannot hide following HTML from validation', () =
   validateContent('[[x|`<script>]]');
   validateContent('`[[x|label]]<script>`');
 });
+
+test('math consumes backticks before code-span validation', () => {
+  for (const prefix of ['$`$', 'text $$`$$', '$x\n`$', '$$\n`\n$$\n']) {
+    assertRejects(() => validateContent(prefix + '<script>x</script>`'), 400, prefix);
+    assertRejects(() => validateContent(prefix + '<span class="dialog-overlay">hi</span>`'), 400, prefix);
+  }
+  validateContent('$`<script>x</script>`$');
+  validateContent('$$\n<script>x</script>\n$$');
+});
+
+test('inline math does not cross paragraph boundaries', () => {
+  assertRejects(() => validateContent('$x\n\n<script>x</script>\n\nx$'), 400, 'separate paragraphs');
+});
+
+test('math markers inside an HTML block do not hide HTML', () => {
+  assertRejects(() => validateContent('<div>\n$$\n<script>x</script>'), 400, 'HTML block');
+});

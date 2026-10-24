@@ -32,8 +32,9 @@ const maxNestingDepth = 100
 var markdownParser = goldmark.New(
 	// Consume wikilink labels before core links can interpret their backticks as
 	// code spans hiding subsequent HTML. Share the indexing grammar.
-	goldmark.WithParserOptions(parser.WithInlineParsers(
+	goldmark.WithParserOptions(parser.WithBlockParsers(util.Prioritized(&mathBlockParser{}, 750)), parser.WithInlineParsers(
 		util.Prioritized(repository.NewWikiLinkParser(), 199),
+		util.Prioritized(&mathParser{}, 50),
 	)),
 	goldmark.WithExtensions(
 		extension.Table,
