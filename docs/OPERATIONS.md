@@ -66,8 +66,14 @@ MyNotes uses HTTP Basic Auth backed by an htpasswd file (bcrypt). Create the fil
 
 ```bash
 mkdir -p /etc/mynotes
-htpasswd -Bc /etc/mynotes/htpasswd myuser
+htpasswd -B -C 10 -c /etc/mynotes/htpasswd myuser
 ```
+
+Set an explicit bcrypt cost (`-C 10` in this example) and test authentication latency on your server.
+Higher costs slow password guessing but also increase CPU use on every Basic-authenticated request; configure
+external request limits as described below. See the
+[htpasswd options](https://httpd.apache.org/docs/2.4/programs/htpasswd.html).
+Omit `-c` when updating an existing file, since it overwrites the file.
 
 Protect the file:
 
@@ -141,15 +147,49 @@ Start MyNotes with `-public-url https://notes.example.com` (an `https://` URL al
 
 CSRF accepts the public URL origin (ignoring any deployment path), plus HTTP origins for `localhost`, `127.0.0.1`, `[::1]`, and a concrete bind address at the listener port. Browser writes from other origins receive 403; native requests without Origin or Referer remain accepted. These local origins are trusted even behind a proxy: avoid running untrusted local services at that port on another interface.
 
-One requirement regardless of which reverse proxy you use:
+### Rate limiting and authentication abuse
 
-- **Rate limiting** — MyNotes has no built-in rate limiting. The reverse proxy must enforce a per-IP request rate limit to prevent DoS via bulk note creation or repeated queries.
+Configure request-rate limiting in the reverse proxy or an upstream firewall before requests reach MyNotes.
+MyNotes has no built-in throttling or lockout for Basic authentication, or cap on concurrent bcrypt comparisons.
+With `-basic-auth-file`, requests to Basic-protected routes carrying parseable credentials can trigger an expensive
+bcrypt comparison, including unknown usernames and wrong passwords. A flood can exhaust CPU, and repeated password
+attempts are not limited by the application. Use strong passwords as well as external rate limits.
+
+Apply per-client limits to all paths and methods, including GET requests, static assets, and failed authentication
+attempts, rather than only writes or a login endpoint. Add an aggregate request limit sized for the server's CPU
+capacity so requests from many IP addresses cannot bypass the per-client protection. Tune sustained rates and
+bursts under load with bcrypt enabled, allowing normal page loads, note editing and autosave, and API clients.
+The nginx values below are starting points, not a capacity guarantee. The aggregate budget is shared by all
+clients: when exhausted, it rejects requests even from clients below their individual limit. Size it for expected
+concurrent users while preserving CPU headroom. The example allows bounded bursts immediately to avoid delaying
+cold page loads with many module requests; those bursts can still cause CPU spikes. Test with an empty browser
+cache as well as concurrent clients, and tune burst sizes as well as sustained rates.
+
+Use the client address observed by the edge proxy for limiting and logging. If another trusted proxy sits in front,
+configure client-IP handling to trust only that proxy; never accept arbitrary client-supplied forwarding headers.
+For fail2ban-style blocking of repeated 401 responses, use the edge proxy's access log: behind a reverse proxy,
+MyNotes' authentication log records the proxy's address as `RemoteAddr`. Failure-based blocking supplements
+request limits; it does not prevent the bcrypt work needed to produce the initial 401 responses.
+
+Keep the backend listener private so clients cannot bypass these controls (see [Firewall](#firewall)). A firewall
+that only limits new TCP connections is insufficient on its own, since one persistent connection can carry many
+HTTP requests. Use HTTP request limiting at the proxy or an HTTP-aware upstream firewall.
+
+After deployment, verify in a controlled test that excessive requests with invalid Basic credentials are rejected
+at the edge, that rejected requests do not reach MyNotes, and that legitimate clients remain usable. Monitor proxy
+rejections, 401 responses, and backend CPU usage when tuning the limits.
 
 ### nginx
 
-Create `/etc/nginx/sites-available/mynotes`:
+Create `/etc/nginx/sites-available/mynotes`, included from the `http` context of `/etc/nginx/nginx.conf`.
+The zone definitions must be outside the `server` blocks, as required by
+[nginx's request limiting module](https://nginx.org/en/docs/http/ngx_http_limit_req_module.html).
 
 ```nginx
+# Shared request-rate state; these directives belong in the http context.
+limit_req_zone $binary_remote_addr zone=mynotes_per_ip:10m rate=5r/s;
+limit_req_zone $server_name zone=mynotes_total:1m rate=10r/s;
+
 server {
     listen 80;
     server_name notes.example.com;
@@ -167,9 +207,10 @@ server {
     ssl_protocols TLSv1.2 TLSv1.3;
     ssl_prefer_server_ciphers off;
 
-    # Rate limiting (adjust as needed)
-    limit_req_zone $binary_remote_addr zone=mynotes:10m rate=10r/s;
-    limit_req zone=mynotes burst=20 nodelay;
+    # Apply before forwarding any request to MyNotes; tune rates and bursts for your CPU.
+    limit_req zone=mynotes_per_ip burst=100 nodelay;
+    limit_req zone=mynotes_total burst=200 nodelay;
+    limit_req_status 429;
 
     location / {
         proxy_pass http://127.0.0.1:8080;
@@ -200,10 +241,10 @@ Certbot will modify the nginx config to handle certificate renewal automatically
 
 ### Apache 2
 
-Requires `mod_proxy`, `mod_proxy_http`, `mod_ratelimit`, `mod_ssl`, and `mod_headers`. Enable them with:
+Requires `mod_proxy`, `mod_proxy_http`, `mod_ssl`, and `mod_headers`. Enable them with:
 
 ```bash
-a2enmod proxy proxy_http ratelimit ssl headers
+a2enmod proxy proxy_http ssl headers
 ```
 
 ```apache
@@ -219,12 +260,6 @@ a2enmod proxy proxy_http ratelimit ssl headers
     ProxyPassReverse / http://127.0.0.1:8080/
 
     RequestHeader set X-Forwarded-Proto "https"
-
-    # Rate limiting: 10 requests/second per connection
-    <Location />
-        SetOutputFilter RATE_LIMIT
-        SetEnv rate-limit 10
-    </Location>
 </VirtualHost>
 
 # Redirect HTTP to HTTPS
@@ -234,20 +269,22 @@ a2enmod proxy proxy_http ratelimit ssl headers
 </VirtualHost>
 ```
 
-> **Note:** Apache's `mod_ratelimit` limits the *response* throughput (bytes/sec), not the request rate. For true per-IP request-rate limiting use `mod_qos` (available as a package on most distributions: `apt install libapache2-mod-qos`) and add `QS_SrvMaxConnPerIP 10` to the VirtualHost block.
+The Apache configuration above provides TLS and proxying only. Add per-client and aggregate HTTP request limits
+using a suitable request-limiting module or an upstream HTTP-aware firewall before exposing it publicly.
+Apache's [mod_ratelimit](https://httpd.apache.org/docs/2.4/mod/mod_ratelimit.html) limits response bandwidth,
+not request rates, and does not protect bcrypt verification. A per-IP connection cap alone is also insufficient.
 
 ### Caddy
 
 ```caddy
 notes.example.com {
-    # Rate limiting (requires caddy-ratelimit module)
-    rate_limit {remote.ip} 10r/s
-
     reverse_proxy 127.0.0.1:8080
 }
 ```
 
-> **Note:** The built-in Caddy distribution does not include a rate-limiting module. Build Caddy with `xcaddy build --with github.com/mholt/caddy-ratelimit`, or use nginx if you prefer not to build a custom binary.
+The Caddy configuration above provides TLS and proxying only. Configure per-client and aggregate HTTP request
+limits through a suitable third-party module or an upstream HTTP-aware firewall before exposing it publicly.
+Alternatively, use the nginx request-limiting configuration above.
 
 ### Sub-path deployment
 
