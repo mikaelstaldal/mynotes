@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/mikaelstaldal/mynotes/internal/sanitize"
+	"github.com/stretchr/testify/require"
 )
 
 func TestValidateMarkdownStructure_Accepts(t *testing.T) {
@@ -220,5 +221,31 @@ func TestValidateMarkdownStructure_CaseInsensitiveScheme(t *testing.T) {
 	}
 	if err := validateMarkdownStructure("[x](JavaScript:alert(1))"); !errors.Is(err, ErrValidation) {
 		t.Fatalf("mixed-case javascript link should be rejected: %v", err)
+	}
+}
+
+// A renderer wikilink consumes its label as opaque text before code parsing.
+// Backticks there must not hide live HTML following the closing delimiter.
+func TestValidateMarkdownStructure_WikiLinkCodeDifferential(t *testing.T) {
+	for _, prefix := range []string{"[[x|`]]", "[[#t|`]]", "[[x|``]]", "![[x|`]]", "!![[#t|`]]"} {
+		for _, html := range []string{
+			`<span class="dialog-overlay" data-x="1">hi</span>`,
+			`<img src=x onerror=alert(1)>`,
+			`<a href="javascript:alert(1)">x</a>`,
+			`<input type=checkbox data-task-line="3">`,
+		} {
+			t.Run(prefix+html, func(t *testing.T) {
+				require.ErrorIs(t, validateMarkdownStructure(prefix+html+"`` `"), ErrValidation)
+			})
+		}
+	}
+	for _, content := range []string{
+		"[[x|`<script>]]",
+		"[[#t|label ` text]] <b>safe</b>",
+		"`[[x|label]]<script>`",
+		"```\n[[x|`]]<script>`\n```",
+		"\\[[x|`]]<script>`",
+	} {
+		require.NoError(t, validateMarkdownStructure(content), content)
 	}
 }

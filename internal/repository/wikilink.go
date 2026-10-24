@@ -49,12 +49,23 @@ func (n *wikiLinkNode) Dump(source []byte, level int) {
 // through to Goldmark's default link parser.
 var inlineWikiLinkRE = regexp.MustCompile("^" + mdWikiLinkRE.String())
 
+// NewWikiLinkParser returns the shared wikilink tokenizer for indexing and
+// write-time validation. Labels are opaque text, just as in the web renderer;
+// their backticks and angle brackets must never start Markdown syntax.
+func NewWikiLinkParser() parser.InlineParser { return &wikiLinkParser{} }
+
 type wikiLinkParser struct{}
 
-func (p *wikiLinkParser) Trigger() []byte { return []byte{'['} }
+func (p *wikiLinkParser) Trigger() []byte { return []byte{'[', '!'} }
 
 func (p *wikiLinkParser) Parse(_ ast.Node, block gmtext.Reader, _ parser.Context) ast.Node {
-	line, _ := block.PeekLine()
+	line, segment := block.PeekLine()
+	// Goldmark otherwise consumes ![ as an image opener before we can see [[.
+	// markdown-it falls back to literal ! here, then recognizes the wikilink.
+	bang := len(line) > 0 && line[0] == '!'
+	if bang {
+		line = line[1:]
+	}
 	// Reject malformed candidates with bounded byte scans before running the
 	// regexp. The first ']' must close the link, and a label cannot span a newline.
 	const maxWikiLinkBytes = 2 + 1 + 199 + 1 + 256*4 + 2
@@ -78,6 +89,11 @@ func (p *wikiLinkParser) Parse(_ ast.Node, block gmtext.Reader, _ parser.Context
 	if m == nil || m[0] != 0 {
 		return nil
 	}
+	if bang {
+		block.Advance(1)
+		return ast.NewTextSegment(segment.WithStop(segment.Start + 1))
+	}
+
 	node := &wikiLinkNode{
 		sigil: string(line[m[2]:m[3]]),
 		slug:  string(line[m[4]:m[5]]),

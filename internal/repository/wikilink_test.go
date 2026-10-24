@@ -76,3 +76,9 @@ func TestExtractNoteLinksMalformedDelimiter(t *testing.T) {
 		require.Equal(t, []string{"ok"}, extractNoteLinks(content, "self"))
 	}
 }
+
+func TestExtractNoteLinksAfterBang(t *testing.T) {
+	for _, content := range []string{"![[y]]", "see ![[y|label]]", "!![[y|`]]"} {
+		require.Equal(t, []string{"y"}, extractNoteLinks(content, "self"), content)
+	}
+}

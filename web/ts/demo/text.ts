@@ -202,7 +202,7 @@ function checkScheme(dest: string, isImage: boolean): void {
  * app, and demo content never leaves the browser it was typed into.
  */
 function validateMarkdownStructure(content: string): void {
-  const src = stripCode(content);
+  const src = stripCode(content, true);
 
   HTML_TAG_RE.lastIndex = 0;
   for (let m = HTML_TAG_RE.exec(src); m !== null; m = HTML_TAG_RE.exec(src)) {
@@ -239,8 +239,9 @@ function validateMarkdownStructure(content: string): void {
  * Blanks out fenced code blocks and inline code spans, keeping line structure
  * and offsets intact so callers can still scan by line. Markdown inside code is
  * literal text, so neither the HTML gate nor the wikilink index may see it.
+ * Validation also blanks opaque wikilinks; indexing keeps them to read targets.
  */
-function stripCode(content: string): string {
+function stripCode(content: string, stripWikiLinks = false): string {
   const lines = content.split('\n');
   let fenceChar = '';
   let fenceLen = 0;
@@ -254,7 +255,11 @@ function stripCode(content: string): string {
         continue;
       }
       // Inline code spans, replaced by spaces of the same length.
-      lines[i] = line.replace(/`+[^`]*`+/g, (s) => ' '.repeat(s.length));
+      // Wikilinks and code must be consumed in source order: a backtick in
+      // an opaque wikilink label cannot open a code span over later HTML.
+      const inline = new RegExp('\\\\.|' + WIKI_LINK_RE.source + '|`+[^`]*`+', 'gu');
+      lines[i] = line.replace(inline, (s) =>
+        s.startsWith('\\') || (s.startsWith('[[') && !stripWikiLinks) ? s : ' '.repeat(s.length));
     } else {
       if (run.char === fenceChar && run.len >= fenceLen && line.slice(run.len).trim() === '') {
         fenceLen = 0;

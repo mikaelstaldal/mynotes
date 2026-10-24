@@ -6,11 +6,14 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/mikaelstaldal/mynotes/internal/repository"
 	"github.com/mikaelstaldal/mynotes/internal/sanitize"
 	"github.com/yuin/goldmark"
 	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/extension"
+	"github.com/yuin/goldmark/parser"
 	gmtext "github.com/yuin/goldmark/text"
+	"github.com/yuin/goldmark/util"
 	"golang.org/x/net/html"
 )
 
@@ -27,6 +30,11 @@ const maxNestingDepth = 100
 // all the walk inspects; the task-list extension only adds a checkbox node the
 // walk ignores. The parser is stateless across calls and safe for concurrent use.
 var markdownParser = goldmark.New(
+	// Consume wikilink labels before core links can interpret their backticks as
+	// code spans hiding subsequent HTML. Share the indexing grammar.
+	goldmark.WithParserOptions(parser.WithInlineParsers(
+		util.Prioritized(repository.NewWikiLinkParser(), 199),
+	)),
 	goldmark.WithExtensions(
 		extension.Table,
 		extension.Strikethrough,

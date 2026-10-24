@@ -466,3 +466,13 @@ test('malformed wikilink runs extract in bounded time', () => {
     assert.ok(performance.now() - start < 3000, 'million-character extraction takes under three seconds');
   }
 });
+
+
+test('wikilink label backticks cannot hide following HTML from validation', () => {
+  for (const prefix of ['[[x|`]]', '[[#t|`]]']) {
+    assertRejects(() => validateContent(prefix + '<img src=x onerror=1>`'), 400, 'wikilink onerror');
+    assertRejects(() => validateContent(prefix + '<a href="javascript:x">x</a>`'), 400, 'wikilink URL');
+  }
+  validateContent('[[x|`<script>]]');
+  validateContent('`[[x|label]]<script>`');
+});
