@@ -88,15 +88,20 @@ func TestPublicRoutesSkipAuth(t *testing.T) {
 	guarded := exemptPrefix(handler.PublicPrefix, denyAll)(reached)
 
 	tests := map[string]int{
-		"/public/notes/a-note":     http.StatusOK,
-		"/public/artifacts/abc":    http.StatusOK,
-		"/public/note.css":         http.StatusOK,
-		"/api/v1/notes":            http.StatusUnauthorized,
-		"/api/v1/artifacts/abc":    http.StatusUnauthorized,
-		"/":                        http.StatusUnauthorized,
-		"/render/":                 http.StatusUnauthorized,
-		"/publicity":               http.StatusUnauthorized,
-		"/notes/public/still-mine": http.StatusUnauthorized,
+		"/public/notes/a-note":        http.StatusOK,
+		"/public/artifacts/abc":       http.StatusOK,
+		"/public/note.css":            http.StatusOK,
+		"/api/v1/notes":               http.StatusUnauthorized,
+		"/api/v1/artifacts/abc":       http.StatusUnauthorized,
+		"/":                           http.StatusUnauthorized,
+		"/render/":                    http.StatusUnauthorized,
+		"/publicity":                  http.StatusUnauthorized,
+		"/notes/public/still-mine":    http.StatusUnauthorized,
+		"/public%2Fx":                 http.StatusUnauthorized,
+		"/public%2fx":                 http.StatusUnauthorized,
+		"/public%2Fpage.css":          http.StatusUnauthorized,
+		"/public%2F..%2Fapi/v1/notes": http.StatusUnauthorized,
+		"/%70ublic/notes/a-note":      http.StatusUnauthorized,
 	}
 	for path, want := range tests {
 		t.Run(path, func(t *testing.T) {

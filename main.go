@@ -914,16 +914,17 @@ func renderHandler(renderHTML []byte, renderCSP string) http.HandlerFunc {
 //
 // Used for one thing only: leaving the published-note routes reachable without
 // credentials while the rest of the deployment stays behind basic auth. It
-// matches on r.URL.Path, the same value the ServeMux routes on, so *everything*
-// the mux serves under the prefix is served unauthenticated — including a path
-// that matches no specific route. What keeps that safe is
+// requires an empty RawPath before matching r.URL.Path: ServeMux routes on
+// escaped path segments, so an encoded slash must not qualify as a prefix
+// separator here. Noncanonical encodings stay behind authentication, consistent
+// with the token and device endpoint guards. What keeps unmatched public paths safe is
 // handler.PublicCatchAllPattern, which claims the remainder of the prefix so it
 // cannot fall through to the SPA shell; do not remove it as redundant.
 func exemptPrefix(prefix string, mw func(http.Handler) http.Handler) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		guarded := mw(next)
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if strings.HasPrefix(r.URL.Path, prefix) {
+			if r.URL.RawPath == "" && strings.HasPrefix(r.URL.Path, prefix) {
 				next.ServeHTTP(w, r)
 				return
 			}
