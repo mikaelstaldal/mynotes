@@ -8,10 +8,10 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	"github.com/mikaelstaldal/go-server-common/termsafe"
 	"github.com/mikaelstaldal/mynotes/internal/htmlmd"
 	"github.com/mikaelstaldal/mynotes/internal/model"
 	"github.com/mikaelstaldal/mynotes/internal/service"
-	"github.com/mikaelstaldal/mynotes/internal/termsafe"
 )
 
 // Run imports all owned Google Docs into the note service, writing progress

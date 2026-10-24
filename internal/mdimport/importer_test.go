@@ -398,7 +398,7 @@ func TestRunEscapesTerminalProgress(t *testing.T) {
 		assert.NotContains(t, out.String(), control)
 	}
 	for _, prefix := range []string{"✓ success", "⊘ skip", "✗ error"} {
-		assert.Contains(t, out.String(), prefix+`\x1b]52;c;payload\a\r\u009b\xff.md`)
+		assert.Contains(t, out.String(), prefix+`\u001b]52;c;payload\u0007\u000d\u009b\xff.md`)
 	}
-	assert.Contains(t, out.String(), `vault\x1b\a\r\u009b\xff`)
+	assert.Contains(t, out.String(), `vault\u001b\u0007\u000d\u009b\xff`)
 }

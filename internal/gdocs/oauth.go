@@ -15,7 +15,7 @@ import (
 	"runtime"
 	"time"
 
-	"github.com/mikaelstaldal/mynotes/internal/termsafe"
+	"github.com/mikaelstaldal/go-server-common/termsafe"
 
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"

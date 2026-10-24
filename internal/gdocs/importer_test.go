@@ -36,7 +36,7 @@ func TestRunEscapesTerminalProgress(t *testing.T) {
 	imported, errs := Run(context.Background(), drive, nil, &out)
 	assert.Zero(t, imported)
 	require.Len(t, errs, 1)
-	assert.Contains(t, out.String(), `✗ \x1b]52;c;payload\a\r\u009b`)
+	assert.Contains(t, out.String(), `✗ \u001b]52;c;payload\u0007\u000d\u009b`)
 	assert.Contains(t, out.String(), `\xff`)
 	for _, c := range []string{"\x1b", "\a", "\r", "\u009b", "\xff"} {
 		assert.NotContains(t, out.String(), c)

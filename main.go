@@ -28,6 +28,7 @@ import (
 	"github.com/mikaelstaldal/go-server-common/csrf"
 	"github.com/mikaelstaldal/go-server-common/hostguard"
 	"github.com/mikaelstaldal/go-server-common/httputil"
+	"github.com/mikaelstaldal/go-server-common/termsafe"
 	commonweb "github.com/mikaelstaldal/go-server-common/web"
 	"github.com/mikaelstaldal/mynotes/internal/api"
 	"github.com/mikaelstaldal/mynotes/internal/demo"
@@ -38,7 +39,6 @@ import (
 	"github.com/mikaelstaldal/mynotes/internal/mdimport"
 	"github.com/mikaelstaldal/mynotes/internal/repository"
 	"github.com/mikaelstaldal/mynotes/internal/service"
-	"github.com/mikaelstaldal/mynotes/internal/termsafe"
 	"github.com/mikaelstaldal/mynotes/internal/token"
 	"github.com/mikaelstaldal/mynotes/web"
 )

@@ -18,8 +18,8 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/mikaelstaldal/go-server-common/termsafe"
 	"github.com/mikaelstaldal/mynotes/internal/clihttp"
-	"github.com/mikaelstaldal/mynotes/internal/termsafe"
 	"golang.org/x/term"
 )
 
@@ -45,7 +45,7 @@ Commands:
 
 All commands are read-only. Token access covers the whole API; tag flags filter results.
 Responses go to stdout; files and pipes receive unchanged bytes.
-Terminal output escapes control characters other than TAB and LF, and invalid UTF-8.
+Terminal output escapes terminal and bidi controls, and invalid UTF-8; TAB, LF and CRLF are preserved.
 HTTP error diagnostics escape these characters too; errors go to stderr.
 Use shell redirection to save downloads. No Basic credentials are read or sent.
 HTTP is allowed only for literal loopback addresses; remote servers require HTTPS.

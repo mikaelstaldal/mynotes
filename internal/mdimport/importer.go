@@ -13,9 +13,9 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/mikaelstaldal/go-server-common/termsafe"
 	"github.com/mikaelstaldal/mynotes/internal/model"
 	"github.com/mikaelstaldal/mynotes/internal/service"
-	"github.com/mikaelstaldal/mynotes/internal/termsafe"
 )
 
 // maxFileSize caps a single Markdown file, mirroring the Google Docs importer's

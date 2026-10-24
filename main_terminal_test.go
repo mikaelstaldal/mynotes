@@ -31,7 +31,7 @@ func TestMarkdownImportEscapesErrorSummary(t *testing.T) {
 	require.NoError(t, readErr)
 	require.Error(t, err)
 	assert.Contains(t, string(output), "1 failed:")
-	assert.Contains(t, string(output), `missing\x1b]52;c;payload\a\r\u009b\xff`)
+	assert.Contains(t, string(output), `missing\u001b]52;c;payload\u0007\u000d\u009b\xff`)
 	for _, c := range []string{"\x1b", "\a", "\r", "\u009b", "\xff"} {
 		assert.NotContains(t, string(output), c)
 	}

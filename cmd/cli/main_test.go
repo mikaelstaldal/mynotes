@@ -139,7 +139,7 @@ func TestCopyResponse(t *testing.T) {
 	payload := "å日本語�\t\n\x1b[2J\x1b]52;c;YQ==\x07\r\x00\x7f\u009b31m\u009dtitle\xff\x9b"
 	var out bytes.Buffer
 	require.NoError(t, copyResponse(&out, strings.NewReader(payload), true))
-	assert.Equal(t, "å日本語�\t\n\\x1b[2J\\x1b]52;c;YQ==\\a\\r\\x00\\x7f\\u009b31m\\u009dtitle\\xff\\x9b", out.String())
+	assert.Equal(t, "å日本語�\t\n\\u001b[2J\\u001b]52;c;YQ==\\u0007\\u000d\\u0000\\u007f\\u009b31m\\u009dtitle\\xff\\x9b", out.String())
 	out.Reset()
 	require.NoError(t, copyResponse(&out, strings.NewReader(payload), false))
 	assert.Equal(t, payload, out.String())
@@ -176,7 +176,7 @@ func TestHTTPErrorEscapesControls(t *testing.T) {
 	defer server.Close()
 	var out bytes.Buffer
 	err := run([]string{"-url", server.URL, "tags", "list"}, strings.NewReader(""), &out)
-	require.EqualError(t, err, "HTTP 500: bad å\\x1b[2J\\x1b]52;c;YQ==\\a\\u009b31m\\xff\\rtext")
+	require.EqualError(t, err, "HTTP 500: bad å\\u001b[2J\\u001b]52;c;YQ==\\u0007\\u009b31m\\xff\\u000dtext")
 	assert.Empty(t, out.String())
 }
 

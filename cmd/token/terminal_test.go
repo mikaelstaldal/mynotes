@@ -59,7 +59,7 @@ func TestTerminalErrors(t *testing.T) {
 			command.Stderr = &stderr
 			require.Error(t, command.Run())
 			assert.Contains(t, stderr.String(), "mynotes-token:")
-			assert.Contains(t, stderr.String(), `\x1b]52;c;payload\a\r\u009b`)
+			assert.Contains(t, stderr.String(), `\u001b]52;c;payload\u0007\u000d\u009b`)
 			for _, c := range []string{"\x1b", "\a", "\r", "\u009b", "\xff"} {
 				assert.NotContains(t, stderr.String(), c)
 			}

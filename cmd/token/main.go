@@ -20,8 +20,8 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/mikaelstaldal/go-server-common/termsafe"
 	"github.com/mikaelstaldal/mynotes/internal/clihttp"
-	"github.com/mikaelstaldal/mynotes/internal/termsafe"
 	"golang.org/x/term"
 )
 
