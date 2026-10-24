@@ -55,8 +55,8 @@ identity exists but is never exposed as the URL key.
   hyphens, trimmed, length-bounded). A title that folds to nothing yields the
   fallback slug `note`.
 - Slugs are unique:
-  - Auto-generated slug, on collision: the system silently appends `-2`, `-3`, …
-    until free. Concurrent double-submits never surface a spurious error.
+  - Auto-generated slug, on collision: the system silently tries suffixes `-2` through `-20`,
+    then a random suffix. Concurrent collisions are retried a bounded number of times.
   - Explicit (client-supplied) slug, on collision: it is an error (409), never
     silently suffixed.
 
@@ -247,7 +247,9 @@ identity exists but is never exposed as the URL key.
   is discarded. Each new note takes its title from its section heading and shares
   the source note's created and updated times; the source note is left unchanged.
   An optional tag (which must already exist) is attached to every new note. A note
-  with no headings cannot be split.
+  with no headings cannot be split. At most 200 sections may be split at once; exceeding this limit
+  returns a validation error without creating notes. All sections are created atomically.
+  Automatic slugs try up to 20 readable candidates before using a random suffix.
 
 ## Shared render kit
 

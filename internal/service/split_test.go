@@ -214,3 +214,40 @@ func TestSplit_DuplicateHeadingTitlesGetSuffixedSlugs(t *testing.T) {
 	require.Len(t, notes, 2)
 	assert.NotEqual(t, notes[0].Slug, notes[1].Slug, "colliding slugs are de-conflicted with a suffix")
 }
+
+func TestSplit_SectionLimit(t *testing.T) {
+	svc := newTestService(t)
+	ctx := context.Background()
+	source, err := svc.Create(ctx, "Source", ptr(strings.Repeat("# a\n", maxSplitSections+1)), nil, nil)
+	require.NoError(t, err)
+	_, err = svc.Split(ctx, source.Slug, nil)
+	require.ErrorIs(t, err, ErrValidation)
+	exists, err := svc.repo.SlugExists(ctx, "a", 0)
+	require.NoError(t, err)
+	assert.False(t, exists)
+	_, err = svc.Update(ctx, source.Slug, nil, ptr(strings.Repeat("# a\n", maxSplitSections)), nil, nil)
+	require.NoError(t, err)
+	notes, err := svc.Split(ctx, source.Slug, nil)
+	require.NoError(t, err)
+	require.Len(t, notes, maxSplitSections)
+	seen := make(map[string]bool)
+	for _, note := range notes {
+		assert.False(t, seen[note.Slug])
+		seen[note.Slug] = true
+		require.NoError(t, validateSlug(note.Slug))
+	}
+}
+
+func TestAllocateSlugRandomFallbackTruncates(t *testing.T) {
+	svc := newTestService(t)
+	base := strings.Repeat("a", maxSlugLen)
+	reserved := map[string]bool{base: true}
+	for n := 2; n <= maxSlugProbes; n++ {
+		reserved[withSuffix(base, n)] = true
+	}
+	slug, err := svc.allocateSlug(context.Background(), base, reserved)
+	require.NoError(t, err)
+	require.NoError(t, validateSlug(slug))
+	assert.Len(t, slug, maxSlugLen)
+	assert.False(t, reserved[slug])
+}

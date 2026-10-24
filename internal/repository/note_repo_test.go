@@ -917,3 +917,46 @@ func TestConcurrentConditionalUpdates(t *testing.T) {
 		require.NoError(t, repo.Delete(ctx, n.Slug))
 	}
 }
+
+func TestCreateManyRollsBack(t *testing.T) {
+	for _, failure := range []string{"conflict", "storage"} {
+		t.Run(failure, func(t *testing.T) {
+			db := newTestDB(t)
+			repo := NewNoteRepository(db)
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			// Fail after the first insert, so this exercises rollback of actual writes.
+			if failure == "storage" {
+				// A trigger aborts the second insert, representing a mid-batch storage error.
+				_, err := db.Exec(`CREATE TRIGGER fail_second BEFORE INSERT ON notes WHEN NEW.slug = 'second'
+ BEGIN SELECT RAISE(ABORT, 'injected failure'); END`)
+				require.NoError(t, err)
+			}
+			second := "first"
+			if failure == "storage" {
+				second = "second"
+			}
+			_, err := repo.CreateMany(ctx, []model.Note{
+				{Slug: "first", Title: "First", Content: "[[target]]"},
+				{Slug: second, Title: "Second"},
+			}, nil)
+			require.Error(t, err)
+			var count int
+			require.NoError(t, db.QueryRow(`SELECT count(*) FROM notes`).Scan(&count))
+			assert.Zero(t, count)
+			require.NoError(t, db.QueryRow(`SELECT count(*) FROM note_links`).Scan(&count))
+			assert.Zero(t, count)
+		})
+	}
+}
+
+func TestCreateManyCanceledContext(t *testing.T) {
+	db := newTestDB(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, err := NewNoteRepository(db).CreateMany(ctx, []model.Note{{Slug: "first", Title: "First"}}, nil)
+	require.ErrorIs(t, err, context.Canceled)
+	var count int
+	require.NoError(t, db.QueryRow(`SELECT count(*) FROM notes`).Scan(&count))
+	assert.Zero(t, count)
+}

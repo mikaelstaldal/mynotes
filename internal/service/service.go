@@ -10,6 +10,8 @@ package service
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"regexp"
 	"strconv"
@@ -25,9 +27,11 @@ import (
 )
 
 const (
-	maxTitleLen   = 200
-	maxContentLen = 1_000_000
-	maxSlugLen    = 100
+	maxTitleLen      = 200
+	maxContentLen    = 1_000_000
+	maxSlugLen       = 100
+	maxSplitSections = 200
+	maxSlugProbes    = 20
 
 	// maxSlugAttempts bounds the auto-slug insert retry loop. The service's
 	// existence check is advisory/racy, so a concurrent writer can take the slug
@@ -600,16 +604,18 @@ func (s *NoteService) Split(ctx context.Context, slug string, tag *string) ([]mo
 	if tag != nil && *tag != "" {
 		tagSlugs = []string{*tag}
 	}
-	// Resolve the tag once up front: createNote re-resolves per note, but doing
-	// it here means an unknown tag fails before any note is written rather than
-	// leaving a partial split behind.
-	if _, err := s.resolveTagIDs(ctx, tagSlugs); err != nil {
+	tagIDs, err := s.resolveTagIDs(ctx, tagSlugs)
+	if err != nil {
 		return nil, err
 	}
 
 	sections := splitByHeadings(existing.Content)
 	if len(sections) == 0 {
 		return nil, validationError("note has no headings to split on")
+	}
+
+	if len(sections) > maxSplitSections {
+		return nil, validationError("note has more than 200 sections")
 	}
 
 	// Pre-validate every section (title + content) so an invalid one is rejected
@@ -629,13 +635,32 @@ func (s *NoteService) Split(ctx context.Context, slug string, tag *string) ([]mo
 		titles[i] = title
 	}
 
-	created := make([]model.NoteSummary, 0, len(sections))
-	for i, sec := range sections {
-		body := sec.body
-		note, err := s.createNote(ctx, titles[i], &body, nil, existing.CreatedAt, existing.UpdatedAt, tagSlugs)
-		if err != nil {
-			return nil, err
+	var notes []model.Note
+	for range maxSlugAttempts {
+		reserved := make(map[string]bool)
+		notes = make([]model.Note, len(sections))
+		for i, sec := range sections {
+			candidate, err := s.allocateSlug(ctx, generateSlug(titles[i]), reserved)
+			if err != nil {
+				return nil, err
+			}
+			reserved[candidate] = true
+			notes[i] = model.Note{Slug: candidate, Title: strings.TrimSpace(titles[i]), Content: sec.body,
+				CreatedAt: existing.CreatedAt, UpdatedAt: existing.UpdatedAt}
 		}
+		notes, err = s.repo.CreateMany(ctx, notes, tagIDs)
+		if !errors.Is(err, ErrConflict) {
+			break
+		}
+	}
+	if errors.Is(err, ErrConflict) {
+		return nil, errors.New("could not allocate unique split slugs")
+	}
+	if err != nil {
+		return nil, mapTagErr(err)
+	}
+	created := make([]model.NoteSummary, 0, len(notes))
+	for _, note := range notes {
 		created = append(created, model.NoteSummary{
 			Slug:      note.Slug,
 			Title:     note.Title,
@@ -648,12 +673,21 @@ func (s *NoteService) Split(ctx context.Context, slug string, tag *string) ([]mo
 	return created, nil
 }
 
-// uniqueSlug returns base if free, otherwise base-2, base-3, … picking the first
-// slug not already present. The check is advisory (the DB UNIQUE constraint is
-// authoritative); the caller retries on a racy collision.
+// uniqueSlug tries a bounded sequence of readable suffixes, then a random
+// suffix. The UNIQUE constraint remains authoritative; callers retry collisions.
 func (s *NoteService) uniqueSlug(ctx context.Context, base string) (string, error) {
+	return s.allocateSlug(ctx, base, nil)
+}
+
+func (s *NoteService) allocateSlug(ctx context.Context, base string, reserved map[string]bool) (string, error) {
 	candidate := base
-	for n := 2; ; n++ {
+	for n := 1; n <= maxSlugProbes; n++ {
+		if n > 1 {
+			candidate = withSuffix(base, n)
+		}
+		if reserved[candidate] {
+			continue
+		}
 		exists, err := s.repo.SlugExists(ctx, candidate, 0)
 		if err != nil {
 			return "", err
@@ -661,8 +695,13 @@ func (s *NoteService) uniqueSlug(ctx context.Context, base string) (string, erro
 		if !exists {
 			return candidate, nil
 		}
-		candidate = withSuffix(base, n)
 	}
+	var random [16]byte
+	if _, err := rand.Read(random[:]); err != nil {
+		return "", err
+	}
+	prefix := strings.TrimRight(base[:min(len(base), maxSlugLen-33)], "-")
+	return prefix + "-" + hex.EncodeToString(random[:]), nil
 }
 
 // withSuffix appends "-n" to base, first truncating base so base+suffix fits in

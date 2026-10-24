@@ -133,14 +133,17 @@ function resolveTags(state: DemoState, slugs: string[]): string[] {
   return out.sort(compareNoCase);
 }
 
-/** base if free, else base-2, base-3, … Mirrors service.uniqueSlug. */
+/** Bounded readable suffixes, then randomness. Mirrors service.uniqueSlug. */
 function uniqueSlug(state: DemoState, base: string): string {
   const taken = new Set(state.notes.map((n) => n.slug));
   if (!taken.has(base)) return base;
-  for (let n = 2; ; n++) {
+  for (let n = 2; n <= 20; n++) {
     const candidate = slugWithSuffix(base, n);
     if (!taken.has(candidate)) return candidate;
   }
+  const suffix = Array.from(crypto.getRandomValues(new Uint8Array(16)),
+    (b) => b.toString(16).padStart(2, '0')).join('');
+  return base.slice(0, 67).replace(/-+$/, '') + '-' + suffix;
 }
 
 /**
@@ -356,6 +359,7 @@ async function splitNote(slug: string, request: Request): Promise<Response> {
 
     const sections = splitByHeadings(source.content);
     if (sections.length === 0) throw validationError('note has no headings to split on');
+    if (sections.length > 200) throw validationError('note has more than 200 sections');
 
     // Pre-validate every section so an invalid one is rejected before any note
     // is created.

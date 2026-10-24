@@ -348,42 +348,56 @@ func (r *NoteRepository) CreateWithTime(ctx context.Context, slug, title, conten
 // independently, so a caller (e.g. the note split) can preserve BOTH of an
 // original note's timestamps on the copies it produces.
 func (r *NoteRepository) CreateWithTimes(ctx context.Context, slug, title, content string, createdAt, updatedAt time.Time, tagIDs []int64) (model.Note, error) {
-	links := extractNoteLinks(content, slug)
+	notes, err := r.CreateMany(ctx, []model.Note{{Slug: slug, Title: title, Content: content,
+		CreatedAt: createdAt, UpdatedAt: updatedAt}}, tagIDs)
+	if err != nil {
+		return model.Note{}, err
+	}
+	return r.GetBySlug(ctx, notes[0].Slug)
+}
+
+// CreateMany inserts notes, tags and link indexes atomically. No result is
+// returned unless the transaction commits, including on context cancellation.
+func (r *NoteRepository) CreateMany(ctx context.Context, notes []model.Note, tagIDs []int64) ([]model.Note, error) {
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
-		return model.Note{}, err
+		return nil, err
 	}
-	defer func() { _ = tx.Rollback() }() // no-op once Commit succeeds
-
-	createdTS := createdAt.UTC().Format(model.NoteTimestampFormat)
-	updatedTS := updatedAt.UTC().Format(model.NoteTimestampFormat)
-	res, err := tx.ExecContext(ctx, `
-		INSERT INTO notes (slug, title, content, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`,
-		slug, title, content, createdTS, updatedTS)
-	if isUniqueViolation(err) {
-		return model.Note{}, ErrConflict
-	}
-	if err != nil {
-		return model.Note{}, err
-	}
-
-	id, err := res.LastInsertId()
-	if err != nil {
-		return model.Note{}, err
-	}
-	if len(tagIDs) > 0 {
-		if err := setNoteTags(ctx, tx, id, tagIDs); err != nil {
-			return model.Note{}, err
+	defer func() { _ = tx.Rollback() }()
+	created := append([]model.Note(nil), notes...)
+	for i := range created {
+		n := &created[i]
+		res, err := tx.ExecContext(ctx, `INSERT INTO notes (slug, title, content, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`,
+			n.Slug, n.Title, n.Content, n.CreatedAt.UTC().Format(model.NoteTimestampFormat), n.UpdatedAt.UTC().Format(model.NoteTimestampFormat))
+		if isUniqueViolation(err) {
+			return nil, ErrConflict
+		}
+		if err != nil {
+			return nil, err
+		}
+		n.ID, err = res.LastInsertId()
+		if err != nil {
+			return nil, err
+		}
+		if err := setNoteTags(ctx, tx, n.ID, tagIDs); err != nil {
+			return nil, err
+		}
+		if err := setNoteLinks(ctx, tx, n.ID, extractNoteLinks(n.Content, n.Slug)); err != nil {
+			return nil, err
+		}
+		tags, err := tagsForNoteIDs(ctx, tx, []int64{n.ID})
+		if err != nil {
+			return nil, err
+		}
+		n.Tags = tags[n.ID]
+		if n.Tags == nil {
+			n.Tags = []model.Tag{}
 		}
 	}
-	if err := setNoteLinks(ctx, tx, id, links); err != nil {
-		return model.Note{}, err
-	}
-
 	if err := tx.Commit(); err != nil {
-		return model.Note{}, err
+		return nil, err
 	}
-	return r.GetBySlug(ctx, slug)
+	return created, nil
 }
 
 // Update resolves the URL slug to its id, then applies the non-nil fields in a
