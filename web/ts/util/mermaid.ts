@@ -1,4 +1,5 @@
 import DOMPurify from 'dompurify';
+import { ALLOWED_URI_REGEXP, isHTTPURL } from './urls.js';
 import type { Mermaid } from 'mermaid';
 
 // Mermaid diagram rendering for the note read-view and the editor preview.
@@ -45,6 +46,16 @@ svgPurify.setConfig({
   USE_PROFILES: { svg: true, svgFilters: true },
   ADD_TAGS: ['style'],
   ADD_ATTR: ['style'],
+  ALLOWED_URI_REGEXP,
+});
+svgPurify.addHook('afterSanitizeAttributes', (node) => {
+  if (node.nodeName.toLowerCase() !== 'a') return;
+  // SVG anchors can carry either spelling, including both on the same node.
+  const hrefs = ['href', 'xlink:href'].map((name) => node.getAttribute(name) ?? '');
+  if (hrefs.some((href) => isHTTPURL(href))) {
+    node.setAttribute('target', '_blank');
+    node.setAttribute('rel', 'noopener noreferrer');
+  }
 });
 
 // Fail closed on CSS syntax that can escape Mermaid's SVG selector scope or

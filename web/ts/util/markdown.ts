@@ -1,3 +1,4 @@
+import { ALLOWED_URI_REGEXP, isHTTPURL } from './urls.js';
 import MarkdownIt from 'markdown-it';
 import DOMPurify from 'dompurify';
 import { asciiToMathML } from 'asciimath';
@@ -761,7 +762,7 @@ DOMPurify.setConfig({
   ],
   // Three-scheme allow-list (https?/mailto) plus DOMPurify's relative-URL alternation.
   // Load-bearing for in-app /notes/<slug> links.
-  ALLOWED_URI_REGEXP: /^(?:(?:https?|mailto):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i,
+  ALLOWED_URI_REGEXP,
   FORCE_BODY: true,
   // ADD_TAGS and ADD_ATTR are additive to ALLOWED_TAGS/ALLOWED_ATTR above (unlike
   // USE_PROFILES which would replace them). They mirror the DOMPurify svg$1 +
@@ -893,7 +894,7 @@ DOMPurify.addHook('afterSanitizeAttributes', (node) => {
       href = mailtoHref(href);
       node.setAttribute('href', href);
     }
-    if (/^https?:\/\//i.test(href)) {
+    if (isHTTPURL(href)) {
       node.setAttribute('target', '_blank');
       node.setAttribute('rel', 'noopener noreferrer');
     }

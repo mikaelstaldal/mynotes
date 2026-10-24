@@ -109,3 +109,65 @@ for (const theme of ['default', 'dark'] as const) {
     }
   });
 }
+
+for (const entry of ['/', '/render/index.html']) {
+  test(`Mermaid links follow the URL policy at ${entry}`, async ({ page }) => {
+    await page.goto(entry);
+    const result = await page.evaluate(async (entry) => {
+      // @ts-expect-error browser module served by the app
+      const { renderMermaidBlocks, sanitizeMermaidSVG } = await import('/util/mermaid.js');
+      const urls = ['tel:+19005551234', 'sms:+19005551234?body=STOP', 'callto:123',
+        'xmpp:user@example.com', 'ftp://example.com/', 'https://example.com/',
+        'http://example.com/', 'mailto:user@example.com'];
+      const source = 'graph LR\n' + urls.map((url, i) =>
+        `N${i}[Node${i}]\n click N${i} "${url}"`).join('\n');
+      let container: HTMLElement;
+      if (entry === '/') {
+        container = document.createElement('section');
+        const pre = document.createElement('pre');
+        const code = document.createElement('code');
+        code.className = 'language-mermaid';
+        code.textContent = source;
+        pre.append(code);
+        container.append(pre);
+        document.body.append(container);
+        await renderMermaidBlocks(container);
+      } else {
+        const host = (globalThis as unknown as {
+          MyNotesRender: { render(markdown: string): Promise<void> };
+        }).MyNotesRender;
+        await host.render('```mermaid\n' + source + '\n```');
+        container = document.getElementById('note')!;
+      }
+      const links = (root: ParentNode) => Array.from(root.querySelectorAll('a'), a => ({
+        href: a.getAttribute('href') ?? a.getAttribute('xlink:href'),
+        target: a.getAttribute('target'), rel: a.getAttribute('rel'),
+      })).filter(a => a.href);
+      const template = document.createElement('template');
+      template.innerHTML = sanitizeMermaidSVG(
+        '<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">' +
+        urls.flatMap(url => [`<a href="${url}"><text>link</text></a>`,
+          `<a xlink:href="${url}"><text>link</text></a>`]).join('') +
+        '<a href="#node"><text>fragment</text></a></svg>', 'test');
+      const variants = document.createElement('template');
+      variants.innerHTML = sanitizeMermaidSVG('<svg xmlns="http://www.w3.org/2000/svg" ' +
+        'xmlns:xlink="http://www.w3.org/1999/xlink">' +
+        '<a href=" https://example.com/"><text>space</text></a>' +
+        '<a href="https:example.com"><text>scheme</text></a>' +
+        '<a href="tel:123" xlink:href="https://example.com/"><text>both</text></a></svg>', 'test');
+      return { rendered: Boolean(container.querySelector('.mermaid-diagram svg')),
+        links: links(container), direct: links(template.content), variants: links(variants.content) };
+    }, entry);
+    expect(result.rendered).toBe(true);
+    const allowed = ['https://example.com/', 'http://example.com/', 'mailto:user@example.com'];
+    expect(result.links.map(a => a.href).sort()).toEqual([...allowed].sort());
+    expect(result.direct.map(a => a.href).sort()).toEqual([...allowed, ...allowed, '#node'].sort());
+    expect(result.variants).toHaveLength(3);
+    for (const link of [...result.variants, ...result.links, ...result.direct]) {
+      if (link.href?.trim().startsWith('http')) {
+        expect(link.target).toBe('_blank');
+        expect(link.rel).toBe('noopener noreferrer');
+      }
+    }
+  });
+}

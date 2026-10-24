@@ -39,6 +39,7 @@ FILES=(
   render/host.js
   util/markdown.js
   util/mermaid.js
+  util/urls.js
   basepath.js
 )
 
