@@ -21,7 +21,7 @@ const md = new MarkdownIt({ html: true, linkify: true });
 // (plus separating hyphens) and 256 Unicode label characters, matching Go/demo. The default text is the slug (tag links prefix it with '#').
 // Anything not matching is left as literal text, so the [[ / ]] delimiters never
 // collide with Markdown, raw HTML, SVG or MathML (none of which use them).
-const WIKI_LINK_RE = /^\[\[(#?)([a-z0-9](?:-?[a-z0-9]){0,99})(?:\|([^\]\n]{1,256}))?\]\]/u;
+const WIKI_LINK_RE = /\[\[(#?)([a-z0-9](?:-?[a-z0-9]){0,99})(?:\|([^\]\n]{1,256}))?\]\]/uy;
 
 // Registered before 'link' so it consumes [[…]] before the standard link rule
 // sees the leading '['. Inline rules do not run inside code spans/fences or raw
@@ -35,7 +35,8 @@ md.inline.ruler.before('link', 'wiki_link', (state, silent) => {
   ) {
     return false;
   }
-  const match = WIKI_LINK_RE.exec(state.src.slice(start));
+  WIKI_LINK_RE.lastIndex = start;
+  const match = WIKI_LINK_RE.exec(state.src);
   if (!match) return false;
   const [full, sigil, slug, label] = match;
   const isTag = sigil === '#';

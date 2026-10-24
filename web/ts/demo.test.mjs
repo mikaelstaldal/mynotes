@@ -548,3 +548,29 @@ test('validateContent rejects ambiguous foreign title bodies', () => {
   validateContent('<div><svg><title>x &lt; y</title></svg></div>');
   validateContent('<div><svg><title>&lt;img onerror=alert(1)&gt;</title></svg></div>');
 });
+
+// The editor and worker are compiled separately, so exercise both entry points.
+const { titleFromContent } = await import('../static/util/title.js');
+
+test('editor and demo preserve ATX heading text and closing-marker semantics', () => {
+  const bodies = ['', ' ', '\t', '#', '###', ' a ', 'a ##  ', 'a#', 'a # b', '😀\t#', 'a\r', 'a\u2028b'];
+  for (const body of bodies) {
+    const line = '# ' + body;
+    const match = /^#{1,6}[ \t]+(.+?)(?:[ \t]+#+[ \t]*)?$/.exec(line);
+    const expected = match?.[1].trim() ?? '';
+    assert.equal(firstATXHeading(line), expected, JSON.stringify(line));
+    assert.equal(titleFromContent(line), expected.replace(/\t/g, ' ') || null, JSON.stringify(line));
+  }
+  assert.equal(titleFromContent('```\n# hidden\n```\n## Visible ##'), 'Visible');
+  assert.equal(titleFromContent('# ' + '😀'.repeat(201)), '😀'.repeat(200) + '…');
+});
+
+test('editor and demo scan pathological heading lines in linear time', () => {
+  for (const suffix of ['b', '#', '# b']) {
+    const line = '# a' + ' '.repeat(200_000) + suffix;
+    const start = performance.now();
+    assert.equal(titleFromContent(line), suffix === '#' ? 'a' : 'a' + ' '.repeat(199) + '…');
+    assert.equal(firstATXHeading(line), suffix === '#' ? 'a' : line.slice(2));
+    assert.ok(performance.now() - start < 1000, '200 KB heading takes under one second');
+  }
+});

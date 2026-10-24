@@ -349,8 +349,26 @@ function leadingRun(line: string): { char: string; len: number } {
 
 // ── Headings ─────────────────────────────────────────────────────────────────
 
-/** An ATX heading line, capturing the heading text. Mirrors service.atxHeadingRe. */
-const ATX_HEADING_RE = /^#{1,6}[ \t]+(.+?)(?:[ \t]+#+[ \t]*)?$/;
+// Mirrors service.atxHeadingRe (used by firstATXHeading and splitByHeadings).
+// Read the opening marker once, then walk backwards over the optional closing
+// marker. A lazy body plus an optional whitespace/hash suffix backtracks
+// quadratically on long whitespace runs. Keep this scan linear instead.
+function atxHeadingText(line: string): string | null {
+  const opening = /^#{1,6}[ \t]+/.exec(line);
+  if (!opening || /[\r\u2028\u2029]/.test(line)) return null;
+  // The Go/demo heading matcher requires at least one body character; a
+  // second separator whitespace can serve as that character.
+  if (/^#{1,6}[ \t]$/.test(line)) return null;
+  const start = opening[0].length;
+  let end = line.length;
+  while (end > start && (line[end - 1] === ' ' || line[end - 1] === '\t')) end--;
+  let hashes = end;
+  while (hashes > start && line[hashes - 1] === '#') hashes--;
+  if (hashes < end && hashes > start && (line[hashes - 1] === ' ' || line[hashes - 1] === '\t')) {
+    end = hashes;
+  }
+  return line.slice(start, end);
+}
 
 /** One heading found by scanHeadings. */
 interface Heading {
@@ -377,9 +395,9 @@ function scanHeadings(content: string): Heading[] {
         fenceLen = run.len;
         continue;
       }
-      const m = ATX_HEADING_RE.exec(line);
-      if (m !== null) {
-        headings.push({ line: i, level: leadingRun(line).len, text: m[1].trim() });
+      const heading = atxHeadingText(line);
+      if (heading !== null) {
+        headings.push({ line: i, level: leadingRun(line).len, text: heading.trim() });
       }
     } else if (run.char === fenceChar && run.len >= fenceLen && line.slice(run.len).trim() === '') {
       fenceLen = 0;

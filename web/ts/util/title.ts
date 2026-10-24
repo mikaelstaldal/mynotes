@@ -1,3 +1,20 @@
+// Read the opening marker once, then walk backwards over the optional closing
+// marker. A lazy body plus an optional whitespace/hash suffix backtracks
+// quadratically on long whitespace runs. Keep this scan linear instead.
+function atxHeadingText(line: string): string | null {
+  const opening = /^#{1,6}[ \t]+/.exec(line);
+  if (!opening || /[\r\u2028\u2029]/.test(line)) return null;
+  const start = opening[0].length;
+  let end = line.length;
+  while (end > start && (line[end - 1] === ' ' || line[end - 1] === '\t')) end--;
+  let hashes = end;
+  while (hashes > start && line[hashes - 1] === '#') hashes--;
+  if (hashes < end && hashes > start && (line[hashes - 1] === ' ' || line[hashes - 1] === '\t')) {
+    end = hashes;
+  }
+  return line.slice(start, end);
+}
+
 // Extract the first ATX heading (any level) from markdown text.
 // Fenced-code blocks (``` or ~~~) are skipped; an unclosed fence extends to EOF.
 // Tabs in the heading text are replaced with a single space.
@@ -11,9 +28,9 @@ export function titleFromContent(text: string): string | null {
     if (fenceLen === 0) {
       const fm = /^(`{3,}|~{3,})/.exec(line);
       if (fm) { fenceChar = fm[1][0]; fenceLen = fm[1].length; continue; }
-      const m = /^#{1,6}[ \t]+(.*?)(?:[ \t]+#+[ \t]*)?$/.exec(line);
-      if (!m) continue;
-      const t = m[1].replace(/\t/g, ' ').trim();
+      const heading = atxHeadingText(line);
+      if (heading === null) continue;
+      const t = heading.replace(/\t/g, ' ').trim();
       if (!t) continue;
       const runes = [...t];
       return runes.length <= 200 ? t : runes.slice(0, 200).join('') + '…';
