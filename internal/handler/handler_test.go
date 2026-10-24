@@ -53,7 +53,7 @@ func newServer(t *testing.T) *httptest.Server {
 	mux.Handle("GET /api/v1/artifacts/{sha256}", http.HandlerFunc(h.ServeArtifact))
 	mux.Handle("/api/v1/", ogenServer)
 	mux.Handle(handler.PublicNotePattern, http.HandlerFunc(h.ServePublishedNote))
-	mux.Handle(handler.PublicArtifactPattern, http.HandlerFunc(h.ServePublicArtifact))
+	mux.Handle(handler.PublicArtifactPattern, handler.PublicMiddleware()(http.HandlerFunc(h.ServePublicArtifact)))
 	mux.Handle(handler.PublicCatchAllPattern, handler.PublicNotFoundHandler())
 
 	srv := httptest.NewServer(mux)

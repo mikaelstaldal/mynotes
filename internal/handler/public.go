@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"bytes"
 	"errors"
 	"log"
 	"net/http"
@@ -121,7 +122,8 @@ func (h *Handler) ServePublicArtifact(w http.ResponseWriter, r *http.Request) {
 	if a.ContentType == "image/svg+xml" || a.ContentType == "application/mathml+xml" {
 		w.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; sandbox")
 	}
-	_, _ = w.Write(a.Content)
+	w.Header().Set("ETag", `"`+sha256hex+`"`)
+	http.ServeContent(w, r, "", a.CreatedAt, bytes.NewReader(a.Content))
 }
 
 // PublicNotFoundHandler answers every path under the public prefix that is not

@@ -329,6 +329,11 @@ the one MyCal has with MyMail.
 
 ## Publishing
 
+Public responses share a limit of 16 concurrent requests; excess requests receive HTTP 503 with `Retry-After: 1`.
+Public artifacts are served without gzip and support HEAD, byte ranges, ETag and
+Last-Modified conditional requests. Publication access is checked before conditional responses.
+
+
 A note can be **published**: served as a web page that anyone with the link can
 read, with no password, while the rest of the deployment stays private. This is
 the only way note content leaves the authenticated boundary — everything else the app

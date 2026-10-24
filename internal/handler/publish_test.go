@@ -432,3 +432,50 @@ func TestPublishUnknownNote(t *testing.T) {
 	defer res.Body.Close()
 	assert.Equal(t, http.StatusNotFound, res.StatusCode)
 }
+
+func TestPublicArtifactConditionalRangeAndHead(t *testing.T) {
+	srv := newServer(t)
+	data := append(append([]byte{}, testGIF...), bytes.Repeat([]byte("abcdef"), 20000)...)
+	digest := uploadArtifact(t, srv, data, "image/gif")
+	note := createNote(t, srv, `{"title":"Large image","content":"x"}`)
+	published := publishNote(t, srv, note.Slug, `<img src="artifact:`+digest+`">`)
+	published.Body.Close()
+	url := srv.URL + "/public/artifacts/" + digest
+	for _, tc := range []struct {
+		method, header, value string
+		status                int
+		body                  []byte
+	}{
+		{"GET", "Accept-Encoding", "gzip", 200, data},
+		{"HEAD", "", "", 200, nil},
+		{"GET", "If-None-Match", `"` + digest + `"`, 304, nil},
+		{"GET", "Range", "bytes=32760-32780", 206, data[32760:32781]},
+		{"GET", "Range", "bytes=999999-", 416, nil},
+	} {
+		req, err := http.NewRequest(tc.method, url, nil)
+		require.NoError(t, err)
+		if tc.header != "" {
+			req.Header.Set(tc.header, tc.value)
+		}
+		res, err := http.DefaultClient.Do(req)
+		require.NoError(t, err)
+		body, err := io.ReadAll(res.Body)
+		res.Body.Close()
+		require.NoError(t, err)
+		assert.Equal(t, tc.status, res.StatusCode)
+		assert.Empty(t, res.Header.Get("Content-Encoding"))
+		if tc.status != 416 {
+			assert.Equal(t, string(tc.body), string(body))
+		}
+	}
+	// Publication is checked before validators: a withdrawn image is never 304.
+	res := unpublishNote(t, srv, note.Slug)
+	res.Body.Close()
+	req, err := http.NewRequest("GET", url, nil)
+	require.NoError(t, err)
+	req.Header.Set("If-None-Match", `"`+digest+`"`)
+	res, err = http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	res.Body.Close()
+	assert.Equal(t, 404, res.StatusCode)
+}

@@ -493,6 +493,7 @@ func run(addr string, port int, dataDir, publicURL, basicAuthFile, basicAuthReal
 	renderCSP := cspCommon + "; frame-ancestors 'self'"
 
 	mux := http.NewServeMux()
+	publicMiddleware := handler.PublicMiddleware()
 	mountAPIDiscovery(mux, demoMode)
 	if demoMode {
 		// The demo's initial content, produced by the same seeding pipeline the
@@ -536,15 +537,15 @@ func run(addr string, port int, dataDir, publicURL, basicAuthFile, basicAuthReal
 		if err != nil {
 			return err
 		}
-		mux.Handle(handler.PublicNotePattern, handler.WithMiddleware(http.HandlerFunc(h.ServePublishedNote)))
-		mux.Handle(handler.PublicArtifactPattern, handler.WithMiddleware(http.HandlerFunc(h.ServePublicArtifact)))
-		mux.Handle(handler.PublicCSSPattern, handler.WithMiddleware(publicCSSHandler(publicCSS)))
+		mux.Handle(handler.PublicNotePattern, publicMiddleware(handler.WithMiddleware(http.HandlerFunc(h.ServePublishedNote))))
+		mux.Handle(handler.PublicArtifactPattern, publicMiddleware(http.HandlerFunc(h.ServePublicArtifact)))
+		mux.Handle(handler.PublicCSSPattern, publicMiddleware(handler.WithMiddleware(publicCSSHandler(publicCSS))))
 	}
 	// Claims whatever the public routes above did not. Registered in both modes,
 	// and outside the branch, because the prefix is exempt from authentication:
 	// nothing under it may fall through to the generic static handler. In demo
 	// mode there is nothing to publish, so this is all of /public/.
-	mux.Handle(handler.PublicCatchAllPattern, handler.WithMiddleware(handler.PublicNotFoundHandler()))
+	mux.Handle(handler.PublicCatchAllPattern, publicMiddleware(handler.PublicNotFoundHandler()))
 	// The render kit's host page. Registered explicitly because the generic
 	// static handler cannot serve it: http.FileServer canonicalises
 	// "/render/index.html" to "/render/", which — being a directory — falls

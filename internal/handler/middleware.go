@@ -20,3 +20,22 @@ func noStore(next http.Handler) http.Handler {
 		next.ServeHTTP(w, r)
 	})
 }
+
+// PublicMiddleware shares a fail-fast limit across all public routes, bounding
+// resources retained by slow readers. Construct it once per server.
+func PublicMiddleware() func(http.Handler) http.Handler {
+	slots := make(chan struct{}, 16)
+	return func(next http.Handler) http.Handler {
+		return recovery.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			select {
+			case slots <- struct{}{}:
+				defer func() { <-slots }()
+				next.ServeHTTP(w, r)
+			default:
+				w.Header().Set("Cache-Control", "no-store")
+				w.Header().Set("Retry-After", "1")
+				http.Error(w, "public server busy", http.StatusServiceUnavailable)
+			}
+		}))
+	}
+}
