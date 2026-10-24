@@ -374,3 +374,31 @@ func TestTitleFromPath(t *testing.T) {
 	assert.Equal(t, "note", titleFromPath("note.MD"))
 	assert.Equal(t, "archive.tar", titleFromPath("archive.tar.md"))
 }
+
+func TestRunEscapesTerminalProgress(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows filenames cannot contain controls")
+	}
+	dir := filepath.Join(t.TempDir(), "vault\x1b\a\r\u009b\xff")
+	require.NoError(t, os.Mkdir(dir, 0700))
+	payload := "\x1b]52;c;payload\a\r\u009b\xff"
+	for name, content := range map[string]string{
+		"success" + payload + ".md": "# Safe title\n",
+		"skip" + payload + ".md":    "",
+		"error" + payload + ".md":   "<script>bad</script>",
+	} {
+		writeFile(t, dir, name, content)
+	}
+	var out bytes.Buffer
+	imported, skipped, errs := Run(context.Background(), dir, newTestService(t), &out)
+	assert.Equal(t, 1, imported)
+	assert.Equal(t, 1, skipped)
+	require.Len(t, errs, 1)
+	for _, control := range []string{"\x1b", "\a", "\r", "\u009b", "\xff"} {
+		assert.NotContains(t, out.String(), control)
+	}
+	for _, prefix := range []string{"✓ success", "⊘ skip", "✗ error"} {
+		assert.Contains(t, out.String(), prefix+`\x1b]52;c;payload\a\r\u009b\xff.md`)
+	}
+	assert.Contains(t, out.String(), `vault\x1b\a\r\u009b\xff`)
+}

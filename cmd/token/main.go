@@ -21,6 +21,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/mikaelstaldal/mynotes/internal/clihttp"
+	"github.com/mikaelstaldal/mynotes/internal/termsafe"
 	"golang.org/x/term"
 )
 
@@ -53,7 +54,7 @@ var tokenPattern = regexp.MustCompile(`^mynotes_[A-Za-z0-9_-]{43}$`)
 
 func main() {
 	if err := run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr); err != nil {
-		fmt.Fprintln(os.Stderr, "mynotes-token:", err)
+		fmt.Fprintln(os.Stderr, "mynotes-token:", termsafe.String(err.Error()))
 		os.Exit(1)
 	}
 }
@@ -172,7 +173,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	if (method == http.MethodPost && response.StatusCode != http.StatusCreated) ||
 		(method == http.MethodDelete && response.StatusCode != http.StatusNoContent) {
 		message, _ := io.ReadAll(io.LimitReader(response.Body, 4096))
-		return fmt.Errorf("HTTP %d: %s", response.StatusCode, strings.TrimSpace(string(message)))
+		return fmt.Errorf("HTTP %d: %s", response.StatusCode, termsafe.String(strings.TrimSpace(string(message))))
 	}
 	if method == http.MethodDelete {
 		_, err = fmt.Fprintf(stderr, "Revoked token %s\n", command[1])

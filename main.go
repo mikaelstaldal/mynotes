@@ -38,6 +38,7 @@ import (
 	"github.com/mikaelstaldal/mynotes/internal/mdimport"
 	"github.com/mikaelstaldal/mynotes/internal/repository"
 	"github.com/mikaelstaldal/mynotes/internal/service"
+	"github.com/mikaelstaldal/mynotes/internal/termsafe"
 	"github.com/mikaelstaldal/mynotes/internal/token"
 	"github.com/mikaelstaldal/mynotes/web"
 )
@@ -81,7 +82,7 @@ func main() {
 
 	if *demoData {
 		if err := runDemo(context.Background(), *dataDir); err != nil {
-			log.Fatalf("%v", err)
+			log.Fatalf("%s", termsafe.String(err.Error()))
 		}
 		return
 	}
@@ -96,7 +97,7 @@ func main() {
 
 	if *demoBundle != "" {
 		if err := writeDemoBundle(context.Background(), *demoBundle, *publicURL); err != nil {
-			log.Fatalf("%v", err)
+			log.Fatalf("%s", termsafe.String(err.Error()))
 		}
 		return
 	}
@@ -111,21 +112,21 @@ func main() {
 			}
 		})
 		if err := runGDocsImport(context.Background(), *gdocsClientID, *gdocsClientSecret, *dataDir, callbackPort); err != nil {
-			log.Fatalf("%v", err)
+			log.Fatalf("%s", termsafe.String(err.Error()))
 		}
 		return
 	}
 
 	if *importMdDir != "" {
 		if err := runMarkdownImport(context.Background(), *importMdDir, *dataDir); err != nil {
-			log.Fatalf("%v", err)
+			log.Fatalf("%s", termsafe.String(err.Error()))
 		}
 		return
 	}
 
 	if *exportMdDir != "" {
 		if err := runMarkdownExport(context.Background(), *exportMdDir, *dataDir); err != nil {
-			log.Fatalf("%v", err)
+			log.Fatalf("%s", termsafe.String(err.Error()))
 		}
 		return
 	}
@@ -135,7 +136,7 @@ func main() {
 	}
 
 	if err := run(*addr, *port, *dataDir, *publicURL, *basicAuthFile, *basicAuthRealm, *demoServer); err != nil {
-		log.Fatalf("%v", err)
+		log.Fatalf("%s", termsafe.String(err.Error()))
 	}
 }
 
@@ -180,7 +181,7 @@ func runGDocsImport(ctx context.Context, clientID, clientSecret, dataDir string,
 	if len(errs) > 0 {
 		fmt.Printf(" %d failed:\n", len(errs))
 		for _, e := range errs {
-			fmt.Printf("  - %v\n", e)
+			fmt.Printf("  - %s\n", termsafe.String(e.Error()))
 		}
 		return fmt.Errorf("%d import(s) failed", len(errs))
 	}
@@ -215,7 +216,7 @@ func runMarkdownImport(ctx context.Context, importDir, dataDir string) error {
 	if len(errs) > 0 {
 		fmt.Printf(" %d failed:\n", len(errs))
 		for _, e := range errs {
-			fmt.Printf("  - %v\n", e)
+			fmt.Printf("  - %s\n", termsafe.String(e.Error()))
 		}
 		return fmt.Errorf("%d import(s) failed", len(errs))
 	}
@@ -254,7 +255,7 @@ func runMarkdownExport(ctx context.Context, exportDir, dataDir string) error {
 	if len(errs) > 0 {
 		fmt.Printf(" %d failed:\n", len(errs))
 		for _, e := range errs {
-			fmt.Printf("  - %v\n", e)
+			fmt.Printf("  - %s\n", termsafe.String(e.Error()))
 		}
 		return fmt.Errorf("%d export(s) failed", len(errs))
 	}

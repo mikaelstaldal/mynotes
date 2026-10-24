@@ -15,6 +15,7 @@ import (
 
 	"github.com/mikaelstaldal/mynotes/internal/model"
 	"github.com/mikaelstaldal/mynotes/internal/service"
+	"github.com/mikaelstaldal/mynotes/internal/termsafe"
 )
 
 // maxFileSize caps a single Markdown file, mirroring the Google Docs importer's
@@ -53,7 +54,7 @@ func Run(ctx context.Context, dir string, notes *service.NoteService, w io.Write
 		return 0, 0, []error{fmt.Errorf("import directory %s: %w", dir, err)}
 	}
 
-	_, _ = fmt.Fprintf(w, "Scanning %s for %s files...\n", dir, markdownExt)
+	_, _ = fmt.Fprintf(w, "Scanning %s for %s files...\n", termsafe.String(dir), markdownExt)
 	files, walkErrs := findMarkdownFiles(root)
 	errs = append(errs, walkErrs...)
 	_, _ = fmt.Fprintf(w, "Found %d file(s). Importing...\n", len(files))
@@ -63,13 +64,13 @@ func Run(ctx context.Context, dir string, notes *service.NoteService, w io.Write
 		note, empty, err := importFile(ctx, notes, path)
 		switch {
 		case err != nil:
-			_, _ = fmt.Fprintf(w, "  ✗ %s: %v\n", name, err)
+			_, _ = fmt.Fprintf(w, "  ✗ %s: %v\n", termsafe.String(name), termsafe.String(err.Error()))
 			errs = append(errs, fmt.Errorf("%s: %w", name, err))
 		case empty:
-			_, _ = fmt.Fprintf(w, "  ⊘ %s: skipped, no content\n", name)
+			_, _ = fmt.Fprintf(w, "  ⊘ %s: skipped, no content\n", termsafe.String(name))
 			skipped++
 		default:
-			_, _ = fmt.Fprintf(w, "  ✓ %s → /notes/%s\n", name, note.Slug)
+			_, _ = fmt.Fprintf(w, "  ✓ %s → /notes/%s\n", termsafe.String(name), termsafe.String(note.Slug))
 			imported++
 		}
 	}

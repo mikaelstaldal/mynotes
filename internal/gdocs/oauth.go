@@ -15,6 +15,8 @@ import (
 	"runtime"
 	"time"
 
+	"github.com/mikaelstaldal/mynotes/internal/termsafe"
+
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
 )
@@ -88,7 +90,7 @@ func runOAuthFlow(ctx context.Context, cfg *oauth2.Config, tokenPath string, cal
 	state := hex.EncodeToString(stateBytes)
 
 	authURL := cfg.AuthCodeURL(state, oauth2.AccessTypeOffline)
-	fmt.Printf("Opening browser for Google authorization...\nIf the browser does not open, visit:\n  %s\n\n", authURL)
+	fmt.Printf("Opening browser for Google authorization...\nIf the browser does not open, visit:\n  %s\n\n", termsafe.String(authURL))
 	_ = openBrowser(authURL)
 
 	type result struct {
@@ -137,7 +139,7 @@ func runOAuthFlow(ctx context.Context, cfg *oauth2.Config, tokenPath string, cal
 			return nil, fmt.Errorf("exchange OAuth code: %w", err)
 		}
 		if err := saveToken(tokenPath, tok); err != nil {
-			fmt.Printf("warning: could not save token to %s: %v\n", tokenPath, err)
+			fmt.Printf("warning: could not save token to %s: %v\n", termsafe.String(tokenPath), termsafe.String(err.Error()))
 		}
 		return tok, nil
 	case <-ctx.Done():

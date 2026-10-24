@@ -11,6 +11,7 @@ import (
 	"github.com/mikaelstaldal/mynotes/internal/htmlmd"
 	"github.com/mikaelstaldal/mynotes/internal/model"
 	"github.com/mikaelstaldal/mynotes/internal/service"
+	"github.com/mikaelstaldal/mynotes/internal/termsafe"
 )
 
 // Run imports all owned Google Docs into the note service, writing progress
@@ -28,11 +29,11 @@ func Run(ctx context.Context, drive *Client, notes *service.NoteService, w io.Wr
 	for _, doc := range docs {
 		note, err := importDoc(ctx, drive, notes, doc)
 		if err != nil {
-			_, _ = fmt.Fprintf(w, "  ✗ %s: %v\n", doc.Name, err)
+			_, _ = fmt.Fprintf(w, "  ✗ %s: %v\n", termsafe.String(doc.Name), termsafe.String(err.Error()))
 			errs = append(errs, fmt.Errorf("%s: %w", doc.Name, err))
 			continue
 		}
-		_, _ = fmt.Fprintf(w, "  ✓ %s → /notes/%s\n", doc.Name, note.Slug)
+		_, _ = fmt.Fprintf(w, "  ✓ %s → /notes/%s\n", termsafe.String(doc.Name), termsafe.String(note.Slug))
 		imported++
 	}
 	return imported, errs
