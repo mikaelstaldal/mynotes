@@ -7,7 +7,7 @@ require (
 	github.com/go-faster/jx v1.2.0
 	github.com/google/jsonschema-go v0.4.3
 	github.com/microcosm-cc/bluemonday v1.0.27
-	github.com/mikaelstaldal/go-server-common v1.15.0
+	github.com/mikaelstaldal/go-server-common v1.17.0
 	github.com/modelcontextprotocol/go-sdk v1.8.0
 	github.com/ogen-go/ogen v1.24.0
 	github.com/stretchr/testify v1.11.1
@@ -52,6 +52,3 @@ require (
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.11.0 // indirect
 )
-
-// Use the sibling checkout until the termsafe package is published.
-replace github.com/mikaelstaldal/go-server-common => ../go-server-common
