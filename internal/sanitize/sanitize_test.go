@@ -1,6 +1,7 @@
 package sanitize
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -85,4 +86,31 @@ func TestHTMLValidatorStaysNarrow(t *testing.T) {
 	assert.NotContains(t, HTML(`<style>body{}</style>`), "body{}")
 	assert.Equal(t, `<p>a</p>`, HTML(`<p class="x">a</p>`))
 	assert.Equal(t, `<p>a</p>`, HTML(`<p style="color:red">a</p>`))
+}
+
+func TestHTMLRejectsAmbiguousTitle(t *testing.T) {
+	for _, wrapper := range []string{
+		"<div><svg><title>%s</title></svg></div>",
+		"<div><svg><TITLE>%s</TITLE></svg></div>",
+		"<div><svg><title/>%s</svg></div>",
+		"<div><svg><title>%s",
+		"<div><math><mtext><title>%s</title></mtext></math></div>",
+	} {
+		for _, body := range []string{
+			`<img src=x onerror=alert(1)>`,
+			`<iframe srcdoc=x></iframe>`,
+			`<a href="javascript:alert(1)">x</a>`,
+			`<script>alert(1)</script>`,
+			`<b>safe but ambiguous</b>`,
+			`x < y`,
+		} {
+			fragment := fmt.Sprintf(wrapper, body)
+			t.Run(fragment, func(t *testing.T) {
+				assert.Empty(t, HTML(fragment))
+			})
+		}
+	}
+	assert.NotEmpty(t, HTML(`<div><svg><title>Plain title</title></svg></div>`))
+	assert.NotEmpty(t, HTML(`<div><svg><title>x &lt; y</title></svg></div>`))
+	assert.NotEmpty(t, HTML(`<div><svg><title>&lt;img onerror=alert(1)&gt;</title></svg></div>`))
 }

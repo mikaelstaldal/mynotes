@@ -24,10 +24,13 @@
 package sanitize
 
 import (
+	"bytes"
 	"net/url"
 	"regexp"
+	"strings"
 
 	"github.com/microcosm-cc/bluemonday"
+	"golang.org/x/net/html"
 )
 
 // DataImageRaster is the canonical data: image allow-list shared by every gate
@@ -341,9 +344,30 @@ func newPublishedPolicy() *bluemonday.Policy {
 // HTML returns the policy-cleaned form of an HTML fragment. It is used only to
 // decide whether a fragment is accepted: the service compares this output
 // against a canonical re-serialization of the original fragment and rejects the
-// write on any divergence. The result is never stored.
+// write on any divergence. Ambiguous title bodies return an empty string to
+// force rejection by that comparison. The result must never be stored.
 func HTML(s string) string {
-	return policy.Sanitize(s)
+	// title is the only allowed element the flat tokenizer treats as raw text
+	// or RCDATA. In foreign content a browser can instead interpret its body
+	// as markup (SVG title is an HTML integration point). Reject ambiguous
+	// source rather than letting both sides of the service comparison hide it.
+	// Inspect Raw, not decoded text: &lt; is safe literal text in both parsers.
+	z := html.NewTokenizer(strings.NewReader(s))
+	inTitle := false
+	for {
+		switch z.Next() {
+		case html.ErrorToken:
+			return policy.Sanitize(s)
+		case html.StartTagToken, html.SelfClosingTagToken:
+			inTitle = z.Token().Data == "title"
+		case html.TextToken:
+			if inTitle && bytes.ContainsRune(z.Raw(), '<') {
+				return ""
+			}
+		default:
+			inTitle = false
+		}
+	}
 }
 
 // PublishedHTML returns the cleaned form of a published note's rendered HTML

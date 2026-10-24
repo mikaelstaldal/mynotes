@@ -1227,13 +1227,17 @@ localhost.
 The demo backend is a re-implementation, and its observable behavior is expected
 to match the server's: same routes, same status codes, same JSON, same ETag and
 optimistic-locking semantics, same slugs, excerpts, snippets, wikilink graph,
-validation verdicts, and downloaded Markdown. Two differences are accepted:
+validation verdicts, and downloaded Markdown. Three differences are accepted:
 
 - Schema-level request errors (a missing title, a malformed slug) are still
   rejected with 400, but the message is the demo's own rather than the wording
   the server's generated decoder produces.
 - Search results are ordered by match count instead of SQLite's bm25 ranking.
   Which notes match, and how their snippets look, is unchanged.
+- The demo's conservative embedded `title` check scans code-stripped source rather
+  than individual Markdown HTML fragments. It can reject inline prose such as
+  `Use the <title> tag, and <b>bold</b>`, or an unclosed title followed by markup
+  in another paragraph, which the server accepts as separate fragments.
 
 ### Security
 
@@ -1257,6 +1261,11 @@ DOMPurify pass on the page, exactly as in the real app.
 
 - The app must not execute scripts or active content embedded in note bodies;
   rendered notes are sanitized so untrusted content cannot run code.
+- Embedded HTML fragments with a raw `<` in a `title` body are rejected
+  conservatively, including in SVG and MathML. This prevents a tokenizer from
+  hiding markup that a browser interprets as elements in foreign content.
+  Plain titles and escaped text such as `&lt;` remain allowed; even otherwise
+  safe nested markup or a literal less-than sign must be escaped in titles.
 - Embedded HTML in notes is allowed only for a safe set of tags/attributes; only
   `http`/`https`/`mailto` link schemes and `https`/safe-`data:`/`artifact:` image
   sources are permitted; unsafe HTML/schemes cause a write to be rejected.

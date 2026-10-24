@@ -523,3 +523,28 @@ test('reference destinations use the allow-list of each use', () => {
   validateContent('![r]\n\n[r]: artifact:' + 'a'.repeat(64));
   validateContent('[x][R]\n\n[r]: https://example.com');
 });
+
+
+test('validateContent rejects ambiguous foreign title bodies', () => {
+  for (const body of [
+    '<img src=x onerror=alert(1)>',
+    '<iframe srcdoc=x></iframe>',
+    '<a href="javascript:alert(1)">x</a>',
+    '<script>alert(1)</script>',
+    '<b>safe but ambiguous</b>',
+    'x < y',
+  ]) {
+    for (const fragment of [
+      `<div><svg><title>${body}</title></svg></div>`,
+      `<div><svg><TITLE>${body}</TITLE></svg></div>`,
+      `<div><svg><title/>${body}</svg></div>`,
+      `<div><svg><title>${body}`,
+      `<div><math><mtext><title>${body}</title></mtext></math></div>`,
+    ]) {
+      assertRejects(() => validateContent(fragment), 400, fragment);
+    }
+  }
+  validateContent('<div><svg><title>Plain title</title></svg></div>');
+  validateContent('<div><svg><title>x &lt; y</title></svg></div>');
+  validateContent('<div><svg><title>&lt;img onerror=alert(1)&gt;</title></svg></div>');
+});

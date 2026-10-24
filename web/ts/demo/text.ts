@@ -211,6 +211,12 @@ function checkScheme(dest: string, isImage: boolean): void {
 function validateMarkdownStructure(content: string): void {
   const src = stripCode(content, true);
 
+  // Mirror sanitize.HTML's conservative title guard: the server tokenizer
+  // sees RCDATA where a browser may see markup inside foreign content.
+  for (const title of src.matchAll(/<title\b[^>]*>([\s\S]*?)(?:<\/title\s*>|$)/gi)) {
+    if (title[1].includes('<')) throw validationError('content contains disallowed HTML');
+  }
+
   HTML_TAG_RE.lastIndex = 0;
   for (let m = HTML_TAG_RE.exec(src); m !== null; m = HTML_TAG_RE.exec(src)) {
     const name = m[2].toLowerCase();
