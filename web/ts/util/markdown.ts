@@ -913,6 +913,15 @@ DOMPurify.addHook('afterSanitizeAttributes', (node) => {
   }
 });
 
+// Only renderer-owned classes may reach the document shared with app chrome.
+// This blocks borrowed overlay classes without changing Markdown layout.
+const RENDER_CLASSES = new Set([
+  'task-list-item', 'task-list-item-checkbox', 'contains-task-list',
+  'callout', 'callout-title', 'callout-para', 'callout-foldable', 'lucide',
+  ...Object.keys(ICON_ALIASES).map(alias => `callout-${alias}`),
+  ...Object.values(ICON_ALIASES).map(({ family }) => `callout-color-${family}`),
+]);
+
 // A stored artifact is referenced from note content by the app-defined
 // `artifact:` URL scheme carrying its SHA-256 (`![alt](artifact:<sha256>)`,
 // what the editor inserts and the demo seed and any import carry). The
@@ -937,6 +946,12 @@ const ARTIFACT_REF_RE = /^artifact:([0-9a-f]{64})$/;
 // path, so it passes that gate as an ordinary internal URL.
 DOMPurify.addHook('uponSanitizeAttribute', (node, data) => {
   const tag = node.tagName?.toLowerCase();
+  if (data.attrName === 'class') {
+    data.attrValue = data.attrValue.split(/\s+/).filter(cls => RENDER_CLASSES.has(cls) ||
+      cls.startsWith('language-') || /^lucide-[a-z0-9-]+$/.test(cls)).join(' ');
+    if (!data.attrValue) data.keepAttr = false;
+    return;
+  }
   // Markdown images render to <img src>; an SVG <image href> is the same
   // reference in embedded HTML, and the write-time gate treats the two alike.
   if ((tag === 'img' && data.attrName === 'src') || (tag === 'image' && data.attrName === 'href')) {
@@ -977,22 +992,7 @@ export function renderNote(markdown: string, opts: RenderOptions = {}): string {
   interactiveTasks = env.interactiveTasks;
   mailtoHref = opts.mailtoHref;
   try {
-    const clean = DOMPurify.sanitize(md.render(markdown, env));
-    if (!clean.includes('<table')) return clean;
-    // Wrap sanitized Markdown and raw HTML tables alike. Keep the native table
-    // layout/semantics while making its scrollbar reachable in a long note.
-    const template = document.createElement('template');
-    template.innerHTML = clean;
-    for (const table of template.content.querySelectorAll('table')) {
-      const scroll = document.createElement('div');
-      scroll.className = 'table-scroll';
-      scroll.tabIndex = 0;
-      scroll.setAttribute('role', 'region');
-      scroll.setAttribute('aria-label', 'Scrollable table');
-      table.replaceWith(scroll);
-      scroll.append(table);
-    }
-    return template.innerHTML;
+    return DOMPurify.sanitize(md.render(markdown, env));
   } finally {
     interactiveTasks = false;
     mailtoHref = undefined;

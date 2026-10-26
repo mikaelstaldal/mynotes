@@ -992,8 +992,25 @@ test('malformed wikilink runs render in bounded time', { timeout: 60000 }, () =>
   }
 });
 
-test('math backticks leave following HTML visible to the write-time gate', async () => {
+test('math backticks leave following HTML live but cannot introduce app classes', async () => {
   const out = await renderNote('$`$<span class="dialog-overlay">hi</span>`');
   assertPresent(out, '<math', 'math consumes the first backtick');
-  assertPresent(out, 'class="dialog-overlay"', 'following HTML is live and must be rejected on write');
+  assertPresent(out, '<span>hi</span>', 'following HTML is live');
+  assertAbsent(out, 'dialog-overlay', 'app classes are removed at render time');
+});
+
+test('app classes are filtered on HTML, SVG and MathML while renderer classes survive', () => {
+  assertPresent(renderNote('```c++\nint x;\n```'), 'class="language-c++"', 'code fence language');
+  for (const markup of [
+    '<span class="dialog-overlay callout-title settings-overlay">text</span>',
+    '<svg class="conflict-overlay lucide lucide-pencil"><text>text</text></svg>',
+    '<math class="markdown-help-overlay"><mi>x</mi></math>',
+  ]) {
+    const out = renderNote(markup);
+    for (const cls of ['dialog-overlay', 'settings-overlay', 'conflict-overlay', 'markdown-help-overlay']) {
+      assertAbsent(out, cls, 'app overlay class');
+    }
+    if (markup.includes('callout-title')) assertPresent(out, 'callout-title', 'callout class');
+    if (markup.includes('lucide-pencil')) assertPresent(out, 'lucide lucide-pencil', 'icon classes');
+  }
 });
