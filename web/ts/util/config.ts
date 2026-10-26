@@ -5,7 +5,7 @@
 import type { SortField, SortOrder } from '../api/client.js';
 
 export interface AppConfig {
-  theme: 'light' | 'dark';
+  theme: 'auto' | 'light' | 'dark';
   pageSize: number;
   sortField: SortField;
   sortOrder: SortOrder;
@@ -17,13 +17,13 @@ export interface AppConfig {
 const STORAGE_KEY = 'mynotes-settings';
 
 const DEFAULTS: AppConfig = {
-  theme: 'light',
+  theme: 'auto',
   pageSize: 50,
   sortField: 'updated',
   sortOrder: 'desc',
 };
 
-const VALID_THEMES = ['light', 'dark'] as const;
+const VALID_THEMES = ['auto', 'light', 'dark'] as const;
 const VALID_SORT_FIELDS = ['updated', 'created', 'title'] as const;
 const VALID_SORT_ORDERS = ['asc', 'desc'] as const;
 

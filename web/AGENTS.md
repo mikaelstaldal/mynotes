@@ -1,5 +1,14 @@
 # AI coding agent instructions — frontend
 
+## Theme preference revision
+
+`../mysuite/spec/sidebar-footer.md` (current scope and §7) now requires Settings as the only
+sidebar footer control and Auto/Light/Dark in Settings, with Auto as the default. This supersedes
+older descriptions below of the footer pair, theme toggle, and stacked labels. Keep the Settings
+CSS pins and geometry. Resolve Auto through `prefers-color-scheme` and listen for live changes;
+never store its resolved light/dark palette as an explicit preference. Theme changes must notify
+content renderers as well as update CSS. `e2e/tests/theme.spec.ts` covers preference behavior.
+
 Guidance for AI coding agents working on the MyNotes frontend: the Preact +
 TypeScript sources under `web/ts/` and the embedded assets under `web/static/`.
 It supplements the repository-root `AGENTS.md`, which is always loaded; paths

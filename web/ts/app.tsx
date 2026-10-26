@@ -2,7 +2,7 @@ import { render } from 'preact';
 import { useState, useEffect, useCallback, useRef } from 'preact/hooks';
 import { currentRoute, onRouteChange, navigate, tagsPath, type Route } from './router.js';
 import { getConfig, saveConfig } from './util/config.js';
-import { getTheme, applyTheme, toggleTheme, type Theme } from './util/theme.js';
+import { getTheme, applyTheme } from './util/theme.js';
 import { isValidSlug, slugFromTitle } from './util/slug.js';
 import { showToast } from './util/toast.js';
 import { promptDialog } from './util/dialog.js';
@@ -40,7 +40,6 @@ function App() {
   const [sidebarTags, setSidebarTags] = useState<string[]>(
     () => { const r = currentRoute(); return r.type === 'list' ? r.tags : []; },
   );
-  const [theme, setThemeState] = useState<Theme>(() => getTheme());
   // The one-time "this is a demo" notice, shown before anything is typed.
   const [showDemoNotice, setShowDemoNotice] = useState(() => isDemo() && !demoNoticeSeen());
   const [showSettings, setShowSettings] = useState(false);
@@ -65,11 +64,9 @@ function App() {
   }, [route.type]);
 
   // Apply the persisted theme to the document root at startup.
-  useEffect(() => { applyTheme(theme); }, []);
+  useEffect(() => { applyTheme(getTheme()); }, []);
 
-  // Flip light/dark; toggleTheme persists, applies, and notifies subscribers
-  // (e.g. open Mermaid diagrams), and returns the new theme for the button icon.
-  const handleToggleTheme = useCallback(() => setThemeState(toggleTheme()), []);
+
 
   const refreshList = useCallback(() => setListKey(k => k + 1), []);
 
@@ -299,28 +296,6 @@ function App() {
               </p>
             )}
             <div class="sidebar-footer-actions">
-              <button
-                class="theme-toggle"
-                title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
-                aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
-                aria-pressed={theme === 'dark'}
-                onClick={handleToggleTheme}
-              >
-                <Icon name={theme === 'dark' ? 'sun' : 'moon'} size={16} />
-                {/* Both words stay mounted and share one grid cell (see
-                    .theme-toggle-label) so the button does not change width when
-                    toggled and Settings never shifts. The accessible name comes
-                    from aria-label above, so this is hidden from the a11y tree. */}
-                <span class="theme-toggle-label" aria-hidden="true">
-                  <span class={theme === 'dark' ? 'is-shown' : ''}>Light</span>
-                  <span class={theme === 'dark' ? '' : 'is-shown'}>Dark</span>
-                </span>
-              </button>
-              {/* Offered in demo builds too, so the footer is the same pair of
-                  controls everywhere (mysuite, spec/sidebar-footer.md). Settings
-                  holds the MyMail URL and nothing else, and a demo has no server
-                  to relay a message — so the dialog says so there rather than
-                  offering a field that could not take effect. */}
               <button
                 class="settings-open"
                 title="Settings"

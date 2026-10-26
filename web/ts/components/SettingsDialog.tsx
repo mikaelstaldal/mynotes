@@ -1,3 +1,4 @@
+import { getThemePreference, setTheme, type ThemePreference } from '../util/theme.js';
 import type { ComponentChildren } from 'preact';
 import { useState, useEffect, useRef } from 'preact/hooks';
 import {
@@ -14,17 +15,25 @@ interface Props {
   onClose: () => void;
 }
 
-// Modal for integration settings and full-access API token management; the theme and the browse order
-// have their own controls where they apply. A demo build opens the same dialog
-// — the footer offers the same pair of controls everywhere — but has no server
-// to relay a message, so it explains that instead of showing the field.
-//
-// Two components rather than a branch inside one, so neither variant carries
-// the other's hooks: the demo body would otherwise read localStorage for a
-// field it never renders. This dispatcher deliberately holds no state of its
-// own.
+// Theme preferences are available in both server and demo builds.
 export function SettingsDialog({ onClose }: Props) {
   return isDemo() ? <DemoSettings onClose={onClose} /> : <MymailSettings onClose={onClose} />;
+}
+
+function ThemeSetting() {
+  const [preference, setPreference] = useState(getThemePreference);
+  return <label class="settings-field">
+    <span>Theme</span>
+    <select aria-label="Theme" value={preference} onChange={e => {
+      const value = (e.target as HTMLSelectElement).value as ThemePreference;
+      setTheme(value);
+      setPreference(value);
+    }}>
+      <option value="auto">Auto</option>
+      <option value="light">Light</option>
+      <option value="dark">Dark</option>
+    </select>
+  </label>;
 }
 
 interface ShellProps extends Props {
@@ -51,6 +60,7 @@ function SettingsShell({ onClose, describedBy, children }: ShellProps) {
         aria-describedby={describedBy}
         onClick={(e) => e.stopPropagation()}>
         <h2 id="settings-title" class="settings-title">Settings</h2>
+        <ThemeSetting />
         {children}
       </div>
     </div>
@@ -75,8 +85,8 @@ function DemoSettings({ onClose }: Props) {
   return (
     <SettingsShell onClose={onClose} describedBy="settings-demo-body">
       <p id="settings-demo-body" class="settings-body">
-        There is nothing to configure in the demo. API tokens and device login need a server. The MyMail URL and “Send as email” needs a server to relay the message — this
-        demo has none. The theme is on the button beside Settings in the sidebar footer.
+        Theme changes are saved in this browser. API tokens and device login need a server. The MyMail URL and “Send as email” needs a server to relay the message — this
+        demo has none. Choose Auto to follow your browser’s color scheme.
       </p>
       <div class="settings-actions">
         <button ref={closeRef} type="button" class="primary" onClick={onClose}>Close</button>

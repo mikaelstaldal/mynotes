@@ -1803,7 +1803,6 @@ main.note-view-main {
    These two carry no `.btn-icon` — the block below overrides every property that
    class contributes, and keeping it would only mean out-specifying its hover rule
    here. */
-.sidebar-footer-actions .theme-toggle,
 .sidebar-footer-actions .settings-open {
   display: inline-flex;
   align-items: center;
@@ -1858,7 +1857,6 @@ main.note-view-main {
    Hover stays clearly signalled regardless, since the border and text both change
    too, but "identical on hover" is not true across the suite — for a reason
    recorded in §5.1, not by accident. */
-.sidebar-footer-actions .theme-toggle:hover:not(:disabled),
 .sidebar-footer-actions .settings-open:hover:not(:disabled) {
   background: var(--hover-bg);
   color: var(--fg);
@@ -1874,26 +1872,9 @@ main.note-view-main {
    outline rather than a translucent ring. An outline is also painted under
    forced colours, where a box-shadow is not. Keep it at 2px — that is the
    minimum indicator area WCAG 2.4.13 asks for. */
-.sidebar-footer-actions .theme-toggle:focus-visible,
 .sidebar-footer-actions .settings-open:focus-visible {
   outline: 2px solid var(--primary);
   outline-offset: 2px;
-}
-
-/* Both words stay in the DOM, stacked in one grid cell, so the button keeps its
-   width when toggled and Settings never shifts sideways. The pair is
-   aria-hidden; the accessible name comes from the button's aria-label. */
-.sidebar-footer-actions .theme-toggle-label {
-  display: grid;
-}
-
-.sidebar-footer-actions .theme-toggle-label > span {
-  grid-area: 1 / 1;
-  visibility: hidden;
-}
-
-.sidebar-footer-actions .theme-toggle-label > .is-shown {
-  visibility: visible;
 }
 
 /* ── Tag management ─────────────────────────────────────────────── */

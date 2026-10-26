@@ -1,10 +1,10 @@
 import { test, expect, type Page, type APIRequestContext } from '@playwright/test';
 
-// The sidebar footer's two controls — the light/dark toggle and Settings — are a
-// three-repo contract: they are specified to look and sit identically in MyCal,
+// The sidebar footer's Settings control is a
+// three-repo contract: it must look and sit identically in MyCal,
 // MyMail and MyNotes. It is defined in the sibling `mysuite` repository
 // (`../mysuite`, `spec/sidebar-footer.md`) and NOT here; § references below are
-// to that file. See also the `.sidebar-footer-actions .theme-toggle` block in
+// to that file. See also the `.sidebar-footer-actions .settings-open` block in
 // web/static/app.css, which restates the derivations at the code.
 //
 // Until this file existed, nothing in this repository checked any of it — the
@@ -30,27 +30,11 @@ import { test, expect, type Page, type APIRequestContext } from '@playwright/tes
 // here would assert a neighbour's rendering (§5.4, §6.2 both warn about exactly
 // that, each after it happened).
 test.describe('Sidebar footer contract', () => {
-  // By class rather than `.first()`/positional: the contract mandates
-  // toggle-then-Settings, but a positional locator would silently repoint if a
-  // third control ever joined the row and every assertion here would keep
-  // passing about the wrong element.
-  //
-  // MyCal can use one selector for both controls because it gives them one
-  // class; MyNotes names them separately (§1 records the local names per app and
-  // says they must NOT be unified), so everything below iterates the pair.
-  const THEME = '.sidebar-footer-actions .theme-toggle';
+  // Locate Settings explicitly; positional locators could silently measure another control.
   const SETTINGS = '.sidebar-footer-actions .settings-open';
-  const BOTH = [THEME, SETTINGS];
+  const CONTROLS = [SETTINGS];
 
-  // Both controls exist in a demo build too (`-demo-server` / `-demo-bundle`),
-  // so the pair this suite measures is the pair a demo shows — Settings is
-  // rendered there and opens, and only its *contents* differ, a demo having no
-  // server to hold the MyMail URL. Settings' absence from demo builds used to be
-  // recorded upstream as §10.9, which now records the reverse. This file still
-  // runs against the real binary, for the REST API it seeds content through
-  // (`NOTES_API` below); a demo answers that from a service worker instead. That
-  // the pair is present in a demo at all is asserted by `demo-settings.spec.ts`,
-  // which asserts no geometry — every coordinate in this contract lives here.
+  // Demo Settings behavior is checked separately by demo-settings.spec.ts.
   const NOTES_API = '/api/v1/notes';
 
   // ---------------------------------------------------------------------------
@@ -135,6 +119,7 @@ test.describe('Sidebar footer contract', () => {
   // depend on file order for its content volume, which is the same class of
   // mistake as reusing a data directory: it works until it silently does not.
   test.beforeEach(async ({ page, request }) => {
+    await page.emulateMedia({ colorScheme: 'light' });
     await resetNotes(request);
     await page.goto('/');
   });
@@ -160,11 +145,10 @@ test.describe('Sidebar footer contract', () => {
   // `toBeVisible` fails with the selector, which is the difference between a
   // diagnosable red run and a puzzle.
   const boxes = async (page: Page) => {
-    for (const selector of [THEME, SETTINGS, '.sidebar']) {
+    for (const selector of [SETTINGS, '.sidebar']) {
       await expect(page.locator(selector), `${selector} is not visible`).toBeVisible();
     }
     return {
-      theme: (await page.locator(THEME).boundingBox())!,
       settings: (await page.locator(SETTINGS).boundingBox())!,
       column: (await page.locator('.sidebar').boundingBox())!,
       viewportHeight: page.viewportSize()!.height,
@@ -180,18 +164,14 @@ test.describe('Sidebar footer contract', () => {
   // ---------------------------------------------------------------------------
 
   test('controls sit 8px from the window left and bottom edges', async ({ page }) => {
-    const { theme, settings, viewportHeight } = await boxes(page);
+    const { settings, viewportHeight } = await boxes(page);
 
     // The two numbers that are the MySuite claim. Both font-independent.
     // Measured at zero notes; the overflow tests below re-measure them at 41.
-    expect(theme.x).toBeCloseTo(8, 0);
-    expect(viewportHeight - (theme.y + theme.height)).toBeCloseTo(8, 0);
+    expect(settings.x).toBeCloseTo(8, 0);
+    expect(viewportHeight - (settings.y + settings.height)).toBeCloseTo(8, 0);
     expect(viewportHeight - (settings.y + settings.height)).toBeCloseTo(8, 0);
 
-    // Settings follows the toggle by the 6px gap. Derived from the measured
-    // width rather than hardcoded: a literal would pin this machine's system-ui
-    // metrics, which §2.4 and §4 both warn are not portable.
-    expect(settings.x).toBeCloseTo(theme.x + theme.width + 6, 0);
 
     // The footer's own left edge, not just the buttons'. §8.5 makes the footer
     // full-bleed across the sidebar, and the sidebar is flush against the window
@@ -216,8 +196,8 @@ test.describe('Sidebar footer contract', () => {
   // carries no equivalent assertion — its narrow layout sits exactly on the floor
   // at B = 4 (§10.8), so it could only assert the floor and not the 8.
   test('the 4px focus-outline clearance is not consumed, and something does clip', async ({ page }) => {
-    const { theme, settings, viewportHeight } = await boxes(page);
-    for (const [name, box] of [['toggle', theme], ['settings', settings]] as const) {
+    const { settings, viewportHeight } = await boxes(page);
+    for (const [name, box] of [['settings', settings]] as const) {
       expect(box.x, `${name} L`).toBeGreaterThanOrEqual(4);
       expect(viewportHeight - (box.y + box.height), `${name} B`).toBeGreaterThanOrEqual(4);
     }
@@ -295,9 +275,9 @@ test.describe('Sidebar footer contract', () => {
       // shell, which is the shape of failure that reads as a pass.
       await expect(page.locator(ready)).toBeVisible();
 
-      const { theme, settings, column, viewportHeight } = await boxes(page);
-      expect(theme.x).toBeCloseTo(8, 0);
-      expect(viewportHeight - (theme.y + theme.height)).toBeCloseTo(8, 0);
+      const { settings, column, viewportHeight } = await boxes(page);
+      expect(settings.x).toBeCloseTo(8, 0);
+      expect(viewportHeight - (settings.y + settings.height)).toBeCloseTo(8, 0);
       expect(viewportHeight - (settings.y + settings.height)).toBeCloseTo(8, 0);
       expect(settings.x + settings.width).toBeLessThanOrEqual(column.x + column.width);
     });
@@ -369,9 +349,9 @@ test.describe('Sidebar footer contract', () => {
       }, at);
       if (at === 'bottom') expect(scrolled, 'scrolled nowhere').toBeGreaterThan(0);
 
-      const { theme, settings, viewportHeight } = await boxes(page);
-      expect(theme.x, `L at ${at}`).toBeCloseTo(8, 0);
-      expect(viewportHeight - (theme.y + theme.height), `B at ${at}`).toBeCloseTo(8, 0);
+      const { settings, viewportHeight } = await boxes(page);
+      expect(settings.x, `L at ${at}`).toBeCloseTo(8, 0);
+      expect(viewportHeight - (settings.y + settings.height), `B at ${at}`).toBeCloseTo(8, 0);
       expect(viewportHeight - (settings.y + settings.height), `Settings B at ${at}`).toBeCloseTo(8, 0);
     }
   });
@@ -440,9 +420,9 @@ test.describe('Sidebar footer contract', () => {
         expect(m.inner.length, `${route}: nothing was scrolling — this measured nothing`).toBeGreaterThan(0);
       }
 
-      const { theme, viewportHeight } = await boxes(page);
-      expect(theme.x, `${route} L`).toBeCloseTo(8, 0);
-      expect(viewportHeight - (theme.y + theme.height), `${route} B`).toBeCloseTo(8, 0);
+      const { settings, viewportHeight } = await boxes(page);
+      expect(settings.x, `${route} L`).toBeCloseTo(8, 0);
+      expect(viewportHeight - (settings.y + settings.height), `${route} B`).toBeCloseTo(8, 0);
     }
   });
 
@@ -490,7 +470,7 @@ test.describe('Sidebar footer contract', () => {
   // not, is the day `body` takes a weight or a style — then the pin is the only
   // thing holding the value and this test is what notices.
   test('the pinned declarations resolve to the contract values', async ({ page }) => {
-    for (const selector of BOTH) {
+    for (const selector of CONTROLS) {
       const cs = await page.locator(selector).evaluate(el => {
         const s = getComputedStyle(el);
         return {
@@ -585,7 +565,6 @@ test.describe('Sidebar footer contract', () => {
           if (rule instanceof CSSStyleRule) {
             const selectors = rule.selectorText.split(',').map(s => s.trim());
             if (
-              selectors.includes('.sidebar-footer-actions .theme-toggle') &&
               selectors.includes('.sidebar-footer-actions .settings-open')
             ) {
               buttonRule = {
@@ -638,10 +617,8 @@ test.describe('Sidebar footer contract', () => {
     const { buttonRule } = await cssom(page);
 
     expect(buttonRule, 'the sidebar-footer button rule was not found in any stylesheet').not.toBeNull();
-    // Exactly the two controls §1 names for this app, and no more: a third
-    // selector joining the group would mean a third control took the contract's
-    // styling, which is a change to the contract and not a local edit.
-    expect(buttonRule!.selectors).toHaveLength(2);
+    // Only Settings takes the footer contract styling.
+    expect(buttonRule!.selectors).toEqual(['.sidebar-footer-actions .settings-open']);
 
     expect(buttonRule!.style.fontWeight).toBe('400');
     expect(buttonRule!.style.fontStyle).toBe('normal');
@@ -711,47 +688,16 @@ test.describe('Sidebar footer contract', () => {
   // Size and stability
   // ---------------------------------------------------------------------------
 
-  test('controls hold one row and do not move when the theme is toggled', async ({ page }) => {
-    const theme = page.getByRole('button', { name: 'Switch to dark mode' });
-    await expect(theme).toBeVisible();
-
-    const before = await page.locator(SETTINGS).boundingBox();
-    const themeBefore = await theme.boundingBox();
-
-    await theme.click();
-    await expect(page.getByRole('button', { name: 'Switch to light mode' })).toBeVisible();
-
-    const after = await page.locator(SETTINGS).boundingBox();
-    const themeAfter = await page.getByRole('button', { name: 'Switch to light mode' }).boundingBox();
-
-    // §7's mechanism — both words stay mounted, stacked in one grid cell — is the
-    // one place in this contract where the specific technique is mandated rather
-    // than only its effect. toBeCloseTo's second argument is decimal places, so 0
-    // is a 0.5px window: loose enough to survive fractional layout, tight enough
-    // to catch the "Light" vs "Dark" shift the grid stacking exists to prevent.
-    expect(themeAfter!.width).toBeCloseTo(themeBefore!.width, 0);
-    expect(after!.x).toBeCloseTo(before!.x, 0);
-
-    // 29.2px at a 16px root font (§2.2) is the height the three apps share.
-    // Chromium reports ~29.19. It also clears WCAG 2.5.8's 24×24px target
-    // minimum by 5.2px, which is why height is the binding dimension there.
-    expect(themeAfter!.height).toBeCloseTo(29.2, 0);
-    expect(after!.height).toBeCloseTo(29.2, 0);
-
-    // Side by side, inside the FOOTER's content box — not the column's: the
-    // footer is full-bleed while the rest of the sidebar is inset by 0.75rem, so
-    // the column's content box is the wrong reference here (§8.5).
-    const inner = await page.locator('.sidebar-footer').evaluate(el => {
-      const r = el.getBoundingClientRect();
-      const cs = getComputedStyle(el);
-      return {
-        left: r.left + el.clientLeft + parseFloat(cs.paddingLeft),
-        right: r.left + el.clientLeft + el.clientWidth - parseFloat(cs.paddingRight),
-      };
-    });
-    expect(after!.y).toBeCloseTo(themeAfter!.y, 0);
-    expect(themeAfter!.x).toBeGreaterThanOrEqual(inner.left);
-    expect(after!.x + after!.width).toBeLessThanOrEqual(inner.right);
+  test('Settings stays in place when the browser theme changes', async ({ page }) => {
+    const before = (await page.locator(SETTINGS).boundingBox())!;
+    await page.emulateMedia({ colorScheme: 'dark' });
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+    const after = (await page.locator(SETTINGS).boundingBox())!;
+    expect(after.x).toBeCloseTo(before.x, 0);
+    expect(after.y).toBeCloseTo(before.y, 0);
+    expect(after.width).toBeCloseTo(before.width, 0);
+    expect(after.height).toBeCloseTo(29.2, 0); // At the default 16px root font size.
+    await expect(page.getByRole('button', { name: /Switch to .* mode/ })).toHaveCount(0);
   });
 
   // The row is nowrap and the buttons do not shrink, so a wider font overflows
@@ -783,9 +729,9 @@ test.describe('Sidebar footer contract', () => {
       });
 
     const before = await measure();
-    expect(before.needed, `pair ${before.needed} in ${before.available}`).toBeLessThanOrEqual(before.available);
+    expect(before.needed, `control ${before.needed} in ${before.available}`).toBeLessThanOrEqual(before.available);
 
-    await page.locator(`${THEME}, ${SETTINGS}`).evaluateAll(els => {
+    await page.locator(SETTINGS).evaluateAll(els => {
       for (const el of els) {
         (el as HTMLElement).style.fontSize =
           parseFloat(getComputedStyle(el).fontSize) * 1.1 + 'px';
@@ -794,7 +740,7 @@ test.describe('Sidebar footer contract', () => {
 
     const after = await measure();
     // Reported either way, so a failure says how far over rather than just "red".
-    expect(after.needed, `at 1.1x font: pair ${after.needed} in ${after.available}`)
+    expect(after.needed, `at 1.1x font: control ${after.needed} in ${after.available}`)
       .toBeLessThanOrEqual(after.available);
   });
 
@@ -830,15 +776,15 @@ test.describe('Sidebar footer contract', () => {
       // 'unsafe-inline' in style-src, so an injected <style> is rejected.
       await page.evaluate(r => { document.documentElement.style.fontSize = `${r}px`; }, root);
 
-      const { theme, settings, column, viewportHeight } = await boxes(page);
+      const { settings, column, viewportHeight } = await boxes(page);
       expect(settings.x + settings.width).toBeLessThanOrEqual(column.x + column.width);
       expect(await footerOverflows(page)).toBe(false);
 
       // The buttons grow with the font, so their height moves off 29.2 — but
       // their position must not. This is the assertion that a bigger root font
       // would otherwise quietly break, since the row is anchored from the bottom.
-      expect(theme.x).toBeCloseTo(8, 0);
-      expect(viewportHeight - (theme.y + theme.height)).toBeCloseTo(8, 0);
+      expect(settings.x).toBeCloseTo(8, 0);
+      expect(viewportHeight - (settings.y + settings.height)).toBeCloseTo(8, 0);
 
       // Growing the column must not push the page into a horizontal scroll —
       // that would be the same 1.4.4 failure moved one row up.
@@ -863,7 +809,7 @@ test.describe('Sidebar footer contract', () => {
   // that hid in exactly the axis its narrow-layout test had documented as out of
   // scope — a documented blind spot is still a blind spot:
   //   * The main pane is measured at 48px wide at 375px and is effectively
-  //     unusable. That is outside this contract, which covers two controls, and
+  //     unusable. That is outside this contract, which covers the footer control, and
   //     is NOT asserted here in either direction.
   //   * Nothing here would notice a breakpoint being *added*. If one ever is, the
   //     (8, 8) assertions below are what it has to keep satisfying, and whatever
@@ -872,12 +818,12 @@ test.describe('Sidebar footer contract', () => {
     await page.setViewportSize({ width: 375, height: 700 });
 
     await expect(page.locator('.sidebar-footer')).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Switch to dark mode' })).toBeVisible();
+    await expect(page.getByRole('button', { name: /Switch to .* mode/ })).toHaveCount(0);
     await expect(page.locator(SETTINGS)).toBeVisible();
 
-    const { theme, settings, viewportHeight } = await boxes(page);
-    expect(theme.x).toBeCloseTo(8, 0);
-    expect(viewportHeight - (theme.y + theme.height)).toBeCloseTo(8, 0);
+    const { settings, viewportHeight } = await boxes(page);
+    expect(settings.x).toBeCloseTo(8, 0);
+    expect(viewportHeight - (settings.y + settings.height)).toBeCloseTo(8, 0);
     expect(viewportHeight - (settings.y + settings.height)).toBeCloseTo(8, 0);
     expect(await footerOverflows(page)).toBe(false);
 
@@ -949,16 +895,9 @@ test.describe('Sidebar footer contract', () => {
     }, name);
 
   const useDarkTheme = async (page: Page) => {
-    await page.getByRole('button', { name: 'Switch to dark mode' }).click();
-    await expect(page.getByRole('button', { name: 'Switch to light mode' })).toBeVisible();
-    // The click leaves the pointer sitting on the toggle, so any colour read from
-    // a footer control afterwards is read in its HOVER state. Every resting
-    // figure below would then be measured against the wrong thing while looking
-    // entirely reasonable. Move the pointer off before measuring anything.
+    await page.emulateMedia({ colorScheme: 'dark' });
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
     await page.mouse.move(0, 0);
-    // Then let the colour transition finish. Swapping the theme re-resolves the
-    // tokens under a 0.12s transition, so the buttons spend that long reporting a
-    // blend of the two palettes. See settledStyle.
     await settledStyle(page, SETTINGS, 'color');
   };
 
@@ -1069,7 +1008,7 @@ test.describe('Sidebar footer contract', () => {
     test(`focus indicator meets 3:1 against its backdrop in ${mode} mode`, async ({ page }) => {
       if (dark) await useDarkTheme(page);
 
-      for (const selector of BOTH) {
+      for (const selector of CONTROLS) {
         const s = await focusAndRead(page, selector);
         expect(s.focusVisible, selector).toBe(true);
 
@@ -1116,7 +1055,7 @@ test.describe('Sidebar footer contract', () => {
     // `not.toBe(--surface)` separately for want of that separation.
     test(`controls sit on the sidebar panel's --surface in ${mode} mode`, async ({ page }) => {
       if (dark) await useDarkTheme(page);
-      for (const selector of BOTH) {
+      for (const selector of CONTROLS) {
         const backdrop = await backdropOf(page, selector);
         expect(backdrop, `${selector}: no opaque backdrop found above the control`).not.toBeNull();
         expect(backdrop, selector).toBe(await tokenColor(page, '--surface'));
@@ -1133,7 +1072,7 @@ test.describe('Sidebar footer contract', () => {
     // twice in MyCal would surface next.
     test(`resting label meets 4.5:1 against its backdrop in ${mode} mode`, async ({ page }) => {
       if (dark) await useDarkTheme(page);
-      for (const selector of BOTH) {
+      for (const selector of CONTROLS) {
         // Assert the state that was measured, not just the number: the resting
         // colour and the hover colour are different declarations, and reading one
         // while believing it is the other passes for the wrong reason. Necessary
@@ -1174,7 +1113,7 @@ test.describe('Sidebar footer contract', () => {
     // Hover stays clearly signalled here by the border and text, which both move.
     test(`hover fill is distinguishable from its backdrop in ${mode} mode`, async ({ page }) => {
       if (dark) await useDarkTheme(page);
-      for (const selector of BOTH) {
+      for (const selector of CONTROLS) {
         // Read the backdrop BEFORE hovering. The walk starts at the parent so it
         // is hover-safe by construction, but taking it first means the assertion
         // does not depend on that remaining true.
@@ -1232,7 +1171,7 @@ test.describe('Sidebar footer contract', () => {
   // prohibition is held by review; what this catches is the indicator vanishing.
   test('controls keep a focus indicator under forced colors', async ({ page }) => {
     await page.emulateMedia({ forcedColors: 'active' });
-    for (const selector of BOTH) {
+    for (const selector of CONTROLS) {
       const s = await focusAndRead(page, selector);
       expect(s.focusVisible, selector).toBe(true);
       expect(s.outlineStyle, selector).not.toBe('none');

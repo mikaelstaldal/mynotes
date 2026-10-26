@@ -1,5 +1,13 @@
 # MyNotes — Functional Requirements
 
+## Theme preference (current behavior)
+
+The shared `../mysuite/spec/sidebar-footer.md` contract places only Settings in the sidebar
+footer. Settings offers Theme: Auto, Light, Dark; Auto is the default and follows the browser's
+`prefers-color-scheme` both at startup and live. Explicit choices override the browser, persist
+locally, and existing explicit preferences are retained. Demo builds also offer this setting.
+This supersedes older descriptions below of a sidebar theme toggle or two footer controls.
+
 MyNotes is a single-user, personal note manager. It stores a collection of
 documents written in Markdown (CommonMark), each reachable at a stable,
 slug-based URL, with a web-based editor and full-text search.
@@ -690,40 +698,20 @@ existing-note editor (`/notes/{slug}/edit`).
     the note's tags (or "No tags"). Clicking a node opens that note, and the note
     currently open in the main panel is highlighted. The diagram scrolls on both
     axes within the sidebar. Empty and loading states.
-  - **Sidebar footer (all tabs):** a light/dark theme toggle and a **Settings**
-    action. Light mode is the
-    default; the choice is persisted (localStorage) and applied to the document
-    root as a `data-theme` attribute, which drives every colour via CSS
-    variables. It affects the whole web UI and the Markdown render pipeline (read
-    view, editor preview, callouts, and Mermaid diagrams — which are re-rendered
-    on toggle since their colours are baked into the SVG) and the downloaded HTML,
-    but not print (see **Download HTML**).
-    Both controls implement the **MySuite sidebar-footer contract**, shared with
-    the sibling MyCal and MyMail apps so that someone with all three open in
-    browser tabs sees nothing move when switching between them. Their geometry,
-    colours, hover and focus treatment, the width-stable label mechanism, and
-    their position relative to the *window* are defined once, in the sibling
-    `mysuite` repository — `../mysuite`, `spec/sidebar-footer.md`. That document
-    is binding and is the only place those values live; this document
-    deliberately restates none of them, and a number found here that contradicts
-    it is stale.
-    Read it, and its `measurement-protocol.md`, before changing anything about
-    these two controls.
-    **Changing any of this is a change in all three repositories** — there is no
-    such thing as fixing it here alone.
+  - **Sidebar footer (all tabs):** a **Settings** action. The Settings dialog offers Theme:
+    Auto (default), Light, Dark, persisted in localStorage. Auto follows the browser at startup
+    and live. The resolved `data-theme` drives CSS colors and the Markdown pipeline, including
+    Mermaid diagrams, and downloaded HTML, but not print (see **Download HTML**).
+    Settings implements the **MySuite sidebar-footer contract**, shared with MyCal and MyMail.
+    Its geometry, colors, focus treatment and position relative to the window are defined in
+    `../mysuite/spec/sidebar-footer.md`; theme behavior is specified in that document's §7.
+    Read it and `measurement-protocol.md` before changing the footer or theme behavior.
+    **Changing any shared value is a change in all three repositories.**
 
-    What is particular to MyNotes: **demo builds show the same pair**, so the
-    contract's geometry applies to two controls everywhere. Settings was absent
-    from a demo until it was made to open there as well — a demo has no server to
-    hold the MyMail URL, so the dialog says so rather than offering a field that
-    could not take effect (§Demo Mode). The palette its colours resolve through lives in
-    `web/static/render/note.css` rather than `app.css`, since that file owns the
-    theme selectors and `app.css` has no `:root` block of its own; two of those
-    variables are used only by app chrome and are inert everywhere else that
-    stylesheet is consumed. And the footer is full-bleed where the sidebar header
-    and note list above it are inset, so the controls — and the demo badge beside
-    them — sit slightly left of the note list; that is the price of the shared
-    contract, not an oversight.
+    Demo builds offer the same Settings action and local theme preference. Server-only MyMail
+    URL and token controls remain unavailable. The palette lives in `web/static/render/note.css`,
+    since that file owns the theme selectors. The footer is full-bleed where the sidebar header
+    and note list are inset, so Settings and the demo badge sit slightly left of the note list.
 
     **There is now a suite for this**, `e2e/tests/sidebar-footer.spec.ts`, run by
     `./test-e2e.sh` after `./build.sh`. It measures the rendered page in Chromium: both viewport
@@ -737,8 +725,8 @@ existing-note editor (`/notes/{slug}/edit`).
 
     That suite runs against the real binary only. `e2e/tests/demo-settings.spec.ts`
     covers the demo build, in a second Playwright project against a `-demo-server`
-    process — and covers one thing: that the footer offers the same pair of
-    controls there and that Settings opens. It asserts none of the coordinates
+    process, checking that Settings opens and offers local theme preferences without server fields.
+    It asserts none of the coordinates
     above, deliberately, since restating a contract value in a second file in this
     repo is how the two drift apart.
 
@@ -1231,9 +1219,8 @@ localhost.
 - The MyMail integration is never offered in demo mode: there is no server to
   relay a message. A MyMail URL left in localStorage by a non-demo deployment on
   the same origin is ignored rather than acted on. The **Settings** action is
-  offered, so the sidebar footer carries the same pair of controls a real
-  deployment does; its modal opens on an explanation that a demo has nothing to
-  configure, rather than on a MyMail field that could not take effect.
+  offered in the same footer position as a real deployment; its modal offers local theme
+  preferences and explains why server-only fields are unavailable.
 - Publishing is never offered either (§Publishing): a published page is served
   by a server to readers who are not running the demo, and the demo has no server
   and no readers but the one browser it lives in. `/public/…` answers with a

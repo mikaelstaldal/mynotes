@@ -1,28 +1,7 @@
 import { test, expect, type Page } from '@playwright/test';
 
-// The sidebar footer in a DEMO build (`-demo-server`), which the `chromium-demo`
-// project in playwright.config.ts points at — a second process on 8092, because
-// a demo has no database and no REST API and so cannot be a route on the server
-// the rest of the suite uses.
-//
-// What this file is for, and what it is not:
-//
-//   * It is NOT this repo's half of the sidebar-footer contract. That is
-//     `sidebar-footer.spec.ts`, it runs against the real binary, and it owns
-//     every coordinate, colour and computed value. Nothing here asserts a
-//     number from `../mysuite`, `spec/sidebar-footer.md` — adding one would put
-//     the contract in two files in this repo, which is what that spec's own
-//     header warns against.
-//   * It IS the check that the demo build offers the same pair of CONTROLS, and
-//     that the second one does something when clicked. Settings used to be
-//     rendered only when `!isDemo()`; a demo showed one control where every
-//     other build shows two. That claim — "the pair exists here too" — is
-//     cheap to assert and was previously asserted by nothing, in any of the
-//     three apps (`../mysuite`, `spec/sidebar-footer.md` §10.9).
-//
-// The dialog's *contents* are this app's own business, not the contract's: a
-// demo has no server to relay a MyMail message, so the modal explains that
-// instead of offering the field (spec/REQUIREMENTS.md § Demo Mode).
+// Demo Settings offers local theme preferences, while server integration and API tokens
+// remain unavailable. Geometry belongs to sidebar-footer.spec.ts.
 
 const THEME = '.sidebar-footer-actions .theme-toggle';
 const SETTINGS = '.sidebar-footer-actions .settings-open';
@@ -49,18 +28,18 @@ test.describe('Sidebar footer in a demo build', () => {
     await openDemo(page);
   });
 
-  test('is a demo, and shows both controls', async ({ page }) => {
+  test('is a demo, and shows Settings without a theme button', async ({ page }) => {
     // Assert the build first. Without this, every expectation below would also
     // pass against the real server — the failure that reads as a pass, and the
     // one this file is most exposed to, since its whole subject is a build
     // difference.
     await expect(page.locator('.demo-badge')).toBeVisible();
 
-    await expect(page.locator(THEME)).toBeVisible();
+    await expect(page.locator(THEME)).toHaveCount(0);
     await expect(page.locator(SETTINGS)).toBeVisible();
   });
 
-  test('Settings opens a dialog holding no field', async ({ page }) => {
+  test('Settings offers theme preferences without server fields', async ({ page }) => {
     await page.locator(SETTINGS).click();
 
     const dialog = page.locator(DIALOG);
@@ -71,13 +50,13 @@ test.describe('Sidebar footer in a demo build', () => {
     // § Demo Mode), so there must be nothing here that could set the URL — not
     // merely a hidden or disabled field.
     await expect(dialog.locator('input')).toHaveCount(0);
+    await expect(dialog.getByLabel('Theme', { exact: true })).toHaveValue('auto');
     await expect(dialog.getByRole('button', { name: 'Save' })).toHaveCount(0);
 
-    // Prose, not an empty box: the dialog says why it holds nothing, and says
-    // it through the description a screen reader is given.
+    // The description explains which preferences work without a server.
     const describedBy = await dialog.getAttribute('aria-describedby');
     expect(describedBy).toBeTruthy();
-    await expect(page.locator(`#${describedBy}`)).toContainText('nothing to configure');
+    await expect(page.locator(`#${describedBy}`)).toContainText('saved in this browser');
   });
 
   test('focus lands on the dialog rather than staying behind it', async ({ page }) => {

@@ -20,12 +20,13 @@ test.describe('Brand logo contract', () => {
   const BRAND = '.sidebar-brand';
 
   test.beforeEach(async ({ page }) => {
+    await page.emulateMedia({ colorScheme: 'light' });
     await page.goto('/');
     await expect(page.locator(BADGE)).toBeVisible();
   });
 
   const darkMode = async (page: Page) => {
-    await page.getByRole('button', { name: 'Switch to dark mode' }).click();
+    await page.emulateMedia({ colorScheme: 'dark' });
     await expect(page.locator('html[data-theme="dark"]')).toHaveCount(1);
   };
 
