@@ -251,10 +251,17 @@
   transform: rotate(45deg);
 }
 
+.note-content .table-scroll {
+  /* Keep a wide table's scrollbar beside the table, rather than at the end
+     of the whole note (which may be far below the visible content). */
+  overflow-x: auto;
+  margin: 0.75em 0;
+}
+
 .note-content table {
   border-collapse: collapse;
   width: 100%;
-  margin: 0.75em 0;
+  margin: 0;
 }
 
 .note-content th,

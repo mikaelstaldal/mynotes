@@ -977,7 +977,22 @@ export function renderNote(markdown: string, opts: RenderOptions = {}): string {
   interactiveTasks = env.interactiveTasks;
   mailtoHref = opts.mailtoHref;
   try {
-    return DOMPurify.sanitize(md.render(markdown, env));
+    const clean = DOMPurify.sanitize(md.render(markdown, env));
+    if (!clean.includes('<table')) return clean;
+    // Wrap sanitized Markdown and raw HTML tables alike. Keep the native table
+    // layout/semantics while making its scrollbar reachable in a long note.
+    const template = document.createElement('template');
+    template.innerHTML = clean;
+    for (const table of template.content.querySelectorAll('table')) {
+      const scroll = document.createElement('div');
+      scroll.className = 'table-scroll';
+      scroll.tabIndex = 0;
+      scroll.setAttribute('role', 'region');
+      scroll.setAttribute('aria-label', 'Scrollable table');
+      table.replaceWith(scroll);
+      scroll.append(table);
+    }
+    return template.innerHTML;
   } finally {
     interactiveTasks = false;
     mailtoHref = undefined;

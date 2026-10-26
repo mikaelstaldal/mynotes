@@ -43,25 +43,51 @@ for (const view of ['read', 'preview']) {
   });
 }
 
-test('wide note content remains reachable by scrolling', async ({ page }) => {
-  await page.goto('/');
-  const result = await page.evaluate(() => {
-    const note = document.createElement('div');
-    note.className = 'note-content';
-    note.style.width = '200px';
-    const table = document.createElement('table');
-    const cell = table.insertRow().insertCell();
-    cell.textContent = 'wide'.repeat(200);
-    note.append(table);
-    document.body.append(note);
-    note.scrollLeft = note.scrollWidth;
-    const result = {
-      scrollable: getComputedStyle(note).overflowX === 'auto',
-      moved: note.scrollLeft > 0,
-      endVisible: cell.getBoundingClientRect().right <= note.getBoundingClientRect().right,
-    };
-    note.remove();
-    return result;
+for (const view of ['read', 'preview']) {
+  test(`wide tables scroll independently in ${view}`, async ({ page, request }) => {
+    const columns = Array.from({ length: 12 }, (_, i) => `Column${i}LongHeading`);
+    const content = [
+      '| ' + columns.join(' | ') + ' |',
+      '| ' + columns.map(() => '---').join(' | ') + ' |',
+      '| ' + columns.map(() => 'Value').join(' | ') + ' |',
+      '',
+      ...Array.from({ length: 100 }, () => 'Text below the table.\n'),
+      '| A | B |', '| --- | --- |', '| x | y |',
+    ].join('\n');
+    const response = await request.post('/api/v1/notes', { data: {
+      title: `Wide table ${view}`, content,
+    } });
+    expect(response.status()).toBe(201);
+    const { slug } = await response.json();
+    try {
+      await page.goto(`/notes/${slug}${view === 'preview' ? '/edit' : ''}`);
+      const selector = view === 'preview' ? '.preview-pane .note-content' : 'main .note-content';
+      const table = page.locator(`${selector} table`).first();
+      await expect(table).toBeVisible();
+      const scroll = page.getByRole('region', { name: 'Scrollable table' }).first();
+      await scroll.focus();
+      await page.keyboard.press('ArrowRight');
+      await expect.poll(() => scroll.evaluate(el => el.scrollLeft)).toBeGreaterThan(0);
+      const result = await table.evaluate(table => {
+        const note = table.closest('.note-content')!;
+        const scroll = table.parentElement!;
+        scroll.scrollLeft = scroll.scrollWidth;
+        const last = table.querySelector('th:last-child')!.getBoundingClientRect();
+        const box = scroll.getBoundingClientRect();
+        return {
+          moved: scroll.scrollLeft > 0,
+          narrowTableFillsNote: Math.abs(note.querySelectorAll('table')[1].getBoundingClientRect().width -
+            note.clientWidth) < 2,
+          endVisible: last.right <= box.right + 1,
+          tableInViewport: box.bottom < window.innerHeight,
+          noteDoesNotScrollHorizontally: note.scrollWidth <= note.clientWidth,
+          visibleAtEnd: table.contains(document.elementFromPoint(last.right - 4, last.top + 4)),
+        };
+      });
+      expect(result).toEqual({ moved: true, narrowTableFillsNote: true, endVisible: true, tableInViewport: true,
+        noteDoesNotScrollHorizontally: true, visibleAtEnd: true });
+    } finally {
+      await request.delete(`/api/v1/notes/${slug}`);
+    }
   });
-  expect(result).toEqual({ scrollable: true, moved: true, endVisible: true });
-});
+}
