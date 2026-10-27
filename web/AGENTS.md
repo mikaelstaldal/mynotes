@@ -5,6 +5,11 @@ TypeScript sources under `web/ts/` and the embedded assets under `web/static/`.
 It supplements the repository-root `AGENTS.md`, which is always loaded; paths
 below are written relative to the repository root, as they are there.
 
+## Coding guides
+
+- Prefer HTML+CSS to JavaScript for interactive UI.
+- Prefer CSS to images, prefer SVG to bitmap images.
+
 ## MyMail integration
 
 "Send as email" posts a note to a sibling
@@ -376,9 +381,3 @@ UI, exposing `render(markdown)` and `setTheme(theme, vars?)` on
 - **Frontend networking:** all requests go through `api` in `web/ts/api/client.ts`
   (centralized retry, 401/404 handling, error parsing). Do not call `fetch`
   directly from components.
-
-## API discovery
-
-`/openapi.yaml`, `/.well-known/api-catalog`, and the API response `Link` header
-are governed by `../mysuite/spec/api-discovery.md`. Read that contract before
-changing their paths, media types, authentication exemptions, or demo behaviour.

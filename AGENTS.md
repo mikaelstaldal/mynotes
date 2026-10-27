@@ -17,6 +17,10 @@ Keep spec/REQUIREMENTS.md updated when new features are added.
 ## REST API
 
 The REST API is used by both the embedded web UI and an Android (Kotlin/Compose) app in another repository.
+       
+`/openapi.yaml`, `/.well-known/api-catalog`, and the API response `Link` header
+are governed by `../mysuite/spec/api-discovery.md`. Read that contract before
+changing their paths, media types, authentication exemptions, or demo behaviour.
 
 ## Build & Run
 
