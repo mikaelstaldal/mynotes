@@ -1,13 +1,5 @@
 # MyNotes — Functional Requirements
 
-## Theme preference (current behavior)
-
-The shared `../mysuite/spec/sidebar-footer.md` contract places only Settings in the sidebar
-footer. Settings offers Theme: Auto, Light, Dark; Auto is the default and follows the browser's
-`prefers-color-scheme` both at startup and live. Explicit choices override the browser, persist
-locally, and existing explicit preferences are retained. Demo builds also offer this setting.
-This supersedes older descriptions below of a sidebar theme toggle or two footer controls.
-
 MyNotes is a single-user, personal note manager. It stores a collection of
 documents written in Markdown (CommonMark), each reachable at a stable,
 slug-based URL, with a web-based editor and full-text search.
@@ -223,7 +215,7 @@ identity exists but is never exposed as the URL key.
   to a known icon is rendered inline as an `<svg stroke="currentColor">` (built from
   the vendored `LUCIDE_ICON_NODES`, mirroring the `Icon` component and the server's
   HTML export) rather than as an `<img>`, so the icon inherits the note's foreground
-  colour and follows the light/dark toggle. An unknown name falls back to an `<img>`
+  colour and follows the resolved light/dark theme. An unknown name falls back to an `<img>`
   pointing at the icon endpoint (which 404s). The inline `<svg>` passes through the
   same DOMPurify render-time gate as all other note markup.
 - **Artifacts are referenced with the `artifact:` URL scheme.** A stored artifact
@@ -741,9 +733,12 @@ existing-note editor (`/notes/{slug}/edit`).
     identically to `0.8rem` — so that convention is held by review. And this suite
     can only see MyNotes: **cross-repo drift remains undetectable**, so a figure
     agreeing here says nothing about whether MyCal and MyMail still agree with it.
-- **Settings:** a modal opened from the sidebar footer, holding the preferences
-  that have no control of their own in an **Integration** tab, plus a separate
-  **API Tokens** tab (see **API tokens and device login**). The **MyMail URL**
+- **Settings:** a modal opened from the sidebar footer, offering **Theme** with **Auto**,
+  **Light**, **Dark** in both server and demo builds. Auto is the default for absent or invalid
+  preferences and follows the browser's `prefers-color-scheme` at startup and live. Explicit
+  Light or Dark overrides the browser. Changes take effect immediately and persist locally
+  across reloads; existing explicit preferences are retained. Theme selection is outside the
+  **Integration** and **API Tokens** tabs (see **API tokens and device login**). The **MyMail URL**
   field (see **MyMail integration**) shows the user's override; leaving it empty
   means "use the URL the server derived", which the placeholder and a hint below
   the field name. Saving validates the URL and reports why one is refused —
@@ -751,9 +746,9 @@ existing-note editor (`/notes/{slug}/edit`).
   origin; the last because the Content-Security-Policy would block the request.
   The choice takes effect at once: the note toolbars' "Send as email" action
   appears or disappears without a reload. Cancel, Escape, or a click outside
-  discards the edit. In demo mode the modal opens all the same, and holds no
-  field: MyMail integration and API tokens are unavailable there, so it says so and
-  offers Close alone (§Demo Mode). Escape and a click outside still dismiss it.
+  discards the URL edit; theme changes are saved immediately. In demo mode the modal offers
+  Theme and Close, explaining why MyMail integration and API tokens are unavailable (§Demo Mode).
+  Escape and a click outside still dismiss it.
 - **Upload Markdown or HTML:** pick a single `.md`/`.markdown`/text or
   `.html`/`.htm` file. For Markdown files, the title is derived client-side (first
   heading, else filename without extension, else "Untitled") and the note is created
