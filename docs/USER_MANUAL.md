@@ -385,3 +385,29 @@ finishes, start the server normally to browse the new notes.
 See [OPERATIONS.md](OPERATIONS.md) for a step-by-step guide covering systemd
 service setup, TLS termination via nginx/Apache/Caddy, authentication, and
 upgrades.
+
+## Keyboard navigation
+
+Use **Tab** and **Shift+Tab** to move between controls, and **Enter** to open a focused note link.
+Focused note links and tag names have a visible outline.
+
+- **Up / Down** on a note title moves focus between the loaded notes in that list, in displayed order.
+  This works in both the sidebar and the main overview. It stops at either end without opening a note.
+  Use **Load more** to make more sidebar notes available.
+- **Up / Down** on a tag name moves between tags. **Enter** or **Space** activates the focused tag filter.
+- **Right** on a sidebar note title focuses the currently displayed note's reading pane, without opening
+  the focused link. If no note is displayed, focus stays on the link.
+- **Right** on a sidebar tag name focuses the displayed reading pane or the first note in the overview.
+  It does not activate the tag filter; if there is no displayed note, focus stays on the tag.
+- **Left** from the reading pane or an overview note title returns focus to the open note's
+  sidebar title, or the first loaded title
+  if that note is absent from the current list. When the Tags tab is open, it returns to the tag you
+  last left with Right, falling back to a filtered tag or the first tag if needed.
+- **Backspace** while reading returns to the overview with the sidebar's tag filter retained and focuses
+  the open note's sidebar title when available. The sidebar keeps its search and loaded notes.
+- **Escape** in the editor activates **Cancel**, including the usual unsaved-changes confirmation.
+  In a dialog, Escape applies to that dialog instead.
+
+Arrow and Backspace navigation leaves text fields and editable content alone. Modified keys retain their
+normal browser behavior. Note lists have no bulk selection, so Space keeps its normal browser behavior
+on note links.

@@ -1063,7 +1063,7 @@ export function NoteEditor({ slug, initialSlug, initialTitle, onSave }: Props) {
           <button type="button" class={layout === 'preview' ? 'active btn-icon' : 'btn-icon'} title="Preview" aria-label="Preview" onClick={() => setLayout('preview')}><Icon name="eye" size={16} /></button>
         </div>
         <span class="toolbar-spacer" />
-        <button type="button" class="btn-icon" title="Cancel" aria-label="Cancel" onClick={() => {
+        <button type="button" class="btn-icon" title="Cancel" aria-label="Cancel" data-editor-cancel onClick={() => {
           // Return to wherever the edit was launched from (e.g. the note list),
           // recorded in history state by the Edit action; fall back to the note
           // view when editing (or the overview for a new note) if unknown.

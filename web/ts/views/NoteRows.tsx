@@ -1,4 +1,5 @@
 import { type NoteSummary } from '../api/client.js';
+import { listKeyboard } from '../util/keyboard.js';
 import { base } from '../basepath.js';
 import { NoteActions } from '../components/NoteActions.js';
 
@@ -58,7 +59,7 @@ function TagChips({ tags }: { tags: NoteSummary['tags'] }) {
 // per-row border styling applies.
 export function NoteRows({ rows, activeSlug, showActions, onMutate }: Props) {
   return (
-    <ul>
+    <ul onKeyDown={e => listKeyboard(e, ".note-row > a.link")}>
       {rows.map(n => (
         <li key={n.slug}>
           <div class={`note-row${n.slug === activeSlug ? ' note-row--active' : ''}${showActions ? ' note-row--actions' : ''}`}>

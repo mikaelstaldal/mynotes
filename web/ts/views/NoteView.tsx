@@ -219,7 +219,7 @@ export function NoteView({ slug, onDelete }: Props) {
           onPublishChange={refreshNote}
         />
       </div>
-      <div class="note-view-scroll" onClick={handleEditClick}>
+      <div class="note-view-scroll" tabIndex={-1} role="region" aria-label="Note" onClick={handleEditClick}>
         <div class="note-content" ref={contentRef} onClick={handleContentClick}
           dangerouslySetInnerHTML={{ __html: renderedContent }} />
         {note.incoming_links.length > 0 && (

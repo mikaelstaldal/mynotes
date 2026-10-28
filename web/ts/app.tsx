@@ -1,3 +1,4 @@
+import { editingTarget } from './util/keyboard.js';
 import { render } from 'preact';
 import { useState, useEffect, useCallback, useRef } from 'preact/hooks';
 import { currentRoute, onRouteChange, navigate, tagsPath, type Route } from './router.js';
@@ -44,6 +45,7 @@ function App() {
   const [showDemoNotice, setShowDemoNotice] = useState(() => isDemo() && !demoNoticeSeen());
   const [showSettings, setShowSettings] = useState(false);
   const uploadRef = useRef<HTMLInputElement>(null);
+  const keyboardTagRef = useRef<string | null>(null);
 
   // The filter is taken here, where routes arrive, rather than in an effect
   // watching `route`: both updates then land in one render, so the sidebar never
@@ -189,6 +191,51 @@ function App() {
       navigate(tagsPath(sidebarTags));
     }
   }, [route.type, sidebarTags]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey || e.isComposing) return;
+      if (document.querySelector('[role="dialog"], [role="alertdialog"], dialog[open]')) return;
+      if (document.querySelector('.emoji-picker-overlay, .icon-picker-overlay, .link-picker-overlay')) return;
+      if (e.key === 'Escape') {
+        if (!(e.target instanceof Element) || !e.target.closest('main')) return;
+        const cancel = document.querySelector<HTMLButtonElement>('[data-editor-cancel]');
+        if (cancel && !cancel.disabled) { e.preventDefault(); cancel.click(); }
+        return;
+      }
+      if (editingTarget(e.target)) return;
+      const target = e.target instanceof Element ? e.target : null;
+      const sidebarNote = () => document.querySelector<HTMLElement>(
+        '.sidebar .note-row--active > a.link',
+      ) ?? document.querySelector<HTMLElement>('.sidebar .note-row > a.link');
+      if (e.key === 'ArrowRight' && target?.matches('.sidebar .note-row > a.link')) {
+        const note = document.querySelector<HTMLElement>('main .note-view-scroll');
+        if (note) { e.preventDefault(); note.focus(); }
+      } else if (e.key === 'ArrowRight' && target?.matches('.sidebar .tag-manager-name')) {
+        const note = document.querySelector<HTMLElement>('main .note-view-scroll, main .note-row > a.link');
+        if (note) {
+          keyboardTagRef.current = target.textContent;
+          e.preventDefault();
+          note.focus();
+        }
+      } else if (e.key === 'ArrowLeft' && target?.matches('main .note-view-scroll, main .note-row > a.link')) {
+        const tags = Array.from(document.querySelectorAll<HTMLElement>('.sidebar .tag-manager-name'));
+        const link = sidebarNote()
+          ?? tags.find(tag => tag.textContent === keyboardTagRef.current)
+          ?? tags.find(tag => sidebarTags.includes(tag.textContent ?? ''))
+          ?? tags[0];
+        if (link) { e.preventDefault(); link.focus(); }
+      } else if (e.key === 'Backspace' && route.type === 'view'
+        && document.querySelector('main .note-view')) {
+        e.preventDefault();
+        setSidebarTab('notes');
+        sidebarNote()?.focus();
+        navigate(tagsPath(sidebarTags));
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [route, sidebarTags]);
 
   const activeSlug = (route.type === 'view' || route.type === 'edit') ? route.slug : undefined;
 

@@ -3,6 +3,7 @@ import { api, type TagSummary } from '../api/client.js';
 import { showToast } from '../util/toast.js';
 import { confirmDialog } from '../util/dialog.js';
 import { useSlowLoading } from '../util/loading.js';
+import { listKeyboard } from '../util/keyboard.js';
 import { Icon } from '../components/Icon.js';
 
 interface Props {
@@ -80,7 +81,7 @@ export function TagManager({ listKey, onMutate, onOpenTag }: Props) {
           <p class="muted">No tags yet.</p>
         )
       ) : (
-        <ul class="tag-manager-list">
+        <ul class="tag-manager-list" onKeyDown={e => listKeyboard(e, ".tag-manager-name")}>
           {tags.map(tag => (
             <li key={tag.slug} class="tag-manager-row">
               <button

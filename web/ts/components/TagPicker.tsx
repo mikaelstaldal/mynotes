@@ -88,7 +88,7 @@ export function TagPicker({ selected, onChange }: Props) {
           onBlur={() => setOpen(false)}
           onInput={(e) => setQuery((e.target as HTMLInputElement).value)}
           onKeyDown={(e) => {
-            if (e.key === 'Escape') { setQuery(''); inputRef.current?.blur(); }
+            if (e.key === 'Escape') { e.preventDefault(); setQuery(''); inputRef.current?.blur(); }
             if (e.key === 'Enter') { e.preventDefault(); if (matches.length > 0) addTag(matches[0]); else void createAndAddTag(); }
           }}
         />

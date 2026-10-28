@@ -1398,3 +1398,17 @@ Updates that omit tags leave the existing list unchanged.
 HTML and Markdown import sources accept at most 1,000,000 Unicode characters, checked before parsing or conversion.
 Artifact uploads accept at most 10 MiB (10,485,760 bytes); the demo retains its documented 2 MiB cap.
 Oversized inputs are rejected as validation errors.
+
+## Keyboard navigation
+
+The web UI supports Tab traversal and native activation of links and buttons. Up/Down on note-title links
+(sidebar and overview) and tag-name buttons moves focus within the displayed list, without wrapping or
+activation. Focus is visibly indicated. Right on a sidebar note title focuses the loaded read pane; Left
+from the read pane or an overview title focuses the open note's sidebar title, falling back to the first
+loaded title. Right on a sidebar tag name focuses the displayed read pane or first overview title,
+without activating the tag; an empty main pane leaves focus on the tag. Backspace in a loaded read view
+returns to the overview with the sidebar tag filter retained and restores sidebar focus when the title is
+available. Text fields, editable content, modified keys, and modal dialogs are exempt from pane and
+Backspace navigation. When the Tags tab is open, Left instead returns to the tag last left using Right,
+falling back to a filtered tag or the first displayed tag. Escape activates the editor's existing Cancel
+action with its unsaved-changes guard; dialogs handle their own Escape.

@@ -2103,3 +2103,33 @@ a.tag-chip:hover { border-color: var(--link); color: var(--link); }
 .api-token-list li { margin: 12px 0; overflow-wrap: anywhere; }
 .device-page { margin: 0; padding: 24px; }
 .device-page-content { max-width: 720px; margin: auto; }
+
+/* Keyboard focus remains visible on links and the read pane. */
+.note-row > a.link:focus-visible,
+.tag-manager-name:focus-visible,
+.note-view-scroll:focus-visible {
+  outline: 2px solid var(--link);
+  outline-offset: 2px;
+}
+
+/* Make room for the inset ring without shifting the title text. */
+.note-row > a.link {
+  padding-inline: 4px;
+  margin-inline: -4px;
+}
+
+/* The first title is flush with the scrollport; keep its ring inside the
+   link box so the top edge remains visible without adding a gap to the list. */
+.note-row > a.link:focus-visible {
+  outline-offset: -2px;
+}
+
+/* Tag buttons meet the scrollport's left edge. An inset ring and internal
+   spacing keep the border visible and clear of the text. */
+button.tag-manager-name {
+  padding-inline: 4px;
+  border-radius: 2px;
+}
+.tag-manager-name:focus-visible {
+  outline-offset: -2px;
+}
