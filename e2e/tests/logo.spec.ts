@@ -268,8 +268,14 @@ test.describe('Brand logo contract', () => {
     await expect(link, 'no note row rendered — nothing was compared').toBeVisible();
 
     const badge = (await page.locator(BADGE).boundingBox())!;
-    const text = (await link.boundingBox())!;
-    expect(text.x, 'note text must share the badge left edge').toBeCloseTo(badge.x, 1);
+    // The link box includes padding for its inset keyboard focus ring and a
+    // cancelling negative margin. Measure the title text, not that wider box.
+    const textLeft = await link.evaluate(el => {
+      const range = document.createRange();
+      range.selectNodeContents(el);
+      return range.getBoundingClientRect().left;
+    });
+    expect(textLeft, 'note text must share the badge left edge').toBeCloseTo(badge.x, 1);
 
     await request.delete(`/api/v1/notes/${(await made.json()).slug}`);
   });
