@@ -31,7 +31,13 @@ test('editor saves with timestamp ETags and reloads after a concurrent edit', as
     const rejectedPromise = page.waitForResponse(r => r.url().endsWith(noteURL) && r.request().method() === 'PATCH');
     await page.getByRole('button', { name: 'Save', exact: true }).click();
     expect((await rejectedPromise).status()).toBe(412);
-    await expect(page.getByRole('alertdialog')).toBeVisible();
+    const conflict = page.getByRole('alertdialog');
+    await expect(conflict).toBeVisible();
+    await expect(conflict.getByRole('button', { name: 'Keep editing', exact: true })).toBeFocused();
+    await page.keyboard.press('Tab');
+    await expect(conflict.getByRole('button', { name: 'Save my changes anyway', exact: true })).toBeFocused();
+    await page.keyboard.press('Tab');
+    await expect(conflict.getByRole('button', { name: 'Discard my edits & reload', exact: true })).toBeFocused();
     await page.getByRole('button', { name: 'Discard my edits & reload' }).click();
     await expect(page.getByLabel('Title', { exact: true })).toHaveValue('Concurrent edit');
     await page.getByLabel('Title', { exact: true }).fill('After reload');

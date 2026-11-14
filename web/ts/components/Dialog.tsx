@@ -20,8 +20,7 @@ function Dialog({ request }: { request: DialogRequest }) {
   const { id, options } = request;
   const prompt = request.kind === 'prompt' ? request.options : null;
   const [value, setValue] = useState(prompt?.initialValue ?? '');
-  const inputRef = useRef<HTMLInputElement>(null);
-  const confirmRef = useRef<HTMLButtonElement>(null);
+  const cancelRef = useRef<HTMLButtonElement>(null);
 
   // Cancelling answers false / null — what window.confirm / window.prompt
   // returned when cancelled, so existing call-site logic still holds.
@@ -40,17 +39,11 @@ function Dialog({ request }: { request: DialogRequest }) {
     if (!options.requireAnswer) cancel();
   }
 
-  // Focus the field (a prompt) or the accepting button (a confirmation) so the
-  // dialog is operable from the keyboard alone, and close it on Escape from
+  // Focus the leftmost button so Enter activates it, and close on Escape from
   // anywhere in the document. dismiss() only closes over the id, so registering
   // once per request is enough.
   useEffect(() => {
-    if (inputRef.current) {
-      inputRef.current.focus();
-      inputRef.current.select();
-    } else {
-      confirmRef.current?.focus();
-    }
+    cancelRef.current?.focus();
     function handleKey(e: KeyboardEvent) {
       if (e.key === 'Escape') dismiss();
     }
@@ -79,7 +72,6 @@ function Dialog({ request }: { request: DialogRequest }) {
           <label class="dialog-field">
             <span>{prompt.label}</span>
             <input
-              ref={inputRef}
               type="text"
               value={value}
               maxLength={prompt.maxLength}
@@ -89,11 +81,10 @@ function Dialog({ request }: { request: DialogRequest }) {
           </label>
         )}
         <div class="dialog-actions">
-          <button type="button" class="link" onClick={cancel}>
+          <button ref={cancelRef} type="button" class="link" onClick={cancel}>
             {options.cancelLabel ?? 'Cancel'}
           </button>
           <button
-            ref={confirmRef}
             type="submit"
             class={request.kind === 'confirm' && request.options.danger ? 'danger' : 'primary'}
           >

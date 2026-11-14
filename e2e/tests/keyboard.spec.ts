@@ -56,7 +56,7 @@ test('Escape uses editor Cancel and dismisses only its confirmation', async ({ p
   await page.keyboard.press('Escape');
   const dialog = page.getByRole('alertdialog');
   await expect(dialog).toBeVisible();
-  await expect(dialog.getByRole('button', { name: 'Leave', exact: true })).toBeFocused();
+  await expect(dialog.getByRole('button', { name: 'Keep editing', exact: true })).toBeFocused();
   await page.keyboard.press('Escape');
   await expect(dialog).not.toBeVisible();
   await expect(page).toHaveURL(/\/new$/);
@@ -258,13 +258,54 @@ test('action shortcuts open editors and retain delete confirmation', async ({ pa
     await page.keyboard.press('d');
     const dialog = page.getByRole('alertdialog');
     await expect(dialog).toBeVisible();
+    await expect(dialog.getByRole('button', { name: 'Keep', exact: true })).toBeFocused();
+    await page.keyboard.press('Tab');
+    await expect(dialog.getByRole('button', { name: 'Delete', exact: true })).toBeFocused();
+    await page.keyboard.press('Shift+Tab');
+    await expect(dialog.getByRole('button', { name: 'Keep', exact: true })).toBeFocused();
     await page.keyboard.press('n');
     await expect(page).toHaveURL(new RegExp(`/notes/${slug}$`));
-    await dialog.getByRole('button', { name: 'Keep', exact: true }).click();
+    await page.keyboard.press('Enter');
     await expect(dialog).not.toBeVisible();
     await edit.focus();
     await page.keyboard.press('n');
     await expect(page).toHaveURL(/\/new$/);
+  } finally {
+    await request.delete(`/api/v1/notes/${slug}`);
+  }
+});
+
+test('modal action rows start at the left and retain native tab order', async ({ page, request }) => {
+  const response = await request.post('/api/v1/notes', { data: { title: 'Modal focus', content: '# Heading\nContent' } });
+  expect(response.status()).toBe(201);
+  const { slug } = await response.json();
+  try {
+    await page.goto(`/notes/${slug}`);
+    for (const [trigger, dialogClass, first, second] of [
+      ['Settings', '.settings-dialog', 'Cancel', 'Save'],
+      ['Publish', '.publish-dialog', 'Close', 'Publish'],
+      ['Split by headings', '.split-dialog', 'Cancel', 'Split'],
+    ]) {
+      await page.getByRole('button', { name: trigger, exact: true }).click();
+      const dialog = page.locator(dialogClass);
+      const firstButton = dialog.getByRole('button', { name: first, exact: true });
+      await expect(firstButton).toBeFocused();
+      await page.keyboard.press('Tab');
+      await expect(dialog.getByRole('button', { name: second, exact: true })).toBeFocused();
+      await page.keyboard.press('Shift+Tab');
+      await expect(firstButton).toBeFocused();
+      await page.keyboard.press('Enter');
+      await expect(dialog).not.toBeVisible();
+    }
+    await page.getByRole('tab', { name: 'Tags', exact: true }).click();
+    await page.getByRole('button', { name: 'New tag', exact: true }).click();
+    const prompt = page.getByRole('dialog', { name: 'New tag', exact: true });
+    await expect(prompt.getByRole('button', { name: 'Cancel', exact: true })).toBeFocused();
+    await page.keyboard.press('Tab');
+    await expect(prompt.getByRole('button', { name: 'Create tag', exact: true })).toBeFocused();
+    await page.keyboard.press('Shift+Tab');
+    await page.keyboard.press('Enter');
+    await expect(prompt).not.toBeVisible();
   } finally {
     await request.delete(`/api/v1/notes/${slug}`);
   }

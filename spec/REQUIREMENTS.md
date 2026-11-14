@@ -1418,3 +1418,8 @@ or a new tag on the Tags tab; E edits the displayed note; D deletes it using the
 Edit and Delete underline their shortcut letters; New buttons advertise N in their tooltips.
 Shortcuts are ignored while typing, during composition or key repeat, with modifiers, and while dialogs
 or editor pickers are open. They work in demo mode too.
+
+Modal dialogs initially focus their first enabled action button (leftmost in the action row), so Enter
+activates that button. Tab and Shift+Tab follow the native control order to reach the remaining buttons
+and any fields. Where a dismiss action is available, it precedes confirm and destructive actions;
+the conflict dialog puts Keep editing first.

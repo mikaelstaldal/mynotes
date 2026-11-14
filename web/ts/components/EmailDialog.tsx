@@ -1,3 +1,4 @@
+import { useDialogFocus } from '../util/dialog-focus.js';
 import { useState, useEffect } from 'preact/hooks';
 import { NotFoundError } from '../api/client.js';
 import { buildNoteEmail, sendNoteEmail } from '../util/email.js';
@@ -19,6 +20,7 @@ interface Props {
 // submit, since rendering it (Mermaid diagrams, image inlining) is the
 // expensive part and the dialog may well be dismissed.
 export function EmailDialog({ slug, title, mymailUrl, onClose }: Props) {
+  const dialogRef = useDialogFocus();
   const [recipient, setRecipient] = useState('');
   const [subject, setSubject] = useState(title);
   const [sending, setSending] = useState(false);
@@ -56,7 +58,7 @@ export function EmailDialog({ slug, title, mymailUrl, onClose }: Props) {
 
   return (
     <div class="email-overlay" onClick={sending ? undefined : onClose}>
-      <div class="email-dialog" role="dialog" aria-modal="true" aria-labelledby="email-title"
+      <div ref={dialogRef} class="email-dialog" role="dialog" aria-modal="true" aria-labelledby="email-title"
         onClick={(e) => e.stopPropagation()}>
         <h2 id="email-title" class="email-title">Send as email</h2>
         <p class="email-body">
@@ -67,7 +69,7 @@ export function EmailDialog({ slug, title, mymailUrl, onClose }: Props) {
         <form onSubmit={handleSubmit}>
           <label class="email-field">
             <span>To</span>
-            <input type="email" required autofocus value={recipient} disabled={sending}
+            <input type="email" required value={recipient} disabled={sending}
               placeholder="recipient@example.com"
               onInput={(e) => { setRecipient((e.target as HTMLInputElement).value); setError(''); }} />
           </label>

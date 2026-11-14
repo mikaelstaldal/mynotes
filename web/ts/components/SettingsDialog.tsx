@@ -1,3 +1,4 @@
+import { useDialogFocus } from '../util/dialog-focus.js';
 import { getThemePreference, setTheme, type ThemePreference } from '../util/theme.js';
 import type { ComponentChildren } from 'preact';
 import { useState, useEffect, useRef } from 'preact/hooks';
@@ -46,6 +47,7 @@ interface ShellProps extends Props {
 // The chrome both variants share: the overlay that dismisses on an outside
 // click, the dialog box, the title, and Escape.
 function SettingsShell({ onClose, describedBy, children }: ShellProps) {
+  const dialogRef = useDialogFocus('.settings-actions button');
   useEffect(() => {
     function handleKey(e: KeyboardEvent) {
       if (e.key === 'Escape') onClose();
@@ -56,7 +58,7 @@ function SettingsShell({ onClose, describedBy, children }: ShellProps) {
 
   return (
     <div class="settings-overlay" onClick={onClose}>
-      <div class="settings-dialog" role="dialog" aria-modal="true" aria-labelledby="settings-title"
+      <div ref={dialogRef} class="settings-dialog" role="dialog" aria-modal="true" aria-labelledby="settings-title"
         aria-describedby={describedBy}
         onClick={(e) => e.stopPropagation()}>
         <h2 id="settings-title" class="settings-title">Settings</h2>
@@ -71,17 +73,6 @@ function SettingsShell({ onClose, describedBy, children }: ShellProps) {
 // way DemoDialog is, since a screen reader reaching only the title and a Close
 // button would be told nothing at all.
 function DemoSettings({ onClose }: Props) {
-  const closeRef = useRef<HTMLButtonElement>(null);
-
-  // Mount only. The other variant's `autofocus` puts the caret in the field;
-  // with no form to take it, focus goes to the one button, so Escape and Enter
-  // both land here rather than on whatever was focused behind the overlay.
-  // Depending on `onClose` would re-run this — the caller passes a fresh
-  // closure on every render — and yank focus back while the dialog is open.
-  useEffect(() => {
-    closeRef.current?.focus();
-  }, []);
-
   return (
     <SettingsShell onClose={onClose} describedBy="settings-demo-body">
       <p id="settings-demo-body" class="settings-body">
@@ -89,7 +80,7 @@ function DemoSettings({ onClose }: Props) {
         demo has none. Choose Auto to follow your browser’s color scheme.
       </p>
       <div class="settings-actions">
-        <button ref={closeRef} type="button" class="primary" onClick={onClose}>Close</button>
+        <button type="button" class="primary" onClick={onClose}>Close</button>
       </div>
     </SettingsShell>
   );
@@ -135,7 +126,7 @@ function MymailSettings({ onClose }: Props) {
       <form onSubmit={handleSubmit}>
         <label class="settings-field">
           <span>MyMail URL</span>
-          <input type="url" autofocus value={url}
+          <input type="url" value={url}
             placeholder={derived || `${window.location.origin}/mymail`}
             onInput={(e) => { setUrl((e.target as HTMLInputElement).value); setError(''); }} />
         </label>

@@ -1,3 +1,4 @@
+import { useDialogFocus } from '../util/dialog-focus.js';
 import { useEffect } from 'preact/hooks';
 import { Icon } from './Icon.js';
 
@@ -118,6 +119,7 @@ const SECTIONS: Section[] = [
 // the editor's format toolbar; dismissed by Escape, the close button, or a click
 // on the backdrop.
 export function MarkdownHelp({ onClose }: Props) {
+  const dialogRef = useDialogFocus();
   useEffect(() => {
     function handleKey(e: KeyboardEvent) {
       if (e.key === 'Escape') onClose();
@@ -128,7 +130,7 @@ export function MarkdownHelp({ onClose }: Props) {
 
   return (
     <div class="markdown-help-overlay" onClick={onClose}>
-      <div class="markdown-help" role="dialog" aria-modal="true" aria-labelledby="markdown-help-title" onClick={(e) => e.stopPropagation()}>
+      <div ref={dialogRef} class="markdown-help" role="dialog" aria-modal="true" aria-labelledby="markdown-help-title" onClick={(e) => e.stopPropagation()}>
         <div class="markdown-help-header">
           <h2 id="markdown-help-title" class="markdown-help-title">Markdown syntax</h2>
           <button type="button" class="btn-icon" title="Close" aria-label="Close" onClick={onClose}><Icon name="x" size={16} /></button>

@@ -1,3 +1,4 @@
+import { useDialogFocus } from '../util/dialog-focus.js';
 import { useEffect } from 'preact/hooks';
 
 interface Props {
@@ -15,6 +16,7 @@ interface Props {
 // modified elsewhere since it was loaded. Offers an explicit choice instead of
 // a dead-end "please reload" toast.
 export function ConflictDialog({ onReload, onForceSave, onClose, busy }: Props) {
+  const dialogRef = useDialogFocus();
   // Close on Escape from anywhere in the document.
   useEffect(() => {
     function handleKey(e: KeyboardEvent) {
@@ -26,21 +28,21 @@ export function ConflictDialog({ onReload, onForceSave, onClose, busy }: Props) 
 
   return (
     <div class="conflict-overlay" onClick={busy ? undefined : onClose}>
-      <div class="conflict-dialog" role="alertdialog" aria-modal="true" aria-labelledby="conflict-title" onClick={(e) => e.stopPropagation()}>
+      <div ref={dialogRef} class="conflict-dialog" role="alertdialog" aria-modal="true" aria-labelledby="conflict-title" onClick={(e) => e.stopPropagation()}>
         <h2 id="conflict-title" class="conflict-title">Note modified elsewhere</h2>
         <p class="conflict-body">
           This note has changed on the server since you started editing.
           Choose how to resolve the conflict.
         </p>
         <div class="conflict-actions">
+          <button type="button" class="link" disabled={busy} onClick={onClose}>
+            Keep editing
+          </button>
           <button type="button" class="danger" disabled={busy} onClick={onForceSave}>
             Save my changes anyway
           </button>
           <button type="button" disabled={busy} onClick={onReload}>
             Discard my edits &amp; reload
-          </button>
-          <button type="button" class="link" disabled={busy} onClick={onClose}>
-            Keep editing
           </button>
         </div>
       </div>

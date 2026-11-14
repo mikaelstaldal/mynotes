@@ -1,3 +1,4 @@
+import { useDialogFocus } from '../util/dialog-focus.js';
 import { useState, useEffect } from 'preact/hooks';
 import { NotFoundError, api } from '../api/client.js';
 import { publishNote, publicNoteUrl } from '../util/publish.js';
@@ -23,6 +24,7 @@ interface Props {
 // be dismissed. Unlike it, the dialog stays open after publishing, so the link
 // it just created can be copied.
 export function PublishDialog({ slug, publishedAt, onChange, onClose }: Props) {
+  const dialogRef = useDialogFocus();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [published, setPublished] = useState(publishedAt);
@@ -92,7 +94,7 @@ export function PublishDialog({ slug, publishedAt, onChange, onClose }: Props) {
 
   return (
     <div class="publish-overlay" onClick={busy ? undefined : onClose}>
-      <div class="publish-dialog" role="dialog" aria-modal="true" aria-labelledby="publish-title"
+      <div ref={dialogRef} class="publish-dialog" role="dialog" aria-modal="true" aria-labelledby="publish-title"
         onClick={(e) => e.stopPropagation()}>
         <h2 id="publish-title" class="publish-title">
           {published === undefined ? 'Publish note' : 'Published note'}

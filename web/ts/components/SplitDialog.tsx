@@ -1,3 +1,4 @@
+import { useDialogFocus } from '../util/dialog-focus.js';
 import { useState, useEffect } from 'preact/hooks';
 import { type Tag } from '../api/client.js';
 import { TagPicker } from './TagPicker.js';
@@ -18,6 +19,7 @@ interface Props {
 // works the same way). Splitting with no tag is allowed: the picker just stays
 // empty.
 export function SplitDialog({ onSplit, onClose, busy }: Props) {
+  const dialogRef = useDialogFocus();
   // TagPicker is multi-select; the split assigns a single tag, so keep only the
   // most recently chosen one (selecting another replaces it).
   const [selected, setSelected] = useState<Tag[]>([]);
@@ -34,7 +36,7 @@ export function SplitDialog({ onSplit, onClose, busy }: Props) {
 
   return (
     <div class="split-overlay" onClick={busy ? undefined : onClose}>
-      <div class="split-dialog" role="dialog" aria-modal="true" aria-labelledby="split-title"
+      <div ref={dialogRef} class="split-dialog" role="dialog" aria-modal="true" aria-labelledby="split-title"
         onClick={(e) => e.stopPropagation()}>
         <h2 id="split-title" class="split-title">Split note by headings</h2>
         <p class="split-body">
