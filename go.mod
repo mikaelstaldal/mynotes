@@ -1,6 +1,6 @@
 module github.com/mikaelstaldal/mynotes
 
-go 1.26.10
+go 1.26.11
 
 require (
 	github.com/go-faster/errors v0.8.0
