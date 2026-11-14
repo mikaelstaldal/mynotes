@@ -1412,3 +1412,9 @@ available. Text fields, editable content, modified keys, and modal dialogs are e
 Backspace navigation. When the Tags tab is open, Left instead returns to the tag last left using Right,
 falling back to a filtered tag or the first displayed tag. Escape activates the editor's existing Cancel
 action with its unsaved-changes guard; dialogs handle their own Escape.
+
+Plain-letter action shortcuts activate visible, enabled buttons: N creates a new note on the Notes tab
+or a new tag on the Tags tab; E edits the displayed note; D deletes it using the existing confirmation.
+Edit and Delete underline their shortcut letters; New buttons advertise N in their tooltips.
+Shortcuts are ignored while typing, during composition or key repeat, with modifiers, and while dialogs
+or editor pickers are open. They work in demo mode too.

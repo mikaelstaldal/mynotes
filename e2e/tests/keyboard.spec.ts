@@ -226,3 +226,46 @@ test('tag focus outline stays inside the list and clear of its label', async ({ 
     await request.delete(`/api/v1/tags/${slug}`);
   }
 });
+
+
+test('action shortcuts open editors and retain delete confirmation', async ({ page, request }) => {
+  const response = await request.post('/api/v1/notes', { data: { title: 'Shortcut note', content: 'Content' } });
+  expect(response.status()).toBe(201);
+  const { slug } = await response.json();
+  try {
+    await page.goto('/');
+    await expect(page.locator('main').getByRole('button', { name: 'Edit', exact: true }).first()).toBeVisible();
+    await page.locator('main .note-row > a.link').first().focus();
+    await page.keyboard.press('e');
+    await page.keyboard.press('d');
+    await expect(page).toHaveURL(/\/$/);
+    await expect(page.getByRole('alertdialog')).not.toBeVisible();
+    await expect(page.locator('main [data-shortcut="e"], main [data-shortcut="d"]')).toHaveCount(0);
+    await page.goto(`/notes/${slug}`);
+    const edit = page.getByRole('button', { name: 'Edit', exact: true });
+    await expect(edit).toBeVisible();
+    await edit.focus();
+    await page.keyboard.press('e');
+    await expect(page).toHaveURL(new RegExp(`/notes/${slug}/edit$`));
+    const title = page.getByRole('textbox', { name: 'Title', exact: true });
+    await title.fill('Typing');
+    await page.keyboard.press('n');
+    await expect(title).toHaveValue('Typingn');
+    await expect(page).toHaveURL(new RegExp(`/notes/${slug}/edit$`));
+    await page.goto(`/notes/${slug}`);
+    await expect(edit).toBeVisible();
+    await edit.focus();
+    await page.keyboard.press('d');
+    const dialog = page.getByRole('alertdialog');
+    await expect(dialog).toBeVisible();
+    await page.keyboard.press('n');
+    await expect(page).toHaveURL(new RegExp(`/notes/${slug}$`));
+    await dialog.getByRole('button', { name: 'Keep', exact: true }).click();
+    await expect(dialog).not.toBeVisible();
+    await edit.focus();
+    await page.keyboard.press('n');
+    await expect(page).toHaveURL(/\/new$/);
+  } finally {
+    await request.delete(`/api/v1/notes/${slug}`);
+  }
+});

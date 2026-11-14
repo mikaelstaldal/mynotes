@@ -184,9 +184,17 @@ export function NoteActions({ slug, title, publishedAt, toolbarClass, showView, 
             onClick={() => setShowEmail(true)}><Icon name="mail" size={16} /></button>
         )}
         <button class="btn-icon" title="Split by headings" aria-label="Split by headings" onClick={() => setShowSplit(true)} disabled={splitting}><Icon name="scissors" size={16} /></button>
-        <button class="btn-icon" title="Edit" aria-label="Edit" onClick={() => navigate(`/notes/${slug}/edit`, { returnTo: currentPath() })}><Icon name="pencil" size={16} /></button>
-        <button class="danger btn-icon" onClick={handleDelete} disabled={deleting}
-          title={deleting ? 'Deleting…' : 'Delete'} aria-label={deleting ? 'Deleting…' : 'Delete'}><Icon name="recycle" size={16} /></button>
+        <button class="btn-icon"
+          data-shortcut={showView ? undefined : 'e'} aria-keyshortcuts={showView ? undefined : 'e'}
+          title={showView ? 'Edit' : 'Edit (E)'} aria-label="Edit"
+          onClick={() => navigate(`/notes/${slug}/edit`, { returnTo: currentPath() })}
+        ><Icon name="pencil" size={16} />{!showView && <span><u>E</u>dit</span>}</button>
+        <button class="danger btn-icon"
+          data-shortcut={showView ? undefined : 'd'} aria-keyshortcuts={showView ? undefined : 'd'}
+          onClick={handleDelete} disabled={deleting}
+          title={deleting ? 'Deleting…' : showView ? 'Delete' : 'Delete (D)'}
+          aria-label={deleting ? 'Deleting…' : 'Delete'}
+        ><Icon name="recycle" size={16} />{!showView && <span><u>D</u>elete</span>}</button>
       </div>
       {showSplit && (
         <SplitDialog busy={splitting} onClose={() => setShowSplit(false)} onSplit={doSplit} />

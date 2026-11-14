@@ -1,3 +1,4 @@
+import { handleActionShortcut } from './util/shortcuts.js';
 import { editingTarget } from './util/keyboard.js';
 import { render } from 'preact';
 import { useState, useEffect, useCallback, useRef } from 'preact/hooks';
@@ -237,6 +238,11 @@ function App() {
     return () => document.removeEventListener('keydown', onKey);
   }, [route, sidebarTags]);
 
+  useEffect(() => {
+    document.addEventListener('keydown', handleActionShortcut);
+    return () => document.removeEventListener('keydown', handleActionShortcut);
+  }, []);
+
   const activeSlug = (route.type === 'view' || route.type === 'edit') ? route.slug : undefined;
 
   return (
@@ -278,7 +284,8 @@ function App() {
                 <>
                   <button
                     class="primary btn-icon"
-                    title="New note"
+                    data-shortcut="n" aria-keyshortcuts="n"
+                    title="New note (N)"
                     aria-label="New note"
                     onClick={() => navigate('/new')}
                   ><Icon name="plus" size={16} /></button>
@@ -300,7 +307,8 @@ function App() {
               {sidebarTab === 'tags' && (
                 <button
                   class="primary btn-icon"
-                  title="New tag"
+                  data-shortcut="n" aria-keyshortcuts="n"
+                  title="New tag (N)"
                   aria-label="New tag"
                   onClick={() => void handleNewTag()}
                 ><Icon name="plus" size={16} /></button>
