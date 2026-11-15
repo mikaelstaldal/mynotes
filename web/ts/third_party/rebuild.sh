@@ -21,12 +21,14 @@
 # package-manager install manual, audited, and out of the automated build —
 # build.sh and CI need neither npm nor esbuild.
 #
-# Requires on $PATH: npm, esbuild, git.
+# Requires on $PATH: npm, node, git. esbuild is pinned in package.json and run
+# from the install tree so the bundler version does not depend on $PATH.
 set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
 VENDOR_DIR="$(pwd)"
+ESBUILD="$VENDOR_DIR/node_modules/.bin/esbuild"
 BROWSER_OUT="$VENDOR_DIR/../../static/third_party"
 TEST_DIR="$VENDOR_DIR/test"
 PREACT_OUT="$BROWSER_OUT/preact"    # runtime ESM modules served to the browser
@@ -129,20 +131,20 @@ export NODE_PATH="$VENDOR_DIR/node_modules"
 # don't linger in the tree.
 rm -f "$BROWSER_OUT"/{codemirror,markdown-it,dompurify,asciimath,mermaid,emoji,lucide}-*.js
 
-esbuild "$WORK_DIR/codemirror-entry.mjs" \
+"$ESBUILD" "$WORK_DIR/codemirror-entry.mjs" \
   --bundle --format=esm --platform=browser --minify \
   --outfile="$BROWSER_OUT/codemirror-$CODEMIRROR_VER.js"
 
-esbuild "$WORK_DIR/markdown-it-entry.mjs" \
+"$ESBUILD" "$WORK_DIR/markdown-it-entry.mjs" \
   --bundle --format=esm --platform=browser --minify \
   --outfile="$BROWSER_OUT/markdown-it-$MARKDOWNIT_VER.js"
 
-esbuild "$WORK_DIR/dompurify-entry.mjs" \
+"$ESBUILD" "$WORK_DIR/dompurify-entry.mjs" \
   --bundle --format=esm --platform=browser --minify \
   --outfile="$BROWSER_OUT/dompurify-$DOMPURIFY_VER.js"
 
 # asciimath2ml is MIT-licensed; keep the attribution banner in the bundle.
-esbuild "$WORK_DIR/asciimath-entry.mjs" \
+"$ESBUILD" "$WORK_DIR/asciimath-entry.mjs" \
   --bundle --format=esm --platform=browser --minify \
   --legal-comments=none \
   --banner:js='/*! asciimath2ml '"$ASCIIMATH_VER"' | MIT License | Copyright (c) 2024 Tommi Johtela | https://github.com/johtela/asciimath2ml */' \
@@ -151,7 +153,7 @@ esbuild "$WORK_DIR/asciimath-entry.mjs" \
 # Mermaid is large; --bundle inlines its dynamically-imported diagram modules
 # into the single output file (no code-splitting), keeping it a plain ESM module
 # loadable via the import map like the others.
-esbuild "$WORK_DIR/mermaid-entry.mjs" \
+"$ESBUILD" "$WORK_DIR/mermaid-entry.mjs" \
   --bundle --format=esm --platform=browser --minify \
   --outfile="$BROWSER_OUT/mermaid-$MERMAID_VER.js"
 
@@ -327,7 +329,7 @@ EOF
 # JSDOM. So only accept the bundle if it both builds AND actually constructs a
 # DOM under node; otherwise fall back to vendoring jsdom's install tree.
 bundle_ok=0
-if esbuild "$TEST_DIR/jsdom-entry.mjs" \
+if "$ESBUILD" "$TEST_DIR/jsdom-entry.mjs" \
   --bundle --format=esm --platform=node \
   --external:canvas --external:bufferutil --external:utf-8-validate \
   --outfile="$TEST_DIR/jsdom.js"

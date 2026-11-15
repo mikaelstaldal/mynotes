@@ -323,8 +323,9 @@ bundles are committed source-of-truth artifacts; `build.sh` consumes them and
 does not rebuild them. They are regenerated only by an **out-of-band, manually-run
 maintainer script** (e.g. `web/ts/third_party/rebuild.sh`, not part of `build.sh` or
 CI) that pins upstream versions, runs `npm ci --ignore-scripts` into a throwaway
-`.gitignore`d `node_modules`, bundles with esbuild, and is the single place `npm`
-and `esbuild` are required. This keeps every package-manager install manual,
+`.gitignore`d `node_modules`, and bundles with the locally installed, pinned esbuild.
+The script requires `npm`, `node`, and `git` on `$PATH`; no global esbuild is needed.
+This keeps every package-manager install manual,
 audited, and outside the automated build.
 
 - `third_party/codemirror-<version>.js` re-exports a fixed minimal surface: from
@@ -355,8 +356,8 @@ audited, and outside the automated build.
 lint. **`build.sh` runs no `npm`/`npx`/`yarn`/`pnpm`/`bun` and no esbuild step** — the
 vendor bundles are pre-built committed artifacts (see "Vendored libraries"). Only
 **`node`** is added to the required tools on `$PATH` (in addition to `go`, `ogen`,
-`tsc`, `openapi-typescript`, `golangci-lint`). `esbuild` and `npm` are required
-only by the out-of-band vendor-rebuild script, not by `build.sh`.
+`tsc`, `openapi-typescript`, `golangci-lint`). The out-of-band vendor-rebuild script
+additionally requires `npm` and `git` and installs its own pinned esbuild.
 
 Tests:
 - **Repository:** CRUD, unique-slug, FTS matches + ranking, trigger sync.

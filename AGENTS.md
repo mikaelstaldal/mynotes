@@ -43,8 +43,8 @@ implying**: the workflow uses `npm install -g` to put `tsc` and
 the build, with `--ignore-scripts`, from pinned versions — `build.sh` itself
 installs nothing and works on a machine with no package manager at all, which is
 the property the constraint is protecting.
-`esbuild` and `npm` are required only by `web/ts/third_party/rebuild.sh`, a
-separate, manually-run maintainer script that pre-builds the vendored
+`npm`, `node`, and `git` are required by `web/ts/third_party/rebuild.sh`, a
+separate, manually-run maintainer script that installs its pinned local `esbuild` and pre-builds the vendored
 CodeMirror/markdown-it/DOMPurify bundles, the emoji dataset
 (`web/static/third_party/emoji-<version>.js`, generated from `emojibase-data` by the committed
 `gen-emoji.mjs`), the TypeScript declarations those bundles do not carry
