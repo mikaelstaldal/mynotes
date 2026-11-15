@@ -8,7 +8,8 @@
 # Every browser bundle filename is version-stamped (e.g. dompurify-3.4.11.js,
 # preact-10.29.7.module.js) from the installed package version, so a file's name
 # records exactly which upstream release it was built from. The import map in
-# web/static/index.html references these filenames by hand, so it MUST be updated
+# web/static/index.html and web/static/device-approval.html reference these names
+# by hand, so both MUST be updated
 # whenever a version bumps — this script prints the current names at the end as a
 # reminder. (internal/icons and the XSS-gate test instead glob the versioned name,
 # so they need no edit.)
@@ -378,7 +379,8 @@ fi
 # --- 3. Reminder: keep the import map in sync -------------------------------
 #
 # The bundle filenames are version-stamped, so update the import maps in
-# web/static/index.html AND web/static/render/index.html (the render kit's host
+# web/static/index.html, web/static/device-approval.html AND
+# web/static/render/index.html (the render kit's host
 # page, which pins the same versions for the render pipeline's subset) to
 # reference the names printed above whenever a version bumped. Changing the
 # render page's import map text also invalidates the CSP hash baked into its
@@ -388,7 +390,10 @@ fi
 # versioned name, so they need no edit.)
 cat <<EOF
 
-Reminder: update the import maps in web/static/index.html and
+Reminder: update the vendored versions and filenames in CREDITS.md.
+
+Reminder: update the import maps in web/static/index.html,
+web/static/device-approval.html (identical to index.html), and
 web/static/render/index.html (render pipeline subset only: markdown-it,
 dompurify, emoji-data, lucide-icons, asciimath, mermaid) to reference:
   preact         -> ./third_party/preact/preact-$PREACT_VER.module.js

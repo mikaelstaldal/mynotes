@@ -81,8 +81,8 @@ Each is bundled into a single self-contained, version-stamped ESM file under
 | --- | --- | --- | --- |
 | [Preact](https://preactjs.com/) — UI framework | 10.29.7 | MIT | `third_party/preact/*.module.js` (copied verbatim, not bundled) |
 | [CodeMirror 6](https://codemirror.net/) — Markdown editor | 6.43.3 (`@codemirror/view`) | MIT | `codemirror-6.43.3.js` |
-| [markdown-it](https://github.com/markdown-it/markdown-it) — Markdown rendering | 14.2.0 | MIT | `markdown-it-14.2.0.js` |
-| [DOMPurify](https://github.com/cure53/DOMPurify) — render-time XSS gate | 3.4.11 | MPL-2.0 **OR** Apache-2.0 | `dompurify-3.4.11.js` |
+| [markdown-it](https://github.com/markdown-it/markdown-it) — Markdown rendering | 15.0.3 | MIT | `markdown-it-15.0.3.js` |
+| [DOMPurify](https://github.com/cure53/DOMPurify) — render-time XSS gate | 3.4.17 | MPL-2.0 **OR** Apache-2.0 | `dompurify-3.4.17.js` |
 | [asciimath2ml](https://github.com/johtela/asciimath2ml) — AsciiMath → MathML | 1.0.8 | MPL-2.0 | `asciimath-1.0.8.js` |
 | [Mermaid](https://mermaid.js.org/) — diagram rendering | 11.12.0 | MIT | `mermaid-11.12.0.js` |
 | [Lucide](https://lucide.dev/) — icon set (see below) | 1.25.0 | ISC | `lucide-1.25.0.js` |
